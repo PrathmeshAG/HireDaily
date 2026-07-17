@@ -1,0 +1,12 @@
+{
+  "name": "Hire Daily — HireMind AI",
+  "short_name": "Hire Daily",
+  "description": "Find Your Dream Job Faster. Fresh, verified jobs updated every day.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050816",
+  "theme_color": "#050816",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" }
+  ]
+}
