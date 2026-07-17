@@ -204,7 +204,7 @@ function DashboardTab() {
 }
 
 const EMPTY: Omit<Job, "id" | "createdAt" | "updatedAt"> = {
-  companyName: "", companyLogo: "", role: "", salary: "", location: "",
+  companyName: "", companyLogo: "", role: "", salary: "",category:"", location: "",
   experience: "", skills: "", jobType: "Full-time", description: "", applyLink: "", lastDate: "",
 };
 
@@ -262,11 +262,102 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
         <div className="grid gap-4 md:grid-cols-2">
           <input required placeholder="Company Name" value={form.companyName} onChange={(e) => set("companyName", e.target.value)} className={input} />
           <input required placeholder="Role / Title" value={form.role} onChange={(e) => set("role", e.target.value)} className={input} />
-          <input placeholder="Salary (e.g. 8–12 LPA)" value={form.salary} onChange={(e) => set("salary", e.target.value)} className={input} />
-          <input placeholder="Location" value={form.location} onChange={(e) => set("location", e.target.value)} className={input} />
-          <input placeholder="Experience (e.g. 2–4 years)" value={form.experience} onChange={(e) => set("experience", e.target.value)} className={input} />
+          <select
+  required
+  value={form.category}
+  onChange={(e) => set("category", e.target.value)}
+  className={input}
+>
+  <option value="" className="bg-[#111827]">
+    Select Category
+  </option>
+
+  <option value="Software Development" className="bg-[#111827]">
+    Software Development
+  </option>
+
+  <option value="Data Analytics" className="bg-[#111827]">
+    Data Analytics
+  </option>
+
+  <option value="Data Science" className="bg-[#111827]">
+    Data Science
+  </option>
+
+  <option value="Cybersecurity" className="bg-[#111827]">
+    Cybersecurity
+  </option>
+
+  <option value="Cloud & DevOps" className="bg-[#111827]">
+    Cloud & DevOps
+  </option>
+
+  <option value="AI / ML" className="bg-[#111827]">
+    AI / ML
+  </option>
+
+  <option value="Business Analyst" className="bg-[#111827]">
+    Business Analyst
+  </option>
+
+  <option value="QA / Testing" className="bg-[#111827]">
+    QA / Testing
+  </option>
+
+  <option value="UI / UX" className="bg-[#111827]">
+    UI / UX
+  </option>
+
+  <option value="Data Engineer" className="bg-[#111827]">
+    Data Engineer
+  </option>
+
+  <option value="IT Support" className="bg-[#111827]">
+    IT Support
+  </option>
+
+  <option value="Other" className="bg-[#111827]">
+    Other
+  </option>
+</select>
+          <input placeholder="Expected Salary (e.g. 8–12 LPA)" value={form.salary} onChange={(e) => set("salary", e.target.value)} className={input} />
+
+          <select
+  value={form.location}
+  onChange={(e) => set("location", e.target.value)}
+  className={input}
+>
+  <option value="" className="bg-[#111827]">Select Location</option>
+
+  <option value="Pune" className="bg-[#111827]">Pune</option>
+  <option value="Bengaluru" className="bg-[#111827]">Bengaluru</option>
+  <option value="Hyderabad" className="bg-[#111827]">Hyderabad</option>
+  <option value="Chennai" className="bg-[#111827]">Chennai</option>
+  <option value="Mumbai" className="bg-[#111827]">Mumbai</option>
+  <option value="Navi Mumbai" className="bg-[#111827]">Navi Mumbai</option>
+  <option value="Noida" className="bg-[#111827]">Noida</option>
+  <option value="Gurugram" className="bg-[#111827]">Gurugram</option>
+  <option value="Kolkata" className="bg-[#111827]">Kolkata</option>
+  <option value="Ahmedabad" className="bg-[#111827]">Ahmedabad</option>
+  <option value="Remote" className="bg-[#111827]">Remote</option>
+   <option value="PAN India" className="bg-[#111827]">PAN India</option>
+</select>
+<select
+  value={form.experience}
+  onChange={(e) => set("experience", e.target.value)}
+  className={input}
+>
+  <option value="" className="bg-[#111827]">Select Experience</option>
+
+  <option value="Fresher" className="bg-[#111827]">Fresher</option>
+  <option value="0-1 Years" className="bg-[#111827]">0-1 Years</option>
+  <option value="1-2 Years" className="bg-[#111827]">1-2 Years</option>
+  <option value="2-3 Years" className="bg-[#111827]">2-3 Years</option>
+  <option value="3-5 Years" className="bg-[#111827]">3-5 Years</option>
+  <option value="5+ Years" className="bg-[#111827]">5+ Years</option>
+</select>
           <select value={form.jobType} onChange={(e) => set("jobType", e.target.value)} className={input}>
-            {["Full-time", "Part-time", "Internship", "Contract", "Remote"].map((t) => (
+            {["Full-time", "Part-time", "Internship", "Contract", "Remote","Hybrid"].map((t) => (
               <option key={t} value={t} className="bg-[#111827]">{t}</option>
             ))}
           </select>

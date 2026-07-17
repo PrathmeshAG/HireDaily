@@ -25,7 +25,7 @@ type Sort = typeof SORTS[number];
 function JobsPage() {
   const { data, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs });
   const [q, setQ] = useState("");
-  const [role, setRole] = useState("");
+ const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
   const [jobType, setJobType] = useState("");
   const [experience, setExperience] = useState("");
@@ -34,16 +34,32 @@ function JobsPage() {
 
   const jobs = data ?? [];
 
-  const options = useMemo(() => {
-    const s = <K extends string>(arr: (string | undefined)[]) =>
-      Array.from(new Set(arr.filter(Boolean) as K[])).sort();
-    return {
-      roles: s(jobs.map((j) => j.role)),
-      locations: s(jobs.map((j) => j.location)),
-      types: s(jobs.map((j) => j.jobType)),
-      exps: s(jobs.map((j) => j.experience)),
-    };
-  }, [jobs]);
+  const normalize = (value?: string) =>
+  value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+
+const formatText = (value?: string) =>
+  value
+    ?.trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase()) ?? "";
+
+const options = useMemo(() => {
+  const unique = (values: (string | undefined)[]) =>
+    Array.from(
+      new Map(
+        values
+          .filter(Boolean)
+          .map((v) => [normalize(v), formatText(v)])
+      ).values()
+    ).sort();
+
+  return {
+    categories: unique(jobs.map((j) => j.category)),
+    locations: unique(jobs.map((j) => j.location)),
+    types: unique(jobs.map((j) => j.jobType)),
+    exps: unique(jobs.map((j) => j.experience)),
+  };
+}, [jobs]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -52,10 +68,19 @@ function JobsPage() {
         const hay = `${j.role} ${j.companyName} ${j.location} ${j.skills}`.toLowerCase();
         if (!hay.includes(query)) return false;
       }
-      if (role && j.role !== role) return false;
-      if (location && j.location !== location) return false;
+      if (category && normalize(j.category) !== normalize(category))
+  return false;
+     if (
+  location &&
+  normalize(j.location) !== normalize(location)
+)
+  return false;
       if (jobType && j.jobType !== jobType) return false;
-      if (experience && j.experience !== experience) return false;
+      if (
+  experience &&
+  normalize(j.experience) !== normalize(experience)
+)
+  return false;
       return true;
     });
     if (sort === "Newest") list = list.sort((a, b) => b.createdAt - a.createdAt);
@@ -64,11 +89,12 @@ function JobsPage() {
     else if (sort === "Deadline")
       list = list.sort((a, b) => (a.lastDate ?? "").localeCompare(b.lastDate ?? ""));
     return list;
-  }, [jobs, q, role, location, jobType, experience, sort]);
+  }, [jobs, q, category, location, jobType, experience, sort]);
 
-  const anyFilter = q || role || location || jobType || experience;
+  const anyFilter =
+  q || category || location || jobType || experience;
   const clear = () => {
-    setQ(""); setRole(""); setLocation(""); setJobType(""); setExperience("");
+    setQ(""); setCategory("");; setLocation(""); setJobType(""); setExperience("");
   };
 
   return (
@@ -104,7 +130,12 @@ function JobsPage() {
         {showFilters && (
           <div className="glass mt-2 grid grid-cols-2 gap-2 rounded-2xl p-3 md:grid-cols-5 animate-scale-in">
             {[
-              { v: role, set: setRole, opts: options.roles, label: "Role" },
+             {
+  v: category,
+  set: setCategory,
+  opts: options.categories,
+  label: "Category",
+},
               { v: location, set: setLocation, opts: options.locations, label: "Location" },
               { v: jobType, set: setJobType, opts: options.types, label: "Type" },
               { v: experience, set: setExperience, opts: options.exps, label: "Experience" },

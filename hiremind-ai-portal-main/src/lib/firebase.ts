@@ -27,6 +27,8 @@ export type Job = {
   companyLogo?: string;
   role: string;
   salary: string;
+  category: string;          // <-- Add
+  
   location: string;
   experience: string;
   skills: string;

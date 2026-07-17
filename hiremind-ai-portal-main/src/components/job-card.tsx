@@ -98,7 +98,9 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
           <span className="truncate">{job.location || "Remote"}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          
           <IndianRupee className="h-3.5 w-3.5 text-[#22d3ee]" />
+          <h6>Expected : </h6>
           <span className="truncate">{job.salary || "Not disclosed"}</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -113,7 +115,7 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
 
       {job.lastDate && (
         <div className="mt-3 text-xs text-white/50">
-          Apply by <span className="text-white/80">{job.lastDate}</span>
+          Posted no : <span className="text-white/80">{job.lastDate}</span>
         </div>
       )}
 
