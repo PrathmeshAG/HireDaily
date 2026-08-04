@@ -57,9 +57,13 @@ export function Footer() {
         <div>
           <h4 className="text-sm font-semibold text-white">Company</h4>
           <ul className="mt-4 space-y-2 text-sm text-white/60">
-            <li>HireMind AI</li>
-            <li>Privacy</li>
-            <li>Terms</li>
+            <li>
+              <Link to="/contact"  className="hover:text-[#00e5ff]">
+            Contact
+            </Link> 
+            </li>
+            <li><Link to="/privacy"  className="hover:text-[#00e5ff]" >Privacy Policy</Link></li>
+            <li><Link to="/terms"  className="hover:text-[#00e5ff]" >Terms & Conditions</Link></li>
           </ul>
         </div>
       </div>
