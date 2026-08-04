@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { Fragment, lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, X, SlidersHorizontal } from "lucide-react";
 import { fetchJobs } from "../lib/jobs";
 import { JobCard, JobCardSkeleton } from "../components/job-card";
+
+// Lazy-loaded so the ad never blocks the initial job listings render.
+const JobAd = lazy(() => import("../components/job-ad").then((m) => ({ default: m.JobAd })));
 
 export const Route = createFileRoute("/jobs")({
   component: JobsPage,
@@ -91,6 +94,13 @@ const options = useMemo(() => {
     return list;
   }, [jobs, q, category, location, jobType, experience, sort]);
 
+  // A single sponsored slot: after the 10th card, or roughly in the middle
+  // for shorter result sets. Never shown for very short lists.
+  // const adIndex = useMemo(() => {
+  //   if (filtered.length < 4) return -1;
+  //   return filtered.length >= 10 ? 9 : Math.floor(filtered.length / 2);
+  // }, [filtered.length]);
+
   const anyFilter =
   q || category || location || jobType || experience;
   const clear = () => {
@@ -166,6 +176,15 @@ const options = useMemo(() => {
         )}
       </div>
 
+            {/* Sponsored Ad */}
+      <div className="mt-6 mb-8">
+        <Suspense fallback={null}>
+          <JobAd />
+        </Suspense>
+      </div>
+
+      
+
       {/* Results */}
       <div className="mt-8">
         {isLoading ? (
@@ -187,7 +206,12 @@ const options = useMemo(() => {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((job, i) => <JobCard key={job.id} job={job} index={i} />)}
+            {filtered.map((job, i) => (
+              <Fragment key={job.id}>
+                <JobCard job={job} index={i} />
+                
+              </Fragment>
+            ))}
           </div>
         )}
       </div>
