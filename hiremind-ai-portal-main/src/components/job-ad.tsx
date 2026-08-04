@@ -38,7 +38,7 @@ export function JobAd() {
       </div>
 
       <a
-        href="mailto:your-email@example.com"
+        href="mailto:prathmeshbobade33@gmail.com"
         className="btn-glow flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm whitespace-nowrap"
       >
         Advertise With Us <ArrowRight className="h-3.5 w-3.5" />
