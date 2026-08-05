@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { MapPin, Briefcase, IndianRupee, Clock, ExternalLink, Share2, Copy, BadgeCheck } from "lucide-react";
-import { toast } from "sonner";
+import { MapPin, Briefcase, IndianRupee, Clock, ArrowRight, BadgeCheck } from "lucide-react";
 import type { Job } from "../lib/firebase";
 
 function isNew(createdAt: number) {
@@ -19,23 +18,7 @@ function timeAgo(ts: number) {
 }
 
 export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
-  const link = typeof window !== "undefined" ? `${window.location.origin}/jobs/${job.id}` : "";
   const fresh = isNew(job.createdAt);
-
-  const share = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: `${job.role} at ${job.companyName}`, url: link });
-      } catch {}
-    } else {
-      await navigator.clipboard.writeText(link);
-      toast.success("Link copied to clipboard");
-    }
-  };
-  const copy = async () => {
-    await navigator.clipboard.writeText(link);
-    toast.success("Job link copied");
-  };
 
   return (
     <div
@@ -120,28 +103,13 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
       )}
 
       <div className="mt-5 flex items-center gap-2">
-        <a
-          href={job.applyLink || "#"}
-          target="_blank"
-          rel="noreferrer noopener"
+        <Link
+          to="/jobs/$id"
+          params={{ id: job.id }}
           className="btn-glow flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm"
         >
-          Apply <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-        <button
-          onClick={share}
-          className="btn-ghost-glow flex h-10 w-10 items-center justify-center rounded-xl"
-          aria-label="Share"
-        >
-          <Share2 className="h-4 w-4" />
-        </button>
-        <button
-          onClick={copy}
-          className="btn-ghost-glow flex h-10 w-10 items-center justify-center rounded-xl"
-          aria-label="Copy link"
-        >
-          <Copy className="h-4 w-4" />
-        </button>
+          Apply <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
     </div>
   );

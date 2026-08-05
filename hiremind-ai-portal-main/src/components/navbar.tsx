@@ -57,7 +57,7 @@ export function Navbar() {
               const active = pathname === l.to || (l.to !== "/" && pathname.startsWith(l.to));
               return (
                 <Link
-                  key={l.to}
+                  key={l.label}
                   to={l.to}
                   className={`relative rounded-lg px-4 py-2 text-sm font-medium transition ${
                     active ? "text-white" : "text-white/70 hover:text-white"
@@ -93,7 +93,7 @@ export function Navbar() {
             <div className="flex flex-col">
               {links.map((l) => (
                 <Link
-                  key={l.to}
+                  key={l.label}
                   to={l.to}
                   className="rounded-lg px-4 py-3 text-sm text-white/80 hover:bg-white/5 hover:text-white"
                 >
