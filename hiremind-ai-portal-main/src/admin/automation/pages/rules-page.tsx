@@ -5,7 +5,7 @@ import {
   Plus, Pencil, Trash2, Loader2, Save, X, ListChecks, Clock, MessageSquare, Send as SendIcon,
 } from "lucide-react";
 import { getRules, getPostMappings, getTemplates, createRule, updateRule, deleteRule } from "../services/automation-service";
-import type { AutomationRule, MatchType, ReplyMode } from "../types";
+import type { AutomationRule, MatchType, ReplyMode, RuleMode } from "../types";
 import { TableToolbar } from "../components/table-toolbar";
 import { EmptyState } from "../components/empty-state";
 import { StatusBadge } from "../components/status-badge";
@@ -186,6 +186,7 @@ function RuleDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+const [mode, setMode] = useState<RuleMode>(rule?.mode ?? "keyword");
   const [keywords, setKeywords] = useState(rule?.keywords.join(", ") ?? "");
   const [matchType, setMatchType] = useState<MatchType>(rule?.matchType ?? "contains");
   const [scope, setScope] = useState<"all_posts" | "specific_post">(rule?.scope ?? "all_posts");
@@ -200,17 +201,20 @@ function RuleDialog({
   const commentTemplates = templates.filter((t) => t.kind === "comment");
   const dmTemplates = templates.filter((t) => t.kind === "dm");
 
-  const submit = async () => {
+const submit = async () => {
     const kws = keywords.split(",").map((k) => k.trim().toUpperCase()).filter(Boolean);
-    if (kws.length === 0) {
+    if (mode === "keyword" && kws.length === 0) {
       toast.error("Add at least one keyword");
       return;
     }
     setBusy(true);
     try {
+      // For specific_post rules, the post must be selected by its real
+      // Instagram mediaId (== mapping.id), NOT a synthetic map id.
       const mapping = mappings.find((m) => m.id === postId);
       const payload = {
         channel: "instagram" as const,
+        mode,
         keywords: kws,
         matchType,
         scope,
@@ -250,11 +254,39 @@ function RuleDialog({
           <button onClick={onClose} className="btn-ghost-glow rounded-lg p-1.5"><X className="h-4 w-4" /></button>
         </div>
 
-        <div className="mt-5 space-y-3">
+<div className="mt-5 space-y-3">
           <div>
-            <label className={label}>Keywords (comma-separated)</label>
-            <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="JOB, DA, DATA, SQL" className={input} />
+            <label className={label}>Mode</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["keyword", "any_comment"] as RuleMode[]).map((m) => (
+                <label
+                  key={m}
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-xl px-3.5 py-3 text-sm ring-1 transition ${
+                    mode === m
+                      ? "bg-gradient-to-r from-[#00e5ff]/15 to-[#7c3aed]/15 text-white ring-[#00e5ff]/40"
+                      : "text-white/70 ring-white/10 hover:bg-white/5"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="mode"
+                    value={m}
+                    checked={mode === m}
+                    onChange={() => setMode(m)}
+                    className="h-3.5 w-3.5 accent-[#00e5ff]"
+                  />
+                  {m === "keyword" ? "Keyword" : "Any comment"}
+                </label>
+              ))}
+            </div>
           </div>
+
+          {mode === "keyword" && (
+            <div>
+              <label className={label}>Keywords (comma-separated)</label>
+              <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="JOB, DA, DATA, SQL" className={input} />
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

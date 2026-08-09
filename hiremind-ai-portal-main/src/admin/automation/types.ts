@@ -20,11 +20,13 @@ export interface PostMapping {
 }
 
 export type MatchType = "exact" | "contains";
+export type RuleMode = "keyword" | "any_comment";
 export type ReplyMode = "comment_only" | "dm_only" | "comment_and_dm";
 
 export interface AutomationRule {
   id: string;
   channel: Channel;
+  mode: RuleMode;
   keywords: string[];
   matchType: MatchType;
   scope: "all_posts" | "specific_post";

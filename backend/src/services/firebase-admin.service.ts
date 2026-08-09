@@ -591,6 +591,346 @@ export async function incrementDailyAnalyticsField(
     | "followUnsupported"
     | "automationErrors",
 ): Promise<void> {
-  const ref = db().ref(`automation/analytics/daily/${date}/${field}`);
+const ref = db().ref(`automation/analytics/daily/${date}/${field}`);
   await ref.transaction((current: number | null) => (typeof current === "number" ? current + 1 : 1));
+}
+
+// ===========================================================================
+// Phase 6 Checkpoint 2 — Automation management API (rules / templates / post
+// mappings). These read/write the SAME Firebase nodes the existing engine
+// consumes, so the frontend can manage automation data through the backend
+// API without ever touching Firebase Admin or Meta directly. Jobs stay
+// READ-ONLY here — nothing below ever writes to `jobs/*`.
+// ===========================================================================
+
+/**
+ * Reads ALL automation rules (not just the active subset) for the management
+ * UI. Unlike `readActiveRules`, this returns every stored rule regardless of
+ * `active`/window, so the Rules page can list + edit + toggle everything.
+ * Returns them as an array with the same backward-compatible normalization
+ * used by the engine (absence of `mode` => "keyword").
+ */
+export async function readAllRules(): Promise<RuleEngineRule[]> {
+  const snap = await db().ref("automation/rules").get();
+  if (!snap.exists()) return [];
+
+  const raw = snap.val() as Record<string, unknown>;
+  const rules: RuleEngineRule[] = [];
+
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const r = value as Record<string, unknown>;
+    const keywords = Array.isArray(r.keywords)
+      ? r.keywords.filter((k): k is string => typeof k === "string")
+      : [];
+    rules.push({
+      id: typeof r.id === "string" ? r.id : id,
+      channel: "instagram",
+      mode: r.mode === "any_comment" ? "any_comment" : "keyword",
+      keywords,
+      matchType: r.matchType === "exact" ? "exact" : "contains",
+      scope: r.scope === "specific_post" ? "specific_post" : "all_posts",
+      postId: typeof r.postId === "string" ? r.postId : null,
+      postLabel: typeof r.postLabel === "string" ? r.postLabel : null,
+      commentTemplateId: typeof r.commentTemplateId === "string" ? r.commentTemplateId : null,
+      dmTemplateId: typeof r.dmTemplateId === "string" ? r.dmTemplateId : null,
+      replyMode:
+        r.replyMode === "comment_only" || r.replyMode === "dm_only" || r.replyMode === "comment_and_dm"
+          ? r.replyMode
+          : "comment_and_dm",
+      cooldownMinutes: typeof r.cooldownMinutes === "number" ? r.cooldownMinutes : 0,
+      activeFrom: typeof r.activeFrom === "number" ? r.activeFrom : null,
+      activeUntil: typeof r.activeUntil === "number" ? r.activeUntil : null,
+      active: r.active !== false,
+      createdAt: typeof r.createdAt === "number" ? r.createdAt : Date.now(),
+      updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : Date.now(),
+    });
+  }
+
+  return rules;
+}
+
+/** Writes (creates or replaces) a rule under automation/rules/{id}. */
+export async function writeRule(
+  id: string,
+  rule: Record<string, unknown>,
+): Promise<void> {
+  await db().ref(`automation/rules/${id}`).set(rule);
+}
+
+/** Deletes a rule under automation/rules/{id}. */
+export async function deleteRule(id: string): Promise<void> {
+  await db().ref(`automation/rules/${id}`).remove();
+}
+
+/** Reads all comment/DM templates under automation/templates. */
+export async function readAllTemplates(): Promise<
+  { id: string; kind: string; channel: string; name: string; text: string; updatedAt: number }[]
+> {
+  const snap = await db().ref("automation/templates").get();
+  if (!snap.exists()) return [];
+  const raw = snap.val() as Record<string, unknown>;
+  const out: { id: string; kind: string; channel: string; name: string; text: string; updatedAt: number }[] = [];
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const t = value as Record<string, unknown>;
+    out.push({
+      id: typeof t.id === "string" ? t.id : id,
+      kind: typeof t.kind === "string" ? t.kind : "comment",
+      channel: typeof t.channel === "string" ? t.channel : "instagram",
+      name: typeof t.name === "string" ? t.name : "",
+      text: typeof t.text === "string" ? t.text : "",
+      updatedAt: typeof t.updatedAt === "number" ? t.updatedAt : Date.now(),
+    });
+  }
+  return out;
+}
+
+/** Writes (creates or replaces) a template under automation/templates/{id}. */
+export async function writeTemplate(
+  id: string,
+  template: Record<string, unknown>,
+): Promise<void> {
+  await db().ref(`automation/templates/${id}`).set(template);
+}
+
+/** Deletes a template under automation/templates/{id}. */
+export async function deleteTemplate(id: string): Promise<void> {
+  await db().ref(`automation/templates/${id}`).remove();
+}
+
+/**
+ * Reads all post mappings from `automation/postMappings`. Each mapping is
+ * keyed by its Instagram mediaId. Returns safe, non-secret records (id =
+ * mediaId, jobId, jobTitleCache, mappedAt).
+ */
+export async function readAllPostMappings(): Promise<
+  { id: string; mediaId: string; jobId: string; jobTitleCache: string | null; mappedAt: number | null }[]
+> {
+  const snap = await db().ref("automation/postMappings").get();
+  if (!snap.exists()) return [];
+  const raw = snap.val() as Record<string, unknown>;
+  const out: { id: string; mediaId: string; jobId: string; jobTitleCache: string | null; mappedAt: number | null }[] = [];
+  for (const [mediaId, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const m = value as Record<string, unknown>;
+    out.push({
+      id: mediaId,
+      mediaId,
+      jobId: typeof m.jobId === "string" ? m.jobId : "",
+      jobTitleCache: typeof m.jobTitleCache === "string" ? m.jobTitleCache : null,
+      mappedAt: typeof m.mappedAt === "number" ? m.mappedAt : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Writes (creates or replaces) a post mapping under automation/postMappings/{mediaId}.
+ * The mapping node shape is preserved for the engine: { jobId, jobTitleCache, mappedAt }.
+ */
+export async function writePostMapping(
+  mediaId: string,
+  mapping: { jobId: string; jobTitleCache: string | null; mappedAt: number },
+): Promise<void> {
+  await db().ref(`automation/postMappings/${mediaId}`).set(mapping);
+}
+
+/** Deletes a post mapping under automation/postMappings/{mediaId}. */
+export async function deletePostMapping(mediaId: string): Promise<void> {
+  await db().ref(`automation/postMappings/${mediaId}`).remove();
+}
+
+// ===========================================================================
+// Phase 6 Checkpoint 3 — Read-only automation API data-access helpers
+// (users / logs / analytics). These are READ-ONLY bindings for the frontend:
+// they return safe, non-secret data and never write to `jobs/*` or expose any
+// Firebase admin credentials / Meta tokens.
+// ===========================================================================
+
+/**
+ * Reads ALL automation users as an array of safe records (most recent
+ * activity first). Only reads `automation/users` — never writes it. Returns
+ * no secrets — just the canonical user fields the Users page renders.
+ */
+export async function readAllUsers(): Promise<
+  {
+    userId: string;
+    username: string | null;
+    firstSeenAt: number;
+    lastActivityAt: number;
+    commentCount: number;
+    dmCount: number;
+    active: boolean;
+  }[]
+> {
+  const snap = await db().ref("automation/users").get();
+  if (!snap.exists()) return [];
+
+  const raw = snap.val() as Record<string, unknown>;
+  const out: {
+    userId: string;
+    username: string | null;
+    firstSeenAt: number;
+    lastActivityAt: number;
+    commentCount: number;
+    dmCount: number;
+    active: boolean;
+  }[] = [];
+
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const u = value as Record<string, unknown>;
+    out.push({
+      userId: typeof u.userId === "string" ? u.userId : id,
+      username: typeof u.username === "string" ? u.username : null,
+      firstSeenAt: typeof u.firstSeenAt === "number" ? u.firstSeenAt : 0,
+      lastActivityAt: typeof u.lastActivityAt === "number" ? u.lastActivityAt : 0,
+      commentCount: typeof u.commentCount === "number" ? u.commentCount : 0,
+      dmCount: typeof u.dmCount === "number" ? u.dmCount : 0,
+      active: u.active !== false,
+    });
+  }
+
+  // Most recent activity first.
+  return out.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+}
+
+/**
+ * Reads the most recent automation log entries from `automation/logs`,
+ * newest first, up to `limit` records (default 200). Returns a safe,
+ * frontend-compatible projection (id, channel, type, username, detail,
+ * ruleKeyword, timestamp) plus preserved debug fields (eventId, mediaId,
+ * commentId, jobId, ruleId, commentStatus, dmStatus, dryRun). NEVER stores
+ * or returns secrets — only `automation/logs` is read, never `jobs/*`.
+ */
+export async function readAllLogs(limit = 200): Promise<
+  {
+    id: string;
+    channel: string;
+    type: string;
+    username: string;
+    detail: string;
+    ruleKeyword: string | null;
+    timestamp: number;
+    eventId: string | null;
+    mediaId: string | null;
+    commentId: string | null;
+    jobId: string | null;
+    ruleId: string | null;
+    commentStatus: string | null;
+    dmStatus: string | null;
+    dryRun: boolean | null;
+  }[]
+> {
+  const snap = await db().ref("automation/logs").get();
+  if (!snap.exists()) return [];
+
+  const raw = snap.val() as Record<string, unknown>;
+  const out: {
+    id: string;
+    channel: string;
+    type: string;
+    username: string;
+    detail: string;
+    ruleKeyword: string | null;
+    timestamp: number;
+    eventId: string | null;
+    mediaId: string | null;
+    commentId: string | null;
+    jobId: string | null;
+    ruleId: string | null;
+    commentStatus: string | null;
+    dmStatus: string | null;
+    dryRun: boolean | null;
+  }[] = [];
+
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const l = value as Record<string, unknown>;
+    out.push({
+      id: typeof l.id === "string" ? l.id : id,
+      channel: typeof l.channel === "string" ? l.channel : "instagram",
+      type: typeof l.type === "string" ? l.type : "error",
+      username: typeof l.username === "string" ? l.username : "unknown",
+      detail: typeof l.detail === "string" ? l.detail : "",
+      ruleKeyword: typeof l.ruleKeyword === "string" ? l.ruleKeyword : null,
+      timestamp: typeof l.timestamp === "number" ? l.timestamp : 0,
+      eventId: typeof l.eventId === "string" ? l.eventId : null,
+      mediaId: typeof l.mediaId === "string" ? l.mediaId : null,
+      commentId: typeof l.commentId === "string" ? l.commentId : null,
+      jobId: typeof l.jobId === "string" ? l.jobId : null,
+      ruleId: typeof l.ruleId === "string" ? l.ruleId : null,
+      commentStatus: typeof l.commentStatus === "string" ? l.commentStatus : null,
+      dmStatus: typeof l.dmStatus === "string" ? l.dmStatus : null,
+      dryRun: typeof l.dryRun === "boolean" ? l.dryRun : null,
+    });
+  }
+
+  // Newest first, then trim to the requested limit.
+  return out.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
+}
+
+/**
+ * Reads the last `days` daily analytics records from
+ * `automation/analytics/daily/{YYYY-MM-DD}`, oldest first, as safe counters.
+ * Missing days are normalized to an all-zero record so the frontend chart is
+ * continuous. Only reads `automation/analytics` — never writes it.
+ */
+export async function readRecentAnalytics(days = 14): Promise<
+  {
+    date: string;
+    commentsReceived: number;
+    commentsMatched: number;
+    commentsSent: number;
+    commentsFailed: number;
+    dmsSent: number;
+    dmsFailed: number;
+    followVerified: number;
+    followNotVerified: number;
+    followUnsupported: number;
+    automationErrors: number;
+  }[]
+> {
+  const out: {
+    date: string;
+    commentsReceived: number;
+    commentsMatched: number;
+    commentsSent: number;
+    commentsFailed: number;
+    dmsSent: number;
+    dmsFailed: number;
+    followVerified: number;
+    followNotVerified: number;
+    followUnsupported: number;
+    automationErrors: number;
+  }[] = [];
+
+  const today = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const date = `${y}-${m}-${day}`;
+    const record = await readDailyAnalytics(date);
+    out.push(
+      record ?? {
+        date,
+        commentsReceived: 0,
+        commentsMatched: 0,
+        commentsSent: 0,
+        commentsFailed: 0,
+        dmsSent: 0,
+        dmsFailed: 0,
+        followVerified: 0,
+        followNotVerified: 0,
+        followUnsupported: 0,
+        automationErrors: 0,
+      },
+    );
+  }
+
+  return out;
 }

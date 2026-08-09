@@ -95,6 +95,7 @@ export const mockRules: AutomationRule[] = [
   {
     id: "rule_1",
     channel: "instagram",
+    mode: "keyword",
     keywords: ["JOB", "LINK", "APPLY"],
     matchType: "contains",
     scope: "all_posts",
@@ -111,8 +112,9 @@ export const mockRules: AutomationRule[] = [
     updatedAt: now - 2 * DAY,
   },
   {
-    id: "rule_2",
+id: "rule_2",
     channel: "instagram",
+    mode: "keyword",
     keywords: ["SQL"],
     matchType: "exact",
     scope: "specific_post",
@@ -129,8 +131,9 @@ export const mockRules: AutomationRule[] = [
     updatedAt: now - 1 * DAY,
   },
   {
-    id: "rule_3",
+id: "rule_3",
     channel: "instagram",
+    mode: "keyword",
     keywords: ["DA", "DATA"],
     matchType: "contains",
     scope: "specific_post",
@@ -147,8 +150,9 @@ export const mockRules: AutomationRule[] = [
     updatedAt: now - 8 * DAY,
   },
   {
-    id: "rule_4",
+id: "rule_4",
     channel: "instagram",
+    mode: "keyword",
     keywords: ["INTERN"],
     matchType: "contains",
     scope: "specific_post",
@@ -165,8 +169,9 @@ export const mockRules: AutomationRule[] = [
     updatedAt: now - 5 * DAY,
   },
   {
-    id: "rule_5",
+id: "rule_5",
     channel: "instagram",
+    mode: "keyword",
     keywords: ["ML", "AI"],
     matchType: "contains",
     scope: "specific_post",

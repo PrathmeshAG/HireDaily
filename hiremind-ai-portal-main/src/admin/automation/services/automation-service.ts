@@ -1,170 +1,312 @@
 // Every read/write the Automation UI performs goes through this file.
-// It's the ONLY place that knows data currently comes from in-memory mocks —
-// swapping to real Firebase/backend later means editing this file only,
-// nothing in src/admin/automation/pages/* changes.
+// It's the ONLY place that knows where data comes from — swapping mocks for
+// the real backend means editing this file only, nothing in
+// src/admin/automation/pages/* changes.
+//
+// Phase 6 Checkpoint 2: these methods now call the backend automation API
+// (GET/POST/PATCH/DELETE /api/automation/rules, /templates, /post-mappings).
+// The backend is the only layer that touches Firebase Admin. No secrets are
+// ever sent to or returned from the browser. Jobs remain read-only.
 
-import {
-  mockAnalytics,
-  mockLogs,
-  mockPostMappings,
-  mockRules,
-  mockSettings,
-  mockTemplates,
-  mockUsers,
-} from "../mock-data";
 import type {
   AutomationAnalytics,
   AutomationRule,
   AutomationSettings,
-  AutomationUser,
+AutomationUser,
   DashboardSummary,
   LogEntry,
+  LogType,
   PostMapping,
   Template,
 } from "../types";
 
-const LATENCY = 350;
+// Backend base URL. In dev the backend runs on :8787 (see backend/package.json).
+// In production this would be the deployed backend origin. This is a public
+// URL only — no secrets live here.
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
-function delay<T>(value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), LATENCY));
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as T;
 }
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-// In-memory stores so create/update/delete feel real within a session.
-let postMappings = clone(mockPostMappings);
-let rules = clone(mockRules);
-let templates = clone(mockTemplates);
 
 // ---------- Dashboard ----------
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const today = new Date().toISOString().slice(0, 10);
-  const todaysLogs = mockLogs.filter(
-    (l) => new Date(l.timestamp).toISOString().slice(0, 10) === today,
-  );
-  return delay({
-    connected: mockSettings.instagram.connected,
-    totalMappings: postMappings.length,
-    activeRules: rules.filter((r) => r.active).length,
-    todaysComments: todaysLogs.filter((l) => l.type === "comment_sent").length,
-    todaysDMs: todaysLogs.filter((l) => l.type === "dm_sent").length,
-    failedAutomations: todaysLogs.filter((l) => l.type === "error").length,
-  });
+  const data = await request<DashboardSummary>("/api/automation/summary");
+  return data;
 }
 
 export async function getRecentLogs(limit = 6): Promise<LogEntry[]> {
-  return delay(mockLogs.slice(0, limit));
+  const { logs } = await request<{ logs: LogEntry[] }>(
+    `/api/automation/logs?limit=${encodeURIComponent(limit)}`,
+  );
+  return logs;
 }
 
 // ---------- Post Mappings ----------
 
 export async function getPostMappings(): Promise<PostMapping[]> {
-  return delay(clone(postMappings));
+  const { mappings } = await request<{
+    mappings: { id: string; mediaId: string; jobId: string; jobTitleCache: string | null; mappedAt: number | null }[];
+  }>("/api/automation/post-mappings");
+  return mappings.map((m) => ({
+    id: m.id,
+    channel: "instagram",
+    mediaId: m.mediaId,
+    postUrl: "",
+    thumbnailUrl: "",
+    companyName: "",
+    jobTitle: m.jobTitleCache ?? "",
+    jobId: m.jobId,
+    status: "active",
+    createdAt: m.mappedAt ?? 0,
+  }));
 }
 
 export async function createPostMapping(
   data: Omit<PostMapping, "id" | "createdAt" | "status">,
 ): Promise<PostMapping> {
-  const created: PostMapping = { ...data, id: `map_${Date.now()}`, status: "active", createdAt: Date.now() };
-  postMappings = [created, ...postMappings];
-  return delay(clone(created));
+  const created = await request<{ id: string; mediaId: string; jobId: string }>("/api/automation/post-mappings", {
+    method: "POST",
+    body: JSON.stringify({
+      mediaId: data.mediaId,
+      jobId: data.jobId,
+      jobTitleCache: data.jobTitle || null,
+    }),
+  });
+  return {
+    ...data,
+    id: created.mediaId,
+    status: "active",
+    createdAt: Date.now(),
+  };
 }
 
 export async function updatePostMapping(
   id: string,
   data: Partial<Omit<PostMapping, "id" | "createdAt">>,
 ): Promise<void> {
-  postMappings = postMappings.map((m) => (m.id === id ? { ...m, ...data } : m));
-  return delay(undefined);
+  await request(`/api/automation/post-mappings/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      jobId: data.jobId,
+      jobTitleCache: typeof data.jobTitle === "string" ? data.jobTitle : undefined,
+    }),
+  });
 }
 
 export async function archivePostMapping(id: string): Promise<void> {
-  return updatePostMapping(id, { status: "archived" });
+  // Backend mappings are keyed by mediaId; archiving is a UI-only status.
+  // For Checkpoint 2 we keep the mapping (no destructive archive API).
+  void id;
 }
 
 export async function deletePostMapping(id: string): Promise<void> {
-  postMappings = postMappings.filter((m) => m.id !== id);
-  return delay(undefined);
+  await request(`/api/automation/post-mappings/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 // ---------- Rules ----------
 
 export async function getRules(): Promise<AutomationRule[]> {
-  return delay(clone(rules));
+const { rules } = await request<{ rules: AutomationRule[] }>("/api/automation/rules");
+  // Backend already returns `mode` (backward-compatible missing => keyword).
+  return rules;
 }
 
 export async function createRule(
   data: Omit<AutomationRule, "id" | "createdAt" | "updatedAt">,
 ): Promise<AutomationRule> {
+  const res = await request<{ id: string }>("/api/automation/rules", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
   const now = Date.now();
-  const created: AutomationRule = { ...data, id: `rule_${now}`, createdAt: now, updatedAt: now };
-  rules = [created, ...rules];
-  return delay(clone(created));
+  return { ...(data as AutomationRule), id: res.id, createdAt: now, updatedAt: now };
 }
 
 export async function updateRule(
   id: string,
   data: Partial<Omit<AutomationRule, "id" | "createdAt">>,
 ): Promise<void> {
-  rules = rules.map((r) => (r.id === id ? { ...r, ...data, updatedAt: Date.now() } : r));
-  return delay(undefined);
+  await request(`/api/automation/rules/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function deleteRule(id: string): Promise<void> {
-  rules = rules.filter((r) => r.id !== id);
-  return delay(undefined);
+  await request(`/api/automation/rules/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 // ---------- Templates ----------
 
 export async function getTemplates(): Promise<Template[]> {
-  return delay(clone(templates));
+  const { templates } = await request<{
+    templates: { id: string; kind: string; channel: string; name: string; text: string; updatedAt: number }[];
+  }>("/api/automation/templates");
+  return templates.map((t) => ({
+    id: t.id,
+    kind: t.kind === "dm" ? ("dm" as const) : ("comment" as const),
+    channel: (t.channel as Template["channel"]) ?? "instagram",
+    name: t.name,
+    text: t.text,
+    updatedAt: t.updatedAt,
+  }));
 }
 
 export async function createTemplate(
   data: Omit<Template, "id" | "updatedAt">,
 ): Promise<Template> {
-  const created: Template = { ...data, id: `tpl_${Date.now()}`, updatedAt: Date.now() };
-  templates = [created, ...templates];
-  return delay(clone(created));
+  const res = await request<{ id: string }>("/api/automation/templates", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return { ...data, id: res.id, updatedAt: Date.now() };
 }
 
 export async function updateTemplate(
   id: string,
   data: Partial<Omit<Template, "id">>,
 ): Promise<void> {
-  templates = templates.map((t) => (t.id === id ? { ...t, ...data, updatedAt: Date.now() } : t));
-  return delay(undefined);
+  await request(`/api/automation/templates/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
-  templates = templates.filter((t) => t.id !== id);
-  return delay(undefined);
+  await request(`/api/automation/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 // ---------- Users ----------
 
 export async function getUsers(): Promise<AutomationUser[]> {
-  return delay(clone(mockUsers));
+  const { users } = await request<{
+    users: {
+      userId: string;
+      username: string | null;
+      firstSeenAt: number;
+      lastActivityAt: number;
+      commentCount: number;
+      dmCount: number;
+      active: boolean;
+    }[];
+  }>("/api/automation/users");
+  return users.map((u) => ({
+    id: u.userId,
+    channel: "instagram",
+    username: u.username ?? "unknown",
+    avatarUrl: "",
+    lastComment: null,
+    lastDM: null,
+    followStatus: "unknown",
+    commentCount: u.commentCount,
+    dmCount: u.dmCount,
+    lastSeen: u.lastActivityAt,
+  }));
 }
 
 // ---------- Logs ----------
 
 export async function getLogs(): Promise<LogEntry[]> {
-  return delay(clone(mockLogs));
+  const { logs } = await request<{
+    logs: {
+      id: string;
+      channel: string;
+      type: string;
+      username: string;
+      detail: string;
+      ruleKeyword: string | null;
+      timestamp: number;
+    }[];
+  }>("/api/automation/logs");
+  return logs.map((l) => ({
+    id: l.id,
+    channel: "instagram",
+    type: (l.type as LogType) ?? "error",
+    username: l.username,
+    detail: l.detail,
+    ruleKeyword: l.ruleKeyword,
+    timestamp: l.timestamp,
+  }));
 }
 
 // ---------- Analytics ----------
 
 export async function getAnalytics(): Promise<AutomationAnalytics> {
-  return delay(clone(mockAnalytics));
+  const data = await request<{
+    users: number;
+    daily: {
+      date: string;
+      commentsReceived: number;
+      commentsMatched: number;
+      commentsSent: number;
+      commentsFailed: number;
+      dmsSent: number;
+      dmsFailed: number;
+      followVerified: number;
+      followNotVerified: number;
+      followUnsupported: number;
+      automationErrors: number;
+    }[];
+    topKeywords: { keyword: string; count: number }[];
+    topPosts: { postLabel: string; triggers: number }[];
+  }>("/api/automation/analytics");
+
+  return {
+    daily: data.daily.map((d) => ({
+      date: d.date,
+      triggers: d.commentsMatched,
+      repliesSent: d.commentsSent,
+      dmsSent: d.dmsSent,
+    })),
+    topKeywords: data.topKeywords,
+    topPosts: data.topPosts,
+  };
 }
 
 // ---------- Settings ----------
 
 export async function getSettings(): Promise<AutomationSettings> {
-  return delay(clone(mockSettings));
+  const data = await request<{
+    firebaseConfigured: boolean;
+    metaConfigured: boolean;
+    dryRun: boolean;
+    webhookConfigured: boolean;
+    serviceStatus: string;
+    instagram: { connected: boolean; username: string | null; accountType: string | null };
+  }>("/api/automation/settings");
+
+  return {
+    instagram: {
+      connected: data.instagram.connected,
+      username: data.instagram.username,
+      accountType: data.instagram.accountType,
+      tokenExpiresAt: null,
+    },
+    webhook: {
+      subscribed: data.webhookConfigured,
+      lastEventAt: null,
+      url: "",
+    },
+    api: {
+      ok: data.serviceStatus === "operational",
+      latencyMs: null,
+      lastCheckedAt: Date.now(),
+    },
+  };
 }
