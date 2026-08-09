@@ -167,6 +167,29 @@ export function evaluateComment(
   context: RuleEvaluationContext,
   now: number,
 ): RuleMatchResult {
+
+    console.log("=== RULE DEBUG ===");
+  console.log(
+    JSON.stringify(
+      {
+        mediaId: context.mediaId,
+        commentText: context.commentText,
+        rules: rules.map((r) => ({
+          id: r.id,
+          keywords: r.keywords,
+          scope: r.scope,
+          postId: r.postId,
+          active: r.active,
+          mode: r.mode,
+          channel: r.channel,
+        })),
+      },
+      null,
+      2,
+    ),
+  );
+
+  
   const active = loadActiveRules(rules, now).sort(rulePriority);
 
   for (const rule of active) {
