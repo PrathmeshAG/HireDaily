@@ -1,0 +1,32 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HireDaily Instagram webhook backend (Phase 4)",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx test/rule-engine.test.ts && tsx test/post-mapping.test.ts && tsx test/instagram.test.ts && tsx test/instagram-dm.test.ts && tsx test/automation-final.test.ts",
+    "test:webhook:comment": "tsx test/send-webhook.ts comment",
+    "test:webhook:message": "tsx test/send-webhook.ts message",
+    "test:webhook:delivery": "tsx test/send-webhook.ts delivery"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "firebase-admin": "^12.7.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}

@@ -1,0 +1,15 @@
+# Firebase Admin private key + all local secrets — NEVER commit real credentials.
+# Create backend/.env from backend/.env.example and fill in real values locally only.
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+
+# Logs
+*.log
+dev-out.log
+dev-err.log
+
