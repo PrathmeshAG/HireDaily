@@ -72,7 +72,35 @@ app.get("/webhook", (req, res) => {
     res.status(200).send(challenge);
     return;
   }
-  logger.warn("Webhook verification failed", { mode, token });
+logger.warn("Webhook verification failed", { mode, token });
+  res.status(403).send("Forbidden");
+});
+
+/**
+ * GET /webhooks/instagram — Meta webhook subscription verification callback.
+ *
+ * Meta calls this during webhook setup to confirm the callback URL. It uses
+ * the standard hub.mode / hub.verify_token / hub.challenge handshake:
+ *   1. hub.mode === "subscribe"
+ *   2. hub.verify_token matches process.env.META_VERIFY_TOKEN
+ *   3. → respond 200 with hub.challenge
+ *   otherwise → 403
+ *
+ * This is the verification counterpart to the existing POST /webhooks/instagram
+ * event-ingestion route (which is left unchanged).
+ */
+app.get("/webhooks/instagram", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  const expectedToken = process.env.META_VERIFY_TOKEN ?? "";
+  if (mode === "subscribe" && token && token === expectedToken) {
+    logger.info("Instagram webhook verified");
+    res.status(200).send(challenge);
+    return;
+  }
+  logger.warn("Instagram webhook verification failed", { mode, token });
   res.status(403).send("Forbidden");
 });
 
