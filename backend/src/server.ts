@@ -66,13 +66,19 @@ app.get("/webhook", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  const expectedToken = process.env.WEBHOOK_VERIFY_TOKEN ?? "";
-  if (mode === "subscribe" && token && token === expectedToken) {
+const expectedToken = process.env.WEBHOOK_VERIFY_TOKEN ?? "";
+  const verified = mode === "subscribe" && !!token && token === expectedToken;
+  if (verified) {
     logger.info("Webhook verified");
     res.status(200).send(challenge);
     return;
   }
-logger.warn("Webhook verification failed", { mode, token });
+  // Never log the raw verify_token (or WEBHOOK_VERIFY_TOKEN) — only booleans.
+  logger.warn("Webhook verification failed", {
+    mode,
+    tokenPresent: !!token,
+    verificationSucceeded: false,
+  });
   res.status(403).send("Forbidden");
 });
 
@@ -94,13 +100,19 @@ app.get("/webhooks/instagram", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  const expectedToken = process.env.META_VERIFY_TOKEN ?? "";
-  if (mode === "subscribe" && token && token === expectedToken) {
+const expectedToken = process.env.META_VERIFY_TOKEN ?? "";
+  const verificationSucceeded = mode === "subscribe" && !!token && token === expectedToken;
+  if (verificationSucceeded) {
     logger.info("Instagram webhook verified");
     res.status(200).send(challenge);
     return;
   }
-  logger.warn("Instagram webhook verification failed", { mode, token });
+  // Never log the raw verify_token (or META_VERIFY_TOKEN) — only booleans.
+  logger.warn("Instagram webhook verification failed", {
+    mode,
+    tokenPresent: !!token,
+    verificationSucceeded: false,
+  });
   res.status(403).send("Forbidden");
 });
 
