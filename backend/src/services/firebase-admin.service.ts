@@ -292,19 +292,47 @@ await ref.set(record);
 export async function readPostMapping(mediaId: string): Promise<{
   jobId: string;
   jobTitleCache: string | null;
+  instagramPostUrl: string | null;
   mappedAt: number | null;
+  updatedAt: number | null;
 } | null> {
   if (!mediaId) return null;
-  const snap = await db().ref(`automation/postMappings/${mediaId}`).get();
+
+  const snap = await db()
+    .ref(`automation/postMappings/${mediaId}`)
+    .get();
+
   if (!snap.exists()) return null;
+
   const val = snap.val() as Record<string, unknown>;
+
   return {
-    jobId: typeof val.jobId === "string" ? val.jobId : "",
-    jobTitleCache: typeof val.jobTitleCache === "string" ? val.jobTitleCache : null,
-    mappedAt: typeof val.mappedAt === "number" ? val.mappedAt : null,
+    jobId:
+      typeof val.jobId === "string"
+        ? val.jobId
+        : "",
+
+    jobTitleCache:
+      typeof val.jobTitleCache === "string"
+        ? val.jobTitleCache
+        : null,
+
+    instagramPostUrl:
+      typeof val.instagramPostUrl === "string"
+        ? val.instagramPostUrl
+        : null,
+
+    mappedAt:
+      typeof val.mappedAt === "number"
+        ? val.mappedAt
+        : null,
+
+    updatedAt:
+      typeof val.updatedAt === "number"
+        ? val.updatedAt
+        : null,
   };
 }
-
 /**
  * Reads a job record from `jobs/{jobId}`. READ-ONLY — this checkpoint never
  * creates, updates, or deletes job records. Returns null when the job does
@@ -705,23 +733,70 @@ export async function deleteTemplate(id: string): Promise<void> {
  * mediaId, jobId, jobTitleCache, mappedAt).
  */
 export async function readAllPostMappings(): Promise<
-  { id: string; mediaId: string; jobId: string; jobTitleCache: string | null; mappedAt: number | null }[]
+  {
+    id: string;
+    mediaId: string;
+    jobId: string;
+    jobTitleCache: string | null;
+    instagramPostUrl: string | null;
+    mappedAt: number | null;
+    updatedAt: number | null;
+  }[]
 > {
-  const snap = await db().ref("automation/postMappings").get();
+  const snap = await db()
+    .ref("automation/postMappings")
+    .get();
+
   if (!snap.exists()) return [];
+
   const raw = snap.val() as Record<string, unknown>;
-  const out: { id: string; mediaId: string; jobId: string; jobTitleCache: string | null; mappedAt: number | null }[] = [];
+
+  const out: {
+    id: string;
+    mediaId: string;
+    jobId: string;
+    jobTitleCache: string | null;
+    instagramPostUrl: string | null;
+    mappedAt: number | null;
+    updatedAt: number | null;
+  }[] = [];
+
   for (const [mediaId, value] of Object.entries(raw)) {
     if (!value || typeof value !== "object") continue;
+
     const m = value as Record<string, unknown>;
+
     out.push({
       id: mediaId,
       mediaId,
-      jobId: typeof m.jobId === "string" ? m.jobId : "",
-      jobTitleCache: typeof m.jobTitleCache === "string" ? m.jobTitleCache : null,
-      mappedAt: typeof m.mappedAt === "number" ? m.mappedAt : null,
+
+      jobId:
+        typeof m.jobId === "string"
+          ? m.jobId
+          : "",
+
+      jobTitleCache:
+        typeof m.jobTitleCache === "string"
+          ? m.jobTitleCache
+          : null,
+
+      instagramPostUrl:
+        typeof m.instagramPostUrl === "string"
+          ? m.instagramPostUrl
+          : null,
+
+      mappedAt:
+        typeof m.mappedAt === "number"
+          ? m.mappedAt
+          : null,
+
+      updatedAt:
+        typeof m.updatedAt === "number"
+          ? m.updatedAt
+          : null,
     });
   }
+
   return out;
 }
 
@@ -731,9 +806,17 @@ export async function readAllPostMappings(): Promise<
  */
 export async function writePostMapping(
   mediaId: string,
-  mapping: { jobId: string; jobTitleCache: string | null; mappedAt: number },
+  mapping: {
+    jobId: string;
+    jobTitleCache: string | null;
+    instagramPostUrl?: string | null;
+    mappedAt: number;
+    updatedAt?: number;
+  },
 ): Promise<void> {
-  await db().ref(`automation/postMappings/${mediaId}`).set(mapping);
+  await db()
+    .ref(`automation/postMappings/${mediaId}`)
+    .set(mapping);
 }
 
 /** Deletes a post mapping under automation/postMappings/{mediaId}. */

@@ -594,10 +594,20 @@ app.post("/api/automation/post-mappings", async (req, res) => {
       return;
     }
     await writePostMapping(mediaId, {
-      jobId,
-      jobTitleCache: typeof body.jobTitleCache === "string" ? body.jobTitleCache : null,
-      mappedAt: Date.now(),
-    });
+  jobId,
+  jobTitleCache:
+    typeof body.jobTitleCache === "string"
+      ? body.jobTitleCache.trim()
+      : null,
+
+  instagramPostUrl:
+    typeof body.instagramPostUrl === "string"
+      ? body.instagramPostUrl.trim()
+      : null,
+
+  mappedAt: Date.now(),
+  updatedAt: Date.now(),
+});
     res.status(201).json({ id: mediaId, mediaId, jobId });
   } catch (e) {
     logger.error("Failed to create post mapping", { error: e });
@@ -606,25 +616,77 @@ app.post("/api/automation/post-mappings", async (req, res) => {
 });
 
 /** PATCH /api/automation/post-mappings/:mediaId — update a mapping. */
+/** PATCH /api/automation/post-mappings/:mediaId — update a mapping. */
 app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
   try {
-    const mediaId = req.params.mediaId;
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const existing = await readPostMapping(mediaId);
-    if (!existing) {
-      res.status(404).json({ error: "post_mapping_not_found" });
+    const mediaId = req.params.mediaId.trim();
+
+    if (!mediaId) {
+      res.status(400).json({ error: "mediaId_required" });
       return;
     }
-    const jobId = typeof body.jobId === "string" ? body.jobId.trim() : existing.jobId;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const existing = await readPostMapping(mediaId);
+
+    if (!existing) {
+      res.status(404).json({
+        error: "post_mapping_not_found",
+        mediaId,
+      });
+      return;
+    }
+
+    const jobId =
+      typeof body.jobId === "string" && body.jobId.trim()
+        ? body.jobId.trim()
+        : existing.jobId;
+
+    const jobTitleCache =
+      typeof body.jobTitleCache === "string"
+        ? body.jobTitleCache.trim()
+        : existing.jobTitleCache;
+
+    // Keep the Instagram post URL if the frontend sends it.
+    const instagramPostUrl =
+      typeof body.instagramPostUrl === "string"
+        ? body.instagramPostUrl.trim()
+        : typeof (existing as any).instagramPostUrl === "string"
+          ? (existing as any).instagramPostUrl
+          : null;
+
     await writePostMapping(mediaId, {
+      ...existing,
+
       jobId,
-      jobTitleCache: typeof body.jobTitleCache === "string" ? body.jobTitleCache : existing.jobTitleCache,
+      jobTitleCache,
+      instagramPostUrl,
+
+      // Preserve original mapping time.
       mappedAt: existing.mappedAt ?? Date.now(),
+
+      // Useful for debugging/admin UI.
+      updatedAt: Date.now(),
     });
-    res.status(200).json({ id: mediaId, mediaId, jobId });
+
+    res.status(200).json({
+      ok: true,
+      id: mediaId,
+      mediaId,
+      jobId,
+      jobTitleCache,
+      instagramPostUrl,
+    });
   } catch (e) {
-    logger.error("Failed to update post mapping", { error: e });
-    res.status(500).json({ error: "failed_to_update_post_mapping" });
+    logger.error("Failed to update post mapping", {
+      mediaId: req.params.mediaId,
+      error: e,
+    });
+
+    res.status(500).json({
+      error: "failed_to_update_post_mapping",
+    });
   }
 });
 
