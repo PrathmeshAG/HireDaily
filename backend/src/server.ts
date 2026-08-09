@@ -12,6 +12,7 @@ import {
   writeRuleMatchLog,
   readAllRules,
   writeRule,
+  
   deleteRule as deleteRuleRecord,
   readAllTemplates,
   writeTemplate,
@@ -24,7 +25,7 @@ readAllPostMappings,
   readAllLogs,
   readRecentAnalytics,
 } from "./services/firebase-admin.service.js";
-import { evaluateComment } from "./services/rule-engine.service.js";
+import { evaluateComment,explainRuleEvaluation, } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
 import { resolvePostJob } from "./services/post-mapping.service.js";
 import { processCommentReplyProduction, processDirectMessageProduction } from "./services/instagram.service.js";
@@ -184,6 +185,24 @@ async function runRuleEngine(event: {
 
     const context = toRuleContext(event);
     const result = evaluateComment(activeRules, context, now);
+
+console.log("🔥 RULE ENGINE RESULT", {
+  matched: result.matched,
+  ruleId: result.ruleId,
+  matchedKeyword: result.matchedKeyword,
+  reason: result.reason,
+  mediaId: context.mediaId,
+  commentText: context.commentText,
+});
+
+console.log(
+  "🔎 RULE ENGINE DIAGNOSTICS",
+  explainRuleEvaluation(
+    activeRules,
+    context,
+    now,
+  ),
+);;
 
     // Phase 5 Checkpoint 5 — dry-run flag + follow-verification capability.
     const dryRun = process.env.META_DRY_RUN === "true";
