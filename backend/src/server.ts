@@ -23,7 +23,6 @@ readAllPostMappings,
   readAllUsers,
   readAllLogs,
   readRecentAnalytics,
-  readAutomationSettings,
 } from "./services/firebase-admin.service.js";
 import { evaluateComment } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
@@ -762,9 +761,62 @@ app.get("/api/automation/settings", async (_req, res) => {
   try {
     const isFirebase = isFirebaseAdminConfigured();
     const metaConfigured = !!process.env.META_ACCESS_TOKEN?.trim();
-    const dryRun = process.env.META_DRY_RUN?.trim().toLowerCase() === "true";
-    const webhookConfigured = !!process.env.META_VERIFY_TOKEN?.trim() || !!process.env.WEBHOOK_VERIFY_TOKEN?.trim();
-    const settings = await readAutomationSettings().catch(() => null);
+    const dryRun =
+      process.env.META_DRY_RUN?.trim().toLowerCase() === "true";
+    const webhookConfigured =
+      !!process.env.META_VERIFY_TOKEN?.trim() ||
+      !!process.env.WEBHOOK_VERIFY_TOKEN?.trim();
+
+    let instagram = {
+      connected: false,
+      username: null as string | null,
+      accountType: null as string | null,
+    };
+
+    const accessToken = process.env.META_ACCESS_TOKEN?.trim();
+    const instagramBusinessId =
+      process.env.INSTAGRAM_BUSINESS_ID?.trim();
+
+    if (accessToken && instagramBusinessId) {
+      try {
+        const url =
+          `https://graph.instagram.com/v21.0/${encodeURIComponent(
+            instagramBusinessId,
+          )}` +
+          `?fields=id,username,account_type&access_token=${encodeURIComponent(
+            accessToken,
+          )}`;
+
+        const metaResponse = await fetch(url, {
+          method: "GET",
+        });
+
+        if (metaResponse.ok) {
+          const data = (await metaResponse.json()) as {
+            id?: string;
+            username?: string;
+            account_type?: string;
+          };
+
+          instagram = {
+            connected: true,
+            username:
+              typeof data.username === "string"
+                ? data.username
+                : null,
+            accountType:
+              typeof data.account_type === "string"
+                ? data.account_type
+                : null,
+          };
+        }
+      } catch (error) {
+        logger.warn("Instagram connection check failed", {
+          error:
+            error instanceof Error ? error.message : "unknown_error",
+        });
+      }
+    }
 
     res.status(200).json({
       firebaseConfigured: isFirebase,
@@ -772,12 +824,7 @@ app.get("/api/automation/settings", async (_req, res) => {
       dryRun,
       webhookConfigured,
       serviceStatus: isFirebase ? "operational" : "degraded",
-      // Safe, non-secret settings projection (e.g. instagram connected flag).
-      instagram: {
-        connected: !!settings?.instagramConnected,
-        username: typeof settings?.instagramUsername === "string" ? settings.instagramUsername : null,
-        accountType: typeof settings?.instagramAccountType === "string" ? settings.instagramAccountType : null,
-      },
+      instagram,
     });
   } catch (e) {
     logger.error("Failed to load settings", { error: e });
