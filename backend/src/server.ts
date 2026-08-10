@@ -24,9 +24,8 @@ readAllPostMappings,
   readAllUsers,
   readAllLogs,
   readRecentAnalytics,
-  readAllInstagramMedia,
   writeInstagramMediaCache,
-  claimInstagramActionOnce,
+  readAllInstagramMedia,
 } from "./services/firebase-admin.service.js";
 import { evaluateComment,explainRuleEvaluation, } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
@@ -183,21 +182,35 @@ async function runRuleEngine(event: {
   eventId: string;
 }): Promise<void> {
   try {
+    // IMPORTANT: Instagram sends webhook events for comments/replies made by
+    // our own account too. Never feed those events into the rule engine, or
+    // the bot will match its own "Check Your DM" reply and create another
+    // public reply (self-comment loop).
+    //
+    // Meta's comments webhook identifies the author in value.from.id, which
+    // is normalized to event.userId by webhook-parser.ts.
+    const ownInstagramId = process.env.INSTAGRAM_BUSINESS_ID?.trim() || "";
+    const isOwnComment =
+      event.eventType === "comment" &&
+      !!ownInstagramId &&
+      !!event.userId &&
+      event.userId === ownInstagramId;
+
+    if (isOwnComment) {
+      logger.info("Ignoring own Instagram comment", {
+        eventId: event.eventId,
+        commentId: event.commentId,
+        userId: event.userId,
+      });
+      return;
+    }
+
     const now = Date.now();
     const activeRules = await readActiveRules(now);
     if (activeRules.length === 0) return;
 
     const context = toRuleContext(event);
     const result = evaluateComment(activeRules, context, now);
-
-    if (result.matched) {
-      try {
-        const { analytics } = trackingStores();
-        await incrementDailyAnalytics(await analytics, dateKey(now), "commentsMatched");
-      } catch (error) {
-        logger.warn("Failed to record commentsMatched analytics", { error });
-      }
-    }
 
 console.log("🔥 RULE ENGINE RESULT", {
   matched: result.matched,
@@ -257,33 +270,9 @@ console.log(
           // commentStatus (pending/success/failed) is persisted to Firebase,
           // and any error is stored safely (never the token).
           if (event.eventType === "comment" && event.commentId) {
-            let commentStatus: "pending" | "success" | "failed" | "skipped" = "pending";
+            let commentStatus: "pending" | "success" | "failed" = "pending";
             let dmStatus: "pending" | "success" | "failed" | "skipped" = "pending";
-            let commentClaimed = true;
-            if (!dryRun) {
-              commentClaimed = await claimInstagramActionOnce(event.commentId, "comment_reply");
-            }
-
-            if (!commentClaimed) {
-              commentStatus = "skipped";
-              logger.info("Duplicate Instagram comment reply suppressed", {
-                commentId: event.commentId,
-                mediaId: event.mediaId,
-              });
-              await writeCommentReplyLog({
-                userId: event.userId,
-                username: event.username,
-                mediaId: event.mediaId,
-                commentId: event.commentId,
-                jobId: resolution.jobId,
-                ruleId: result.rule.id,
-                keyword: result.matchedKeyword,
-                commentStatus: "skipped",
-                error: "duplicate_suppressed",
-                dryRun,
-                timestamp: Date.now(),
-              }).catch((e) => logger.error("Failed to write duplicate reply log", e));
-            } else try {
+            try {
               const replyData = await processCommentReplyProduction({
                 commentId: event.commentId,
                 mediaId: event.mediaId,
@@ -324,32 +313,7 @@ console.log(
             // a failure here must NOT break the Phase 4 webhook 200 or the
             // comment reply result. dmStatus (pending/success/failed) is
             // persisted alongside commentStatus.
-            let dmClaimed = true;
-            if (!dryRun) {
-              dmClaimed = await claimInstagramActionOnce(event.commentId, "dm");
-            }
-
-            if (!dmClaimed) {
-              dmStatus = "skipped";
-              logger.info("Duplicate Instagram DM suppressed", {
-                commentId: event.commentId,
-                mediaId: event.mediaId,
-              });
-              await writeDmLog({
-                userId: event.userId,
-                username: event.username,
-                mediaId: event.mediaId,
-                commentId: event.commentId,
-                jobId: resolution.jobId,
-                ruleId: result.rule.id,
-                keyword: result.matchedKeyword,
-                commentStatus,
-                dmStatus: "skipped",
-                error: "duplicate_suppressed",
-                dryRun,
-                timestamp: Date.now(),
-              }).catch((e) => logger.error("Failed to write duplicate DM log", e));
-            } else try {
+            try {
               const dmData = await processDirectMessageProduction({
                 recipientId: event.userId,
                 userId: event.userId,
@@ -397,8 +361,7 @@ console.log(
                 username: event.username,
                 now: Date.now(),
                 commentReceived: true,
-                matched: false,
-                recordCommentReceived: false,
+                matched: true,
                 commentReplyStatus: commentStatus,
                 dmStatus,
                 followStatus: follow.status,
@@ -445,32 +408,6 @@ async function ingestWebhook(req: express.Request, res: express.Response): Promi
     } catch (error) {
       logger.error("Failed to write automation log", { eventId: event.eventId, error });
       await writeAutomationLog(event, "error").catch((e) => logger.error("Failed to write error log", e));
-    }
-
-    // The rule engine is comment-only. Messaging receipts, DMs, mentions,
-    // and other webhook events can legitimately have no mediaId/comment text.
-    // They are still logged above, but must never be evaluated as comments.
-    if (event.eventType !== "comment") continue;
-
-    // Count every real inbound comment, including comments that arrive before
-    // a post mapping exists. This keeps Analytics aligned with the webhook
-    // stream instead of only counting comments that successfully automated.
-    try {
-      const { analytics } = trackingStores();
-      await incrementDailyAnalytics(await analytics, dateKey(Date.now()), "commentsReceived");
-    } catch (error) {
-      logger.warn("Failed to record commentsReceived analytics", { error });
-    }
-
-    // A malformed comment event without a mediaId cannot be mapped to a post.
-    // Keep the webhook successful and log it as an ignored event instead of
-    // producing a misleading rule-engine error.
-    if (!event.mediaId) {
-      logger.warn("Instagram comment event missing mediaId", {
-        eventId: event.eventId,
-        commentId: event.commentId,
-      });
-      continue;
     }
 
     // Phase 5 Checkpoint 1 — Rule Engine (best-effort, non-blocking).
@@ -642,7 +579,6 @@ app.patch("/api/automation/templates/:id", async (req, res) => {
       ...body,
       id,
       updatedAt: Date.now(),
-     
     });
     res.status(200).json({ id });
   } catch (e) {
@@ -662,48 +598,47 @@ app.delete("/api/automation/templates/:id", async (req, res) => {
   }
 });
 
-/** GET /api/automation/post-mappings — list all post mappings. */
-/** GET /api/automation/instagram/media — read cached Instagram media. */
+/**
+ * GET /api/automation/instagram/media — fetch latest Instagram media and
+ * refresh the safe Firebase media cache. This never returns the access token.
+ */
 app.get("/api/automation/instagram/media", async (req, res) => {
   try {
-    const limit = Math.min(
-      Math.max(Number(req.query.limit ?? 50) || 50, 1),
-      100,
-    );
-    const media = (await readAllInstagramMedia()).slice(0, limit);
-    res.status(200).json({ media });
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    const parsed = typeof rawLimit === "string" ? Number.parseInt(rawLimit, 10) : 30;
+    const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 30;
+
+    try {
+      const media = await fetchInstagramMedia(limit);
+      await writeInstagramMediaCache(
+        media.map((item) => ({ ...item, syncedAt: Date.now() })),
+      );
+      res.status(200).json({ media, source: "instagram" });
+      return;
+    } catch (liveError) {
+      logger.warn("Instagram media sync failed; serving cache", {
+        error: liveError instanceof Error ? liveError.message : "unknown_error",
+      });
+
+      const cached = await readAllInstagramMedia();
+      if (cached.length > 0) {
+        res.status(200).json({
+          media: cached.slice(0, limit).map(({ syncedAt: _syncedAt, ...item }) => item),
+          source: "cache",
+          warning: "instagram_media_sync_failed",
+        });
+        return;
+      }
+
+      throw liveError;
+    }
   } catch (e) {
-    logger.error("Failed to read Instagram media cache", { error: e });
-    res.status(500).json({ error: "failed_to_read_instagram_media" });
+    logger.error("Failed to load Instagram media", { error: e });
+    res.status(502).json({ error: "failed_to_load_instagram_media" });
   }
 });
 
-/** POST /api/automation/instagram/media/sync — fetch and cache latest media. */
-app.post("/api/automation/instagram/media/sync", async (req, res) => {
-  try {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const limit = Math.min(
-      Math.max(
-        typeof body.limit === "number" ? Math.floor(body.limit) : 50,
-        1,
-      ),
-      100,
-    );
-
-    const media = await fetchInstagramMedia(limit);
-    await writeInstagramMediaCache(media);
-
-    res.status(200).json({ media });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "unknown_error";
-    logger.error("Failed to sync Instagram media", { error: message });
-    res.status(502).json({
-      error: "instagram_media_sync_failed",
-      message,
-    });
-  }
-});
-
+/** GET /api/automation/post-mappings — list all post mappings. */
 app.get("/api/automation/post-mappings", async (_req, res) => {
   try {
     const mappings = await readAllPostMappings();
@@ -727,10 +662,17 @@ app.post("/api/automation/post-mappings", async (req, res) => {
 
     const existing = await readPostMapping(mediaId);
     if (existing) {
-      res.status(409).json({
-        error: "post_mapping_already_exists",
-        mediaId,
-      });
+      res.status(409).json({ error: "post_mapping_already_exists", mediaId });
+      return;
+    }
+
+    const instagramPostUrl =
+      typeof body.instagramPostUrl === "string"
+        ? body.instagramPostUrl.trim()
+        : "";
+
+    if (!instagramPostUrl) {
+      res.status(400).json({ error: "instagram_post_url_required" });
       return;
     }
 
@@ -741,13 +683,10 @@ app.post("/api/automation/post-mappings", async (req, res) => {
       ? body.jobTitleCache.trim()
       : null,
 
-      instagramPostUrl:
-        typeof body.instagramPostUrl === "string"
-          ? body.instagramPostUrl.trim()
-          : null,
-      mappedAt: Date.now(),
-      updatedAt: Date.now(),
-      status: "active",
+  instagramPostUrl,
+
+  mappedAt: Date.now(),
+  updatedAt: Date.now(),
 });
     res.status(201).json({ id: mediaId, mediaId, jobId });
   } catch (e) {
@@ -789,8 +728,6 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
         ? body.jobTitleCache.trim()
         : existing.jobTitleCache;
 
-    const status = body.status === "archived" ? "archived" : body.status === "active" ? "active" : existing.status;
-
     // Keep the Instagram post URL if the frontend sends it.
     const instagramPostUrl =
       typeof body.instagramPostUrl === "string"
@@ -809,7 +746,6 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
 
       // Useful for debugging/admin UI.
       updatedAt: Date.now(),
-      status,
     });
 
     res.status(200).json({
@@ -896,27 +832,20 @@ app.get("/api/automation/analytics", async (_req, res) => {
 
     // Keyword counts from keyword_matched logs (ruleKeyword).
     const keywordCounts = new Map<string, number>();
-    // Post counts are derived from matched events and resolved through the
-    // existing read-only post mapping cache. This works in dry-run too, so
-    // Analytics can show which posts are actually triggering rules even when
-    // no real outbound reply/DM is sent.
+    // Post counts from comment_sent/dm_sent logs that carry a postLabel via
+    // the mapping label is not stored on logs; approximate post aggregates
+    // from the post-mapping count + matched logs by mediaId. To keep this
+    // dependency-free and read-only, we derive topPosts from distinct
+    // postLabel-associated logs is not available, so we source topPosts from
+    // the matched keyword logs' mediaId-labelled rules is not present either.
+    // Instead, we expose what the existing frontend supports using the data
+    // we DO have: keyword aggregates (from ruleKeyword on keyword_matched)
+    // and a stable, safe placeholder for posts (from the mapping count).
     const postCounts = new Map<string, number>();
-    const mappings = await readAllPostMappings();
-    const mappingLabels = new Map<string, string>();
-    for (const mapping of mappings) {
-      mappingLabels.set(
-        mapping.mediaId,
-        mapping.jobTitleCache?.trim() || mapping.mediaId,
-      );
-    }
 
     for (const log of logs) {
       if (log.type === "keyword_matched" && log.ruleKeyword) {
         keywordCounts.set(log.ruleKeyword, (keywordCounts.get(log.ruleKeyword) ?? 0) + 1);
-      }
-      if (log.type === "keyword_matched" && log.mediaId) {
-        const label = mappingLabels.get(log.mediaId) ?? log.mediaId;
-        postCounts.set(label, (postCounts.get(label) ?? 0) + 1);
       }
     }
 
@@ -987,17 +916,15 @@ app.get("/api/automation/summary", async (_req, res) => {
  * credentials, or any environment variable value. Only derived booleans:
  * firebaseConfigured, metaConfigured, dryRun, webhookConfigured, serviceStatus.
  */
-app.get("/api/automation/settings", async (_req, res) => {
-  const apiStartedAt = Date.now();
+app.get("/api/automation/settings", async (req, res) => {
   try {
+    const startedAt = Date.now();
     const isFirebase = isFirebaseAdminConfigured();
-    const accessToken = process.env.META_ACCESS_TOKEN?.trim() ?? "";
-    const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim() ?? "";
-    const metaConfigured = Boolean(accessToken);
+    const metaConfigured = !!process.env.META_ACCESS_TOKEN?.trim();
     const dryRun = process.env.META_DRY_RUN?.trim().toLowerCase() === "true";
-    const webhookConfigured = Boolean(
-      process.env.META_VERIFY_TOKEN?.trim() || process.env.WEBHOOK_VERIFY_TOKEN?.trim(),
-    );
+    const webhookConfigured =
+      !!process.env.META_VERIFY_TOKEN?.trim() ||
+      !!process.env.WEBHOOK_VERIFY_TOKEN?.trim();
 
     let instagram = {
       connected: false,
@@ -1005,99 +932,74 @@ app.get("/api/automation/settings", async (_req, res) => {
       accountType: null as string | null,
     };
 
-    const configuredVersion = process.env.META_GRAPH_VERSION?.trim();
-    const versions = Array.from(
-      new Set([configuredVersion, "v24.0", "v23.0", "v22.0", "v21.0"].filter(Boolean) as string[]),
-    );
+    const accessToken = process.env.META_ACCESS_TOKEN?.trim();
+    const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim();
 
-    // Check the configured IG user id first. If the token uses Instagram Login,
-    // fall back to graph.instagram.com/me, where the token identifies the IG user.
-    if (accessToken) {
-      for (const version of versions) {
-        if (instagram.connected) break;
-        if (instagramBusinessId) {
-          try {
-            const url = new URL(
-              `https://graph.facebook.com/${version}/${encodeURIComponent(instagramBusinessId)}`,
-            );
-            url.searchParams.set("fields", "id,username,account_type");
-            url.searchParams.set("access_token", accessToken);
-            const metaResponse = await fetch(url.toString());
-            if (metaResponse.ok) {
-              const data = (await metaResponse.json()) as {
-                username?: string;
-                account_type?: string;
-              };
-              instagram = {
-                connected: true,
-                username: typeof data.username === "string" ? data.username : null,
-                accountType: typeof data.account_type === "string" ? data.account_type : "BUSINESS",
-              };
-            }
-          } catch (error) {
-            logger.warn("Instagram business account check failed", {
-              version,
-              error: error instanceof Error ? error.message : "unknown_error",
-            });
-          }
-        }
-      }
+    if (accessToken && instagramBusinessId) {
+      try {
+        const url =
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(instagramBusinessId)}` +
+          `?fields=id,username,account_type&access_token=${encodeURIComponent(accessToken)}`;
 
-      if (!instagram.connected) {
-        for (const version of versions) {
-          try {
-            const url = new URL(`https://graph.instagram.com/${version}/me`);
-            url.searchParams.set("fields", "id,username,account_type");
-            url.searchParams.set("access_token", accessToken);
-            const response = await fetch(url.toString());
-            if (!response.ok) continue;
-            const data = (await response.json()) as {
-              username?: string;
-              account_type?: string;
-            };
-            instagram = {
-              connected: true,
-              username: typeof data.username === "string" ? data.username : null,
-              accountType: typeof data.account_type === "string" ? data.account_type : "BUSINESS",
-            };
-            break;
-          } catch (error) {
-            logger.warn("Instagram /me connection check failed", {
-              version,
-              error: error instanceof Error ? error.message : "unknown_error",
-            });
-          }
+        const metaStartedAt = Date.now();
+        const metaResponse = await fetch(url, { method: "GET" });
+        const latencyMs = Date.now() - metaStartedAt;
+
+        if (metaResponse.ok) {
+          const data = (await metaResponse.json()) as {
+            id?: string;
+            username?: string;
+            account_type?: string;
+          };
+
+          instagram = {
+            connected: true,
+            username: typeof data.username === "string" ? data.username : null,
+            accountType: typeof data.account_type === "string" ? data.account_type : null,
+          };
+
+          res.locals.metaLatencyMs = latencyMs;
         }
+      } catch (error) {
+        logger.warn("Instagram connection check failed", {
+          error: error instanceof Error ? error.message : "unknown_error",
+        });
       }
     }
 
     let lastEventAt: number | null = null;
     try {
-      const logs = await readAllLogs(50);
-      const webhookEvents = logs.filter((log) => log.channel === "instagram");
-      lastEventAt = webhookEvents[0]?.timestamp ?? null;
-    } catch {
-      lastEventAt = null;
+      const logs = await readAllLogs(500);
+      for (const log of logs) {
+        if (!lastEventAt || log.timestamp > lastEventAt) {
+          lastEventAt = log.timestamp;
+        }
+      }
+    } catch (error) {
+      logger.warn("Failed to derive webhook activity", { error });
     }
 
-    const apiCheckedAt = Date.now();
+    const webhookUrl = `${req.protocol}://${req.get("host") ?? ""}/webhooks/instagram`;
+    const recentEvent = !!lastEventAt && Date.now() - lastEventAt <= 24 * 60 * 60 * 1000;
+    const apiOk = isFirebase && (metaConfigured ? instagram.connected : false);
 
     res.status(200).json({
       firebaseConfigured: isFirebase,
       metaConfigured,
       dryRun,
       webhookConfigured,
-      serviceStatus: isFirebase && metaConfigured ? "operational" : "degraded",
+      serviceStatus: apiOk ? "operational" : isFirebase ? "degraded" : "degraded",
       instagram,
       webhook: {
-        subscribed: webhookConfigured,
+        configured: webhookConfigured,
         lastEventAt,
-        url: "/webhooks/instagram",
+        recentEvent,
+        url: webhookUrl,
       },
       api: {
-        ok: isFirebase && instagram.connected,
-        latencyMs: Math.max(0, Date.now() - apiStartedAt),
-        lastCheckedAt: apiCheckedAt,
+        ok: apiOk,
+        latencyMs: typeof res.locals.metaLatencyMs === "number" ? res.locals.metaLatencyMs : Date.now() - startedAt,
+        lastCheckedAt: Date.now(),
       },
     });
   } catch (e) {
