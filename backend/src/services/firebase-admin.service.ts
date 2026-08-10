@@ -400,10 +400,10 @@ export async function isKnownBotComment(commentId: string | null): Promise<boole
 }
 
 export async function claimInstagramActionOnce(
-  commentId: string,
-  action: "comment_reply" | "dm",
+  key: string,
+  action: "comment_reply" | "dm" | "follow_gate" | "follow_check" | "job_dm",
 ): Promise<boolean> {
-  const normalized = String(commentId ?? "").trim();
+  const normalized = String(key ?? "").trim();
   if (!normalized) return false;
 
   const ref = db().ref(`automation/instagramClaims/${normalized}/${action}`);
@@ -554,6 +554,21 @@ export async function readUserRecord(userId: string): Promise<{
   commentCount: number;
   dmCount: number;
   active: boolean;
+  firstInteractionAt?: number;
+  lastInteractionAt?: number;
+  followCheckRequested?: boolean;
+  followConfirmed?: boolean;
+  lastFollowCheckAt?: number | null;
+  followStatus?: "verified" | "not_verified" | "unsupported" | "unknown";
+  pendingFollowGate?: {
+    mediaId: string;
+    commentId: string;
+    jobId: string | null;
+    ruleId: string;
+    matchedKeyword: string | null;
+    commentStatus: "pending" | "success" | "failed" | "skipped";
+    createdAt: number;
+  } | null;
 } | null> {
   if (!userId) return null;
   const snap = await db().ref(`automation/users/${userId}`).get();
@@ -567,6 +582,30 @@ export async function readUserRecord(userId: string): Promise<{
     commentCount: typeof val.commentCount === "number" ? val.commentCount : 0,
     dmCount: typeof val.dmCount === "number" ? val.dmCount : 0,
     active: val.active !== false,
+    firstInteractionAt: typeof val.firstInteractionAt === "number" ? val.firstInteractionAt : undefined,
+    lastInteractionAt: typeof val.lastInteractionAt === "number" ? val.lastInteractionAt : undefined,
+    followCheckRequested: val.followCheckRequested === true,
+    followConfirmed: val.followConfirmed === true,
+    lastFollowCheckAt: typeof val.lastFollowCheckAt === "number" ? val.lastFollowCheckAt : null,
+    followStatus:
+      val.followStatus === "verified" || val.followStatus === "not_verified" || val.followStatus === "unsupported" || val.followStatus === "unknown"
+        ? val.followStatus
+        : undefined,
+    pendingFollowGate:
+      val.pendingFollowGate && typeof val.pendingFollowGate === "object"
+        ? {
+            mediaId: typeof (val.pendingFollowGate as Record<string, unknown>).mediaId === "string" ? (val.pendingFollowGate as Record<string, unknown>).mediaId as string : "",
+            commentId: typeof (val.pendingFollowGate as Record<string, unknown>).commentId === "string" ? (val.pendingFollowGate as Record<string, unknown>).commentId as string : "",
+            jobId: typeof (val.pendingFollowGate as Record<string, unknown>).jobId === "string" ? (val.pendingFollowGate as Record<string, unknown>).jobId as string : null,
+            ruleId: typeof (val.pendingFollowGate as Record<string, unknown>).ruleId === "string" ? (val.pendingFollowGate as Record<string, unknown>).ruleId as string : "",
+            matchedKeyword: typeof (val.pendingFollowGate as Record<string, unknown>).matchedKeyword === "string" ? (val.pendingFollowGate as Record<string, unknown>).matchedKeyword as string : null,
+            commentStatus:
+              (val.pendingFollowGate as Record<string, unknown>).commentStatus === "success" || (val.pendingFollowGate as Record<string, unknown>).commentStatus === "failed" || (val.pendingFollowGate as Record<string, unknown>).commentStatus === "skipped"
+                ? (val.pendingFollowGate as Record<string, unknown>).commentStatus as "success" | "failed" | "skipped"
+                : "pending",
+            createdAt: typeof (val.pendingFollowGate as Record<string, unknown>).createdAt === "number" ? (val.pendingFollowGate as Record<string, unknown>).createdAt as number : 0,
+          }
+        : null,
   };
 }
 
@@ -614,6 +653,50 @@ export async function touchUserRecord(
       dmCount: (typeof base.dmCount === "number" ? base.dmCount : 0) + counters.dmIncrement,
     };
     return result;
+  });
+}
+
+/** Atomically updates only follow-gate fields on an existing automation user. */
+export async function updateInstagramUserFollowState(
+  userId: string,
+  patch: {
+    username?: string | null;
+    firstInteractionAt?: number;
+    lastInteractionAt?: number;
+    followCheckRequested?: boolean;
+    followConfirmed?: boolean;
+    lastFollowCheckAt?: number | null;
+    followStatus?: "verified" | "not_verified" | "unsupported" | "unknown";
+    pendingFollowGate?: {
+      mediaId: string;
+      commentId: string;
+      jobId: string | null;
+      ruleId: string;
+      matchedKeyword: string | null;
+      commentStatus: "pending" | "success" | "failed" | "skipped";
+      createdAt: number;
+    } | null;
+  },
+): Promise<void> {
+  if (!userId) return;
+  const ref = db().ref(`automation/users/${userId}`);
+  await ref.transaction((current: Record<string, unknown> | null) => {
+    if (!current) {
+      const now = Date.now();
+      return {
+        userId,
+        username: patch.username ?? null,
+        firstSeenAt: now,
+        lastActivityAt: now,
+        commentCount: 0,
+        dmCount: 0,
+        active: true,
+        firstInteractionAt: patch.firstInteractionAt ?? now,
+        lastInteractionAt: patch.lastInteractionAt ?? now,
+        ...patch,
+      };
+    }
+    return { ...current, ...patch };
   });
 }
 

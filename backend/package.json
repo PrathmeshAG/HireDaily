@@ -13,7 +13,8 @@
     "test": "tsx test/rule-engine.test.ts && tsx test/post-mapping.test.ts && tsx test/instagram.test.ts && tsx test/instagram-dm.test.ts && tsx test/automation-final.test.ts",
     "test:webhook:comment": "tsx test/send-webhook.ts comment",
     "test:webhook:message": "tsx test/send-webhook.ts message",
-    "test:webhook:delivery": "tsx test/send-webhook.ts delivery"
+    "test:webhook:delivery": "tsx test/send-webhook.ts delivery",
+    "test:follow-gate": "tsx test/follow-gate.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -35,7 +35,6 @@ import { cooldownService } from "./services/cooldown.service.js";
 import { resolvePostJob } from "./services/post-mapping.service.js";
 import {
   processCommentReplyProduction,
-  processDirectMessageProduction,
   resolveCommenterId,
 } from "./services/instagram.service.js";
 import { writeCommentReplyLog, writeDmLog } from "./services/firebase-admin.service.js";
@@ -45,13 +44,16 @@ import {
   applyTracking,
   incrementDailyAnalytics,
   dateKey,
-  checkFollowCapability,
   type UserStore,
   type AnalyticsStore,
 } from "./services/user-analytics.service.js";
 import type { RuleEvaluationContext } from "./types/rule-engine.js";
 import { logger } from "./utils/logger.js";
 import { fetchInstagramMedia } from "./services/instagram-media.service.js";
+import {
+  handleFollowGateInteraction,
+  processCommentWithFollowGate,
+} from "./services/follow-gate.service.js";
 
 const app = express();
 
@@ -316,8 +318,35 @@ async function runRuleEngine(event: {
   commentId: string | null;
   parentId: string | null;
   eventId: string;
+  interactionPayload?: string | null;
+  interactionTitle?: string | null;
+  isEcho?: boolean;
+  isSelf?: boolean;
 }): Promise<void> {
   try {
+    if (event.eventType === "message_interaction") {
+      if (event.isEcho || event.isSelf) return;
+      await handleFollowGateInteraction({
+        eventId: event.eventId,
+        userId: event.userId,
+        username: event.username,
+        payload: event.interactionPayload ?? null,
+      });
+      return;
+    }
+
+    if (event.eventType === "message" && !event.isEcho && !event.isSelf && event.interactionPayload) {
+      await handleFollowGateInteraction({
+        eventId: event.eventId,
+        userId: event.userId,
+        username: event.username,
+        payload: event.interactionPayload,
+      });
+      return;
+    }
+
+    if (event.eventType !== "comment") return;
+
     // IMPORTANT: Instagram sends webhook events for comments/replies made by
     // our own account too. Never feed those events into the rule engine, or
     // the bot will match its own "Check Your DM" reply and create another
@@ -382,9 +411,9 @@ console.log(
 
     // Phase 5 Checkpoint 5 — dry-run flag + follow-verification capability.
     const dryRun = process.env.META_DRY_RUN === "true";
-    const follow = checkFollowCapability();
 
     if (result.matched && result.rule) {
+      let followStatusForTracking: "verified" | "not_verified" | "unsupported" | "unknown" | null = null;
       const decision = cooldownService.shouldFire(context, result.rule, now);
       result.cooldownApplied = decision.cooldownApplied;
       result.duplicate = decision.duplicate;
@@ -481,60 +510,28 @@ console.log(
               }).catch((e) => logger.error("Failed to write reply log", e));
             }
 
-            // Phase 5 Checkpoint 4 — send a private DM with the exact mapped
-            // job URL. The DM is a separate, independently-tracked operation
-            // from the public comment reply. The recipient is the actual
-            // commenter userId (never mediaId/commentId/jobId). Best-effort:
-            // a failure here must NOT break the Phase 4 webhook 200 or the
-            // comment reply result. dmStatus (pending/success/failed) is
-            // persisted alongside commentStatus.
+            // Phase 6 — Follow Gate controls access to the existing Job DM.
+            // The public comment reply above is unchanged. If the user is a
+            // returning user, the follow relationship is freshly verified;
+            // otherwise the first matched comment receives the Follow Gate.
             try {
-              const claimed = await claimInstagramActionOnce(event.commentId, "dm");
-              if (!claimed) {
-                dmStatus = "skipped";
-                logger.info("Skipping duplicate Instagram DM", {
-                  eventId: event.eventId,
-                  commentId: event.commentId,
-                });
-                await writeDmLog({
-                  userId: event.userId,
-                  username: event.username,
-                  mediaId: event.mediaId,
-                  commentId: event.commentId,
-                  jobId: resolution.jobId,
-                  ruleId: result.rule.id,
-                  keyword: result.matchedKeyword,
-                  commentStatus,
-                  dmStatus: "skipped",
-                  error: "duplicate_suppressed",
-                  dryRun,
-                  timestamp: Date.now(),
-                });
-              } else {
-                const dmRecipientId =
-                  event.userId ??
-                  (await resolveCommenterId(
-                    event.commentId,
-                    process.env.META_ACCESS_TOKEN?.trim() ?? "",
-                  ));
-
-                const dmData = await processDirectMessageProduction({
-                  recipientId: dmRecipientId,
-                  userId: event.userId,
-                  username: event.username,
-                  mediaId: event.mediaId,
-                  commentId: event.commentId,
-                  rule: result.rule,
-                  matchedKeyword: result.matchedKeyword,
-                  resolution,
-                  commentStatus,
-                });
-                dmStatus = dmData.dmStatus;
-                await writeDmLog(dmData);
-              }
+              const dmResult = await processCommentWithFollowGate({
+                userId: event.userId ?? (await resolveCommenterId(event.commentId, process.env.META_ACCESS_TOKEN?.trim() ?? "")),
+                username: event.username,
+                mediaId: event.mediaId,
+                commentId: event.commentId,
+                rule: result.rule,
+                matchedKeyword: result.matchedKeyword,
+                commentStatus,
+                dryRun,
+              });
+              dmStatus = dmResult.dm.dmStatus;
+              followStatusForTracking = dmResult.followStatus;
+              // The Follow Gate service writes its own DM log so the existing
+              // logging schema remains unchanged.
             } catch (dmError) {
               dmStatus = "failed";
-              logger.error("DM flow failed", {
+              logger.error("Follow Gate / DM flow failed", {
                 eventId: event.eventId,
                 commentId: event.commentId,
                 error: dmError,
@@ -549,10 +546,10 @@ console.log(
                 keyword: result.matchedKeyword,
                 commentStatus,
                 dmStatus: "failed",
-                error: "dm_flow_failed",
+                error: "follow_gate_flow_failed",
                 dryRun,
                 timestamp: Date.now(),
-              }).catch((e) => logger.error("Failed to write DM log", e));
+              }).catch((e) => logger.error("Failed to write Follow Gate log", e));
             }
 
             // Phase 5 Checkpoint 5 — analytics + user tracking for the matched
@@ -569,7 +566,7 @@ console.log(
                 matched: true,
                 commentReplyStatus: commentStatus,
                 dmStatus,
-                followStatus: follow.status,
+                followStatus: followStatusForTracking,
                 automationError: false,
                 dryRun,
               });

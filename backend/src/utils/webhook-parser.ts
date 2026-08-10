@@ -65,6 +65,10 @@ function fromChange(change: MetaWebhookChange): NormalizedWebhookEvent {
 
     messageId: null,
     commentText,
+    interactionPayload: null,
+    interactionTitle: null,
+    isEcho: false,
+    isSelf: false,
 
     payloadSummary:
       eventType === "unknown"
@@ -85,79 +89,88 @@ function fromMessagingEvent(
   item: MetaMessagingEvent,
 ): NormalizedWebhookEvent {
   const userId =
-    typeof item.sender?.id === "string"
-      ? item.sender.id
+    typeof item.sender?.id === "string" && item.sender.id.trim()
+      ? item.sender.id.trim()
       : null;
 
-  let eventType: InternalEventType = "unknown";
-  let messageId: string | null = null;
-  let summary = "Unrecognized messaging event";
+  const isEcho = item.message?.is_echo === true;
+  const isSelf = item.is_self === true;
 
-  if (item.message && !item.message.is_echo) {
-    eventType = "message";
-
-    messageId =
-      typeof item.message.mid === "string"
-        ? item.message.mid
+  const messageId =
+    typeof item.message?.mid === "string" && item.message.mid.trim()
+      ? item.message.mid.trim()
+      : typeof item.postback?.mid === "string" && item.postback.mid.trim()
+        ? item.postback.mid.trim()
         : null;
 
-    summary =
-      `Message received from ${
-        userId ?? "(unknown user)"
-      }`;
-  } else if (item.message?.is_echo) {
-    eventType = "unknown";
-
-    summary =
-      "Echo of an outgoing message (ignored)";
-  } else if (item.delivery) {
-    eventType = "message_delivery";
-
-    messageId =
-      Array.isArray(item.delivery.mids) &&
-      item.delivery.mids.length > 0
-        ? item.delivery.mids[0]
-        : null;
-
-    summary =
-      `Delivery receipt for ${
-        item.delivery.mids?.length ?? 0
-      } message(s)`;
-  } else if (item.read) {
-    eventType = "message_read";
-
-    summary =
-      `Read receipt (watermark ${
-        item.read.watermark ?? "?"
-      })`;
-  }
+  const postbackPayload =
+    typeof item.postback?.payload === "string" && item.postback.payload.trim()
+      ? item.postback.payload.trim()
+      : null;
+  const postbackTitle =
+    typeof item.postback?.title === "string" && item.postback.title.trim()
+      ? item.postback.title.trim()
+      : null;
+  const quickReplyPayload =
+    typeof item.message?.quick_reply?.payload === "string" && item.message.quick_reply.payload.trim()
+      ? item.message.quick_reply.payload.trim()
+      : null;
+  const quickReplyTitle =
+    typeof item.message?.quick_reply?.title === "string" && item.message.quick_reply.title.trim()
+      ? item.message.quick_reply.title.trim()
+      : null;
 
   const messageText =
     typeof item.message?.text === "string"
       ? item.message.text
       : null;
 
+  const textFollowConfirmation =
+    !postbackPayload &&
+    !quickReplyPayload &&
+    typeof messageText === "string" &&
+    /^i['’]?ve\s+followed(?:\s*✅)?$/i.test(messageText.trim())
+      ? "HIREDAILY_FOLLOW_CHECK_V1"
+      : null;
+
+  const interactionPayload = postbackPayload ?? quickReplyPayload ?? textFollowConfirmation;
+  const interactionTitle = postbackTitle ?? quickReplyTitle ?? (textFollowConfirmation ? messageText : null);
+
+  let eventType: InternalEventType = "unknown";
+  let summary = "Unrecognized messaging event";
+
+  if (isEcho || isSelf) {
+    summary = "Echo/self messaging event (ignored)";
+  } else if (interactionPayload) {
+    eventType = "message_interaction";
+    summary = `Messaging interaction received from ${userId ?? "(unknown user)"}`;
+  } else if (item.message) {
+    eventType = "message";
+    summary = `Message received from ${userId ?? "(unknown user)"}`;
+  } else if (item.delivery) {
+    eventType = "message_delivery";
+    summary = `Delivery receipt for ${item.delivery.mids?.length ?? 0} message(s)`;
+  } else if (item.read) {
+    eventType = "message_read";
+    summary = `Read receipt (watermark ${item.read.watermark ?? "?"})`;
+  }
+
   return {
     eventType,
-
     eventId:
       messageId ??
-      `${eventType}_${Date.now()}_${randomSuffix()}`,
-
+      `${eventType}_${item.timestamp ?? Date.now()}_${userId ?? "unknown"}_${randomSuffix()}`,
     mediaId: null,
-
     userId,
-
-    // Meta messaging events don't provide username.
     username: null,
-
     commentId: null,
     parentId: null,
-
     messageId,
-
     commentText: messageText,
-
+    interactionPayload,
+    interactionTitle,
+    isEcho,
+    isSelf,
     payloadSummary: summary,
   };
 }
@@ -252,6 +265,10 @@ export function parseWebhookEvents(
           parentId: null,
           messageId: null,
           commentText: null,
+          interactionPayload: null,
+          interactionTitle: null,
+          isEcho: false,
+          isSelf: false,
 
           payloadSummary:
             "Webhook payload had no entries to parse",
@@ -290,6 +307,10 @@ export function parseWebhookEvents(
           parentId: null,
           messageId: null,
           commentText: null,
+          interactionPayload: null,
+          interactionTitle: null,
+          isEcho: false,
+          isSelf: false,
 
           payloadSummary:
             "Entry had neither changes nor messaging",
@@ -312,6 +333,10 @@ export function parseWebhookEvents(
         parentId: null,
         messageId: null,
         commentText: null,
+        interactionPayload: null,
+        interactionTitle: null,
+        isEcho: false,
+        isSelf: false,
 
         payloadSummary:
           "Failed to parse webhook payload",

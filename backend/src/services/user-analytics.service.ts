@@ -25,6 +25,21 @@ export interface UserRecord {
   commentCount: number;
   dmCount: number;
   active: boolean;
+  firstInteractionAt?: number;
+  lastInteractionAt?: number;
+  followCheckRequested?: boolean;
+  followConfirmed?: boolean;
+  lastFollowCheckAt?: number | null;
+  followStatus?: FollowStatus;
+  pendingFollowGate?: {
+    mediaId: string;
+    commentId: string;
+    jobId: string | null;
+    ruleId: string;
+    matchedKeyword: string | null;
+    commentStatus: "pending" | "success" | "failed" | "skipped";
+    createdAt: number;
+  } | null;
 }
 
 /** Daily analytics counters stored under automation/analytics/daily/{date}. */

@@ -739,6 +739,166 @@ export async function sendDirectMessage(
   }
 }
 
+export const FOLLOW_GATE_PAYLOAD = "HIREDAILY_FOLLOW_CHECK_V1";
+export const HIRE_DAILY_INSTAGRAM_URL = "https://www.instagram.com/hire_daily/";
+
+export type FollowApiStatus = "verified" | "not_verified" | "unsupported" | "unknown";
+
+export interface FollowApiResult {
+  status: FollowApiStatus;
+  reason: string | null;
+}
+
+/**
+ * Verifies the relationship for an Instagram-scoped user ID using Meta's
+ * official Instagram User Profile API. A true result is only returned when
+ * Meta explicitly returns is_user_follow_business=true.
+ */
+export async function checkInstagramUserFollow(
+  instagramUserId: string,
+  opts: { accessToken?: string; fetchImpl?: typeof fetch } = {},
+): Promise<FollowApiResult> {
+  const userId = instagramUserId?.trim() || "";
+  const accessToken = opts.accessToken?.trim() || env.meta.accessToken;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+
+  if (!userId) return { status: "unknown", reason: "instagram_user_id_missing" };
+  if (!accessToken) return { status: "unknown", reason: "meta_access_token_missing" };
+
+  const url =
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(userId)}` +
+    `?fields=is_user_follow_business`;
+
+  try {
+    const result = await fetchJson(fetchImpl, url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!result.ok || !result.json || typeof result.json !== "object") {
+      const reason = safeMetaError(result.json, accessToken, `meta_http_${result.status}`);
+      // Permission/consent/capability errors are intentionally not treated as
+      // either following or not following.
+      return { status: "unknown", reason };
+    }
+
+    const value = (result.json as { is_user_follow_business?: unknown }).is_user_follow_business;
+    if (value === true) return { status: "verified", reason: null };
+    if (value === false) return { status: "not_verified", reason: null };
+    return { status: "unknown", reason: "follow_field_missing" };
+  } catch (error) {
+    return {
+      status: "unknown",
+      reason: error instanceof Error ? error.message.slice(0, 200) : "follow_check_network_error",
+    };
+  }
+}
+
+/** Sends the two-button Follow Gate. The existing production DM transport is
+ * reused; only the message payload is new. */
+export async function sendFollowGateMessage(
+  recipientId: string,
+  accessToken: string,
+  opts: {
+    commentId?: string | null;
+    dryRun?: boolean;
+    fetchImpl?: typeof fetch;
+    instagramBusinessId?: string | null;
+  } = {},
+): Promise<ReplyResult> {
+  const dryRun = opts.dryRun ?? false;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const instagramBusinessId = opts.instagramBusinessId?.trim() || null;
+
+  if (!recipientId) return { success: false, externalId: null, error: "recipient_id_missing", dryRun };
+  if (!accessToken) return { success: false, externalId: null, error: "meta_access_token_missing", dryRun };
+  if (!instagramBusinessId) return { success: false, externalId: null, error: "instagram_business_id_missing", dryRun };
+
+  if (dryRun) {
+    return {
+      success: true,
+      externalId: `dry-run-follow-gate-${opts.commentId ?? recipientId}`,
+      error: null,
+      dryRun: true,
+    };
+  }
+
+  const messagesUrl =
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/` +
+    `${encodeURIComponent(instagramBusinessId)}/messages`;
+
+  const recipient = opts.commentId?.trim()
+    ? { comment_id: opts.commentId.trim() }
+    : { id: recipientId };
+
+  const payload = {
+    recipient,
+    message: {
+      attachment: {
+        type: "template",
+        payload: {
+          template_type: "button",
+          text: "Follow @hire_daily to unlock the job application link 👇",
+          buttons: [
+            {
+              type: "web_url",
+              url: HIRE_DAILY_INSTAGRAM_URL,
+              title: "Follow @hire_daily",
+            },
+            {
+              type: "postback",
+              title: "I've Followed ✅",
+              payload: FOLLOW_GATE_PAYLOAD,
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  try {
+    const result = await sendInstagramJson(fetchImpl, messagesUrl, accessToken, payload);
+    if (!result.ok) {
+      const error = safeMetaError(result.json, accessToken, `meta_http_${result.status}`);
+      // Meta's documented Private Reply contract guarantees text replies via
+      // comment_id. If the structured two-button payload is rejected for a
+      // fresh commenter, do not fake a successful gate. Use the documented
+      // text Private Reply as the safest supported fallback.
+      if (opts.commentId) {
+        const fallback = await sendInstagramJson(fetchImpl, messagesUrl, accessToken, {
+          recipient: { comment_id: opts.commentId },
+          message: {
+            text:
+              "Follow @hire_daily to unlock the job application link 👇\n\n" +
+              HIRE_DAILY_INSTAGRAM_URL +
+              "\n\nAfter following, reply: I've Followed",
+          },
+        });
+        if (fallback.ok) {
+          const id = (fallback.json as { message_id?: string } | null)?.message_id ?? null;
+          return { success: true, externalId: id, error: null, dryRun: false };
+        }
+      }
+
+      return {
+        success: false,
+        externalId: null,
+        error: `follow_gate_rejected_${result.status}:${error}`,
+        dryRun: false,
+      };
+    }
+    const id = (result.json as { message_id?: string } | null)?.message_id ?? null;
+    return { success: true, externalId: id, error: null, dryRun: false };
+  } catch (error) {
+    return {
+      success: false,
+      externalId: null,
+      error: error instanceof Error ? error.message.slice(0, 200) : "follow_gate_network_error",
+      dryRun: false,
+    };
+  }
+}
+
 /** Read-only data-access contract for the DM orchestrator. */
 export interface DmDataReader {
   getDmTemplateText(rule: RuleEngineRule): Promise<string | null>;
