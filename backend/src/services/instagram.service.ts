@@ -29,7 +29,7 @@ import type { RuleEngineRule } from "../types/rule-engine.js";
 import type { PostJobResolution } from "./post-mapping.service.js";
 
 /** Meta Graph API version used by this backend for comment replies. */
-export const META_GRAPH_VERSION = "v21.0";
+export const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION?.trim() || "v24.0";
 
 /** Data needed to render a comment reply template. */
 export interface ReplyTemplateData {
@@ -150,13 +150,16 @@ export async function replyToComment(
   }
 
   const url =
-    `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies` +
-    `?message=${encodeURIComponent(message)}&access_token=${encodeURIComponent(accessToken)}`;
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`;
 
   try {
-const { ok, status, json } = await fetchJson(fetchImpl, url, {
+    const { ok, status, json } = await fetchJson(fetchImpl, url, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ message }),
     });
 
     if (ok) {
@@ -509,9 +512,14 @@ export async function sendDirectMessage(
     return { success: true, externalId: `dry-run-dm-${recipientId}`, error: null, dryRun: true };
   }
 
-  const recipientPayload = JSON.stringify({ id: recipientId });
+  const igAccountId = process.env.INSTAGRAM_BUSINESS_ID?.trim() || "";
+  if (!igAccountId) {
+    return { success: false, externalId: null, error: "instagram_business_id_missing", dryRun: false };
+  }
+
+  const recipientPayload = { id: recipientId };
   const messagePayload = cta.label
-    ? JSON.stringify({
+    ? {
         attachment: {
           type: "template",
           payload: {
@@ -521,29 +529,37 @@ export async function sendDirectMessage(
                 title: "Hire Daily",
                 subtitle: cta.text.slice(0, 640),
                 buttons: [
-                  { type: "web_url", url: opts.ctaUrl ?? extractFirstUrl(message) ?? "", title: cta.label.slice(0, 20) },
+                  {
+                    type: "web_url",
+                    url: opts.ctaUrl ?? extractFirstUrl(message) ?? "",
+                    title: cta.label.slice(0, 20),
+                  },
                 ],
               },
             ],
           },
         },
-      })
-    : JSON.stringify({ text: cta.text });
+      }
+    : { text: cta.text };
 
   if (cta.label && !(opts.ctaUrl ?? extractFirstUrl(message))) {
     return { success: false, externalId: null, error: "cta_url_missing", dryRun: false };
   }
 
   const url =
-    `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(recipientId)}/messages` +
-    `?recipient=${encodeURIComponent(recipientPayload)}` +
-    `&message=${encodeURIComponent(messagePayload)}` +
-    `&access_token=${encodeURIComponent(accessToken)}`;
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(igAccountId)}/messages`;
 
   try {
     const { ok, status, json } = await fetchJson(fetchImpl, url, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: recipientPayload,
+        message: messagePayload,
+      }),
     });
 
     if (ok) {
