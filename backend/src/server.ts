@@ -26,6 +26,8 @@ readAllPostMappings,
   readRecentAnalytics,
   readAllInstagramMedia,
   writeInstagramMediaCache,
+  claimInstagramComment,
+  completeInstagramComment,
 } from "./services/firebase-admin.service.js";
 import { evaluateComment,explainRuleEvaluation, } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
@@ -189,15 +191,6 @@ async function runRuleEngine(event: {
     const context = toRuleContext(event);
     const result = evaluateComment(activeRules, context, now);
 
-    if (result.matched) {
-      try {
-        const { analytics } = trackingStores();
-        await incrementDailyAnalytics(await analytics, dateKey(now), "commentsMatched");
-      } catch (error) {
-        logger.warn("Failed to record commentsMatched analytics", { error });
-      }
-    }
-
 console.log("🔥 RULE ENGINE RESULT", {
   matched: result.matched,
   ruleId: result.ruleId,
@@ -221,11 +214,42 @@ console.log(
     const follow = checkFollowCapability();
 
     if (result.matched && result.rule) {
-      const decision = cooldownService.shouldFire(context, result.rule, now);
+      // Firebase transaction = cross-instance idempotency. The previous
+      // in-memory seen-comment set was not sufficient on Vercel because two
+      // webhook invocations can run on different serverless instances at the
+      // same time. Only the invocation that successfully claims this exact
+      // Instagram comment may send a reply/DM.
+      let persistentClaimed = true;
+      if (event.commentId) {
+        try {
+          persistentClaimed = await claimInstagramComment(event.commentId);
+        } catch (claimError) {
+          // Fail closed: if the idempotency store is unavailable, do not risk
+          // sending duplicate customer-facing messages.
+          persistentClaimed = false;
+          logger.error("Comment idempotency claim failed; automation suppressed", {
+            eventId: event.eventId,
+            commentId: event.commentId,
+            error: claimError,
+          });
+        }
+      }
+
+      const decision = persistentClaimed
+        ? cooldownService.shouldFire(context, result.rule, now)
+        : { allowed: false, duplicate: true, cooldownApplied: false };
+
       result.cooldownApplied = decision.cooldownApplied;
       result.duplicate = decision.duplicate;
       if (decision.allowed) {
         cooldownService.record(context, result.rule, now);
+
+        try {
+          const { analytics } = trackingStores();
+          await incrementDailyAnalytics(await analytics, dateKey(now), "commentsMatched");
+        } catch (error) {
+          logger.warn("Failed to record commentsMatched analytics", { error });
+        }
       }
 
 // Phase 5 Checkpoint 2 — resolve the Instagram post to the Hire Daily
@@ -250,96 +274,94 @@ console.log(
             reason: resolution.reason,
           });
 
-          // Phase 5 Checkpoint 3 — send a PUBLIC comment reply (only for a
-          // comment event with a real comment id). Best-effort: a failure
-          // here must NOT break the Phase 4 webhook 200 response. The
-          // commentStatus (pending/success/failed) is persisted to Firebase,
-          // and any error is stored safely (never the token).
+          // Comment-triggered automation is exactly one pipeline per claimed
+          // comment. The rule's replyMode decides which customer-facing
+          // channels are enabled; it never causes duplicate sends.
           if (event.eventType === "comment" && event.commentId) {
             let commentStatus: "pending" | "success" | "failed" = "pending";
-            let dmStatus: "pending" | "success" | "failed" | "skipped" = "pending";
-            try {
-              const replyData = await processCommentReplyProduction({
-                commentId: event.commentId,
-                mediaId: event.mediaId,
-                userId: event.userId,
-                username: event.username,
-                rule: result.rule,
-                matchedKeyword: result.matchedKeyword,
-                resolution,
-              });
-              commentStatus = replyData.commentStatus;
-              await writeCommentReplyLog(replyData);
-            } catch (replyError) {
-              commentStatus = "failed";
-              logger.error("Comment reply flow failed", {
-                eventId: event.eventId,
-                commentId: event.commentId,
-                error: replyError,
-              });
-              await writeCommentReplyLog({
-                userId: event.userId,
-                username: event.username,
-                mediaId: event.mediaId,
-                commentId: event.commentId,
-                jobId: resolution.jobId,
-                ruleId: result.rule.id,
-                keyword: result.matchedKeyword,
-                commentStatus: "failed",
-                error: "comment_reply_flow_failed",
-                dryRun,
-                timestamp: Date.now(),
-              }).catch((e) => logger.error("Failed to write reply log", e));
+            let dmStatus: "pending" | "success" | "failed" | "skipped" = "skipped";
+
+            // Public comment reply.
+            if (result.rule.replyMode !== "dm_only") {
+              try {
+                const replyData = await processCommentReplyProduction({
+                  commentId: event.commentId,
+                  mediaId: event.mediaId,
+                  userId: event.userId,
+                  username: event.username,
+                  rule: result.rule,
+                  matchedKeyword: result.matchedKeyword,
+                  resolution,
+                });
+                commentStatus = replyData.commentStatus;
+                await writeCommentReplyLog(replyData);
+              } catch (replyError) {
+                commentStatus = "failed";
+                logger.error("Comment reply flow failed", {
+                  eventId: event.eventId,
+                  commentId: event.commentId,
+                  error: replyError,
+                });
+                await writeCommentReplyLog({
+                  userId: event.userId,
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  jobId: resolution.jobId,
+                  ruleId: result.rule.id,
+                  keyword: result.matchedKeyword,
+                  commentStatus: "failed",
+                  error: "comment_reply_flow_failed",
+                  dryRun,
+                  timestamp: Date.now(),
+                }).catch((e) => logger.error("Failed to write reply log", e));
+              }
             }
 
-            // Phase 5 Checkpoint 4 — send a private DM with the exact mapped
-            // job URL. The DM is a separate, independently-tracked operation
-            // from the public comment reply. The recipient is the actual
-            // commenter userId (never mediaId/commentId/jobId). Best-effort:
-            // a failure here must NOT break the Phase 4 webhook 200 or the
-            // comment reply result. dmStatus (pending/success/failed) is
-            // persisted alongside commentStatus.
-            try {
-              const dmData = await processDirectMessageProduction({
-                recipientId: event.userId,
-                userId: event.userId,
-                username: event.username,
-                mediaId: event.mediaId,
-                commentId: event.commentId,
-                rule: result.rule,
-                matchedKeyword: result.matchedKeyword,
-                resolution,
-                commentStatus,
-              });
-              dmStatus = dmData.dmStatus;
-              await writeDmLog(dmData);
-            } catch (dmError) {
-              dmStatus = "failed";
-              logger.error("DM flow failed", {
-                eventId: event.eventId,
-                commentId: event.commentId,
-                error: dmError,
-              });
-              await writeDmLog({
-                userId: event.userId,
-                username: event.username,
-                mediaId: event.mediaId,
-                commentId: event.commentId,
-                jobId: resolution.jobId,
-                ruleId: result.rule.id,
-                keyword: result.matchedKeyword,
-                commentStatus,
-                dmStatus: "failed",
-                error: "dm_flow_failed",
-                dryRun,
-                timestamp: Date.now(),
-              }).catch((e) => logger.error("Failed to write DM log", e));
+            // Private reply / DM. Meta's private-reply API permits one private
+            // reply for the comment, so this is one message only. The CTA
+            // marker is converted into the exact public Hire Daily URL.
+            if (result.rule.replyMode !== "comment_only") {
+              dmStatus = "pending";
+              try {
+                const dmData = await processDirectMessageProduction({
+                  recipientId: event.userId,
+                  userId: event.userId,
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  rule: result.rule,
+                  matchedKeyword: result.matchedKeyword,
+                  resolution,
+                  commentStatus,
+                });
+                dmStatus = dmData.dmStatus;
+                await writeDmLog(dmData);
+              } catch (dmError) {
+                dmStatus = "failed";
+                logger.error("DM flow failed", {
+                  eventId: event.eventId,
+                  commentId: event.commentId,
+                  error: dmError,
+                });
+                await writeDmLog({
+                  userId: event.userId,
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  jobId: resolution.jobId,
+                  ruleId: result.rule.id,
+                  keyword: result.matchedKeyword,
+                  commentStatus,
+                  dmStatus: "failed",
+                  error: "dm_flow_failed",
+                  dryRun,
+                  timestamp: Date.now(),
+                }).catch((e) => logger.error("Failed to write DM log", e));
+              }
             }
 
-            // Phase 5 Checkpoint 5 — analytics + user tracking for the matched
-            // comment event. followStatus is unsupported (no confirmed Meta
-            // capability), which increments followUnsupported. Best-effort:
-            // never blocks the webhook 200. Dry-run is honored (no fake sends).
+            // Tracking is best-effort and never blocks Meta's webhook ACK.
             try {
               const { user: userStoreP, analytics: analyticsStoreP } = trackingStores();
               await applyTracking(await userStoreP, await analyticsStoreP, {
@@ -358,6 +380,18 @@ console.log(
             } catch (trackErr) {
               logger.error("Analytics tracking failed", { eventId: event.eventId, error: trackErr });
             }
+
+            // Finalize the atomic claim only after the complete automation
+            // attempt has finished. A redelivered webhook is then a no-op.
+            if (decision.allowed) {
+              await completeInstagramComment(event.commentId).catch((e: unknown) =>
+                logger.error("Failed to finalize comment idempotency claim", {
+                  eventId: event.eventId,
+                  commentId: event.commentId,
+                  error: e,
+                }),
+              );
+            }
           }
         } catch (resolveError) {
           logger.error("Post job resolution failed", {
@@ -365,6 +399,15 @@ console.log(
             mediaId: event.mediaId,
             error: resolveError,
           });
+          if (event.commentId && decision.allowed) {
+            await completeInstagramComment(event.commentId).catch((e: unknown) =>
+              logger.error("Failed to finalize comment idempotency claim", {
+                eventId: event.eventId,
+                commentId: event.commentId,
+                error: e,
+              }),
+            );
+          }
         }
       }
     }

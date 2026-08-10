@@ -131,11 +131,11 @@ test("replyToComment builds the correct Meta endpoint and returns success", asyn
   assert(result.error === null, "no error");
   assert(mock.calls.length === 1, "one network call");
   assert(
-    mock.calls[0].startsWith(`https://graph.facebook.com/${META_GRAPH_VERSION}/comment_1/replies`),
+    mock.calls[0].startsWith(`https://graph.instagram.com/${META_GRAPH_VERSION}/comment_1/replies`),
     "correct endpoint",
   );
-assert(mock.calls[0].includes(`message=${encodeURIComponent("Hello!")}`), "message encoded in URL");
-  assert(mock.calls[0].includes("access_token=secret-token"), "token in URL");
+assert(mock.calls[0].includes("graph.instagram.com"), "Instagram Graph host");
+  assert(!mock.calls[0].includes("secret-token"), "token not exposed in URL");
 });
 
 test("replyToComment returns failure for a non-2xx Meta response", async () => {

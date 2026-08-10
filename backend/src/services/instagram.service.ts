@@ -31,6 +31,35 @@ import type { PostJobResolution } from "./post-mapping.service.js";
 /** Meta Graph API version used by this backend for comment replies. */
 export const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION?.trim() || "v24.0";
 
+function metaApiHosts(): string[] {
+  const configured = env.meta.apiHost || "graph.instagram.com";
+  const fallback = configured === "graph.instagram.com"
+    ? "graph.facebook.com"
+    : "graph.instagram.com";
+  return Array.from(new Set([configured, fallback]));
+}
+
+function isOAuthFailure(status: number, json: unknown): boolean {
+  if (status === 401) return true;
+  if (!json || typeof json !== "object") return false;
+  const error = (json as { error?: { code?: unknown; type?: unknown; message?: unknown } }).error;
+  if (!error) return false;
+  if (error.code === 190) return true;
+  if (error.type === "OAuthException") return true;
+  return typeof error.message === "string" && /oauth|access token/i.test(error.message);
+}
+
+function safeMetaError(status: number, json: unknown, accessToken: string): string {
+  let safeError = `meta_http_${status}`;
+  if (json && typeof json === "object") {
+    const errorMessage = (json as { error?: { message?: unknown } }).error?.message;
+    if (typeof errorMessage === "string" && !errorMessage.includes(accessToken)) {
+      safeError = errorMessage.slice(0, 200);
+    }
+  }
+  return safeError;
+}
+
 /** Data needed to render a comment reply template. */
 export interface ReplyTemplateData {
   /** The rule's comment template text (with {{variables}}). */
@@ -149,37 +178,38 @@ export async function replyToComment(
     return { success: true, externalId: `dry-run-${commentId}`, error: null, dryRun: true };
   }
 
-  const url =
-    `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`;
+  let lastError = "meta_request_failed";
 
-  try {
-    const { ok, status, json } = await fetchJson(fetchImpl, url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ message }),
-    });
+  for (const host of metaApiHosts()) {
+    const url =
+      `https://${host}/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`;
 
-    if (ok) {
-      const id = (json as { id?: string } | null)?.id ?? null;
-      return { success: true, externalId: id ?? null, error: null, dryRun: false };
-    }
+    try {
+      const { ok, status, json } = await fetchJson(fetchImpl, url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ message }),
+      });
 
-    // Extract a safe error message (never the token).
-    let safeError = `meta_http_${status}`;
-    if (json && typeof json === "object") {
-      const err = (json as { error?: { message?: unknown } }).error?.message;
-      if (typeof err === "string" && !err.includes(accessToken)) {
-        safeError = err.slice(0, 200);
+      if (ok) {
+        const id = (json as { id?: string } | null)?.id ?? null;
+        return { success: true, externalId: id ?? null, error: null, dryRun: false };
       }
+
+      lastError = safeMetaError(status, json, accessToken);
+      if (!isOAuthFailure(status, json)) {
+        return { success: false, externalId: null, error: lastError, dryRun: false };
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown_network_error";
+      return { success: false, externalId: null, error: msg, dryRun: false };
     }
-    return { success: false, externalId: null, error: safeError, dryRun: false };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "unknown_network_error";
-    return { success: false, externalId: null, error: msg, dryRun: false };
   }
+
+  return { success: false, externalId: null, error: lastError, dryRun: false };
 }
 
 /** Comment status persisted to Firebase for a reply attempt. */
@@ -217,37 +247,6 @@ const noopLogger: ReplyLogger = {
   warn: () => {},
   error: () => {},
 };
-
-// Webhook providers may retry the same event. Keep a short-lived in-process
-// idempotency cache so one comment cannot trigger two public replies or two
-// private replies when the duplicate delivery reaches the same server
-// instance. The key is the real Instagram comment ID + rule ID.
-//
-// NOTE: This protects duplicate/concurrent deliveries on the same runtime.
-// For cross-instance/serverless guarantees, the webhook caller should also
-// persist an atomic idempotency key in Firebase/Redis.
-const RECENT_ACTION_TTL_MS = 10 * 60 * 1000;
-const recentActionClaims = new Map<string, number>();
-
-function claimRecentAction(key: string, now = Date.now()): boolean {
-  for (const [existingKey, claimedAt] of recentActionClaims) {
-    if (now - claimedAt > RECENT_ACTION_TTL_MS) {
-      recentActionClaims.delete(existingKey);
-    }
-  }
-
-  const claimedAt = recentActionClaims.get(key);
-  if (claimedAt !== undefined && now - claimedAt <= RECENT_ACTION_TTL_MS) {
-    return false;
-  }
-
-  recentActionClaims.set(key, now);
-  return true;
-}
-
-function releaseRecentAction(key: string): void {
-  recentActionClaims.delete(key);
-}
 
 /**
  * Orchestrates a single public comment reply for a matched rule:
@@ -362,27 +361,6 @@ export async function processCommentReply(
     };
   }
 
-  const actionKey = `instagram:comment-reply:${input.commentId}:${input.rule.id}`;
-  if (!input.dryRun && !claimRecentAction(actionKey, timestamp)) {
-    log.info("Duplicate comment event suppressed", {
-      commentId: input.commentId,
-      ruleId: input.rule.id,
-    });
-    return {
-      userId: input.userId,
-      username: input.username,
-      mediaId: input.mediaId,
-      commentId: input.commentId,
-      jobId: input.resolution.jobId,
-      ruleId: input.rule.id,
-      keyword: input.matchedKeyword,
-      commentStatus: "success",
-      error: "duplicate_event_suppressed",
-      dryRun: input.dryRun,
-      timestamp,
-    };
-  }
-
   const reply = await replyToComment(input.commentId, render.rendered, input.accessToken, {
     dryRun: input.dryRun,
     fetchImpl: deps.fetchImpl,
@@ -417,9 +395,6 @@ export async function processCommentReply(
     error: reply.error,
     dryRun: reply.dryRun,
   });
-  if (!input.dryRun) {
-    releaseRecentAction(actionKey);
-  }
   return {
     userId: input.userId,
     username: input.username,
@@ -541,6 +516,12 @@ function extractDmCta(message: string): { text: string; label: string | null } {
  *   POST https://graph.instagram.com/{version}/{ig_user_id}/messages
  *     { recipient: { comment_id }, message: { text } }
  *
+ * Private replies are intentionally text-only here. Meta documents one private
+ * reply per comment; rich button/quick-reply messages use a normal recipient
+ * id after a messaging interaction, not the comment_id private-reply shape.
+ * The CTA marker therefore becomes a real public Hire Daily URL in this first
+ * private reply instead of pretending a native button exists.
+ *
  * Never exposes the access token in logs/errors.
  */
 export async function sendDirectMessage(
@@ -603,15 +584,6 @@ export async function sendDirectMessage(
     };
   }
 
-  const url =
-    `https://graph.instagram.com/${META_GRAPH_VERSION}/` +
-    `${encodeURIComponent(instagramBusinessId)}/messages`;
-
-  // IMPORTANT: A comment-triggered private reply is one message.
-  // The recipient MUST be the original comment_id.
-  // We intentionally send the job URL as part of this single message.
-  // Do not make a second /messages call here: Meta limits a private reply
-  // to one message for the commenter.
   const payload = {
     recipient: {
       comment_id: commentId,
@@ -621,64 +593,66 @@ export async function sendDirectMessage(
     },
   };
 
-  try {
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
+  let lastError = "meta_request_failed";
 
-    let json: unknown = null;
+  for (const host of metaApiHosts()) {
+    const url =
+      `https://${host}/${META_GRAPH_VERSION}/` +
+      `${encodeURIComponent(instagramBusinessId)}/messages`;
+
     try {
-      json = await response.json();
-    } catch {
-      json = null;
-    }
+      const response = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
 
-    if (!response.ok) {
-      let safeError = `meta_http_${response.status}`;
-
-      if (json && typeof json === "object") {
-        const errorMessage =
-          "error" in json &&
-          typeof (json as { error?: { message?: unknown } }).error?.message ===
-            "string"
-            ? (json as { error: { message: string } }).error.message
-            : null;
-
-        if (errorMessage && !errorMessage.includes(accessToken)) {
-          safeError = errorMessage.slice(0, 200);
-        }
+      let json: unknown = null;
+      try {
+        json = await response.json();
+      } catch {
+        json = null;
       }
 
+      if (response.ok) {
+        const externalId =
+          (json as { message_id?: string } | null)?.message_id ?? null;
+        return {
+          success: true,
+          externalId,
+          error: null,
+          dryRun: false,
+        };
+      }
+
+      lastError = safeMetaError(response.status, json, accessToken);
+      if (!isOAuthFailure(response.status, json)) {
+        return {
+          success: false,
+          externalId: null,
+          error: lastError,
+          dryRun: false,
+        };
+      }
+    } catch (error) {
       return {
         success: false,
         externalId: null,
-        error: safeError,
+        error: error instanceof Error ? error.message : "unknown_network_error",
         dryRun: false,
       };
     }
-
-    const externalId =
-      (json as { message_id?: string } | null)?.message_id ?? null;
-
-    return {
-      success: true,
-      externalId,
-      error: null,
-      dryRun: false,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      externalId: null,
-      error: error instanceof Error ? error.message : "unknown_network_error",
-      dryRun: false,
-    };
   }
+
+  return {
+    success: false,
+    externalId: null,
+    error: lastError,
+    dryRun: false,
+  };
 }
 
 /**
@@ -687,10 +661,11 @@ export async function sendDirectMessage(
  * Example:
  *   "Here is the job [[CTA:View Job & Apply]]"
  *
- * becomes:
+ * becomes a single private-reply message with a real, clickable public URL:
  *   "Here is the job
  *
- *    View Job & Apply: https://hiredaily.app/jobs/..."
+ *    View Job & Apply:
+ *    https://hiredaily.app/jobs/..."
  *
  * The URL is the exact mapped Hire Daily job URL.
  */
@@ -859,28 +834,6 @@ export async function processDirectMessage(
     input.resolution.jobUrl,
   );
 
-  const dmActionKey = `instagram:dm:${input.commentId}:${input.rule.id}`;
-  if (!input.dryRun && !claimRecentAction(dmActionKey, timestamp)) {
-    log.info("Duplicate DM event suppressed", {
-      commentId: input.commentId,
-      ruleId: input.rule.id,
-    });
-    return {
-      userId: input.userId,
-      username: input.username,
-      mediaId: input.mediaId,
-      commentId: input.commentId,
-      jobId: input.resolution.jobId,
-      ruleId: input.rule.id,
-      keyword: input.matchedKeyword,
-      commentStatus: input.commentStatus,
-      dmStatus: "failed",
-      error: "duplicate_event_suppressed",
-      dryRun: input.dryRun,
-      timestamp,
-    };
-  }
-
   const dm = await sendDirectMessage(
     input.commentId,
     dmMessage,
@@ -921,9 +874,6 @@ export async function processDirectMessage(
     error: dm.error,
     dryRun: dm.dryRun,
   });
-  if (!input.dryRun) {
-    releaseRecentAction(dmActionKey);
-  }
   return {
     userId: input.userId,
     username: input.username,

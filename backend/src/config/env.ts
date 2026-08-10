@@ -40,18 +40,28 @@ function readFirebaseEnv(): FirebaseEnv {
   };
 }
 
+const configuredPublicAppUrl = process.env.PUBLIC_APP_URL?.trim() || "";
+const configuredUrlIsLocal = /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(?:\/|$)/i.test(configuredPublicAppUrl);
+
 export const env = {
   firebase: readFirebaseEnv(),
   // Public base URL used to build the Hire Daily job detail URL:
   //   `${publicAppUrl}/jobs/{jobId}`
-  // Prefer PUBLIC_APP_URL (e.g. https://hire-daily.vercel.app). For local dev
-  // we fall back to the Vite dev server default if not configured.
-  publicAppUrl: process.env.PUBLIC_APP_URL?.trim() || "http://localhost:5173",
+  // Production must never generate localhost links, even if an old Vercel
+  // environment variable still contains the development URL.
+  publicAppUrl:
+    configuredPublicAppUrl && !(process.env.NODE_ENV === "production" && configuredUrlIsLocal)
+      ? configuredPublicAppUrl.replace(/\/+$/, "")
+      : "https://hiredaily.app",
   // Instagram / Meta config for Phase 5 Checkpoint 3 (public comment replies).
   meta: {
-    // Never log or expose this token. It is only used to build the Meta
-    // Graph API request URL.
+    // Never log or expose this token. It is only used to authenticate Meta
+    // Graph API requests.
     accessToken: process.env.META_ACCESS_TOKEN?.trim() || "",
+    // Instagram Login uses graph.instagram.com. Facebook Login for Business
+    // uses graph.facebook.com. The service starts with this host and can
+    // safely fall back to the other host only for an explicit OAuth error.
+    apiHost: process.env.META_API_HOST?.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "") || "graph.instagram.com",
     // When "true", the comment-reply service builds + validates the request
     // but NEVER calls the real Meta API and returns a simulated success.
     // Production must explicitly set this to "true" to enable dry-run;

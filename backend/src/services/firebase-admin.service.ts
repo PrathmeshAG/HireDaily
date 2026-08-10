@@ -206,6 +206,70 @@ export async function writeAutomationSettings(partial: Record<string, unknown>):
  *
  * Never touches `jobs/*` — only `automation/rules`.
  */
+
+/**
+ * Atomically claims a comment for automation processing.
+ *
+ * Webhooks can be delivered more than once and, in a serverless deployment,
+ * two invocations can execute concurrently on different instances. The old
+ * in-memory cooldown/seen-comment map cannot protect that case. This Firebase
+ * transaction is the cross-instance idempotency gate: exactly one invocation
+ * can create the claim for a given Instagram comment id.
+ *
+ * A stale "processing" claim older than 10 minutes may be reclaimed so a
+ * crashed invocation does not permanently block the comment. Completed
+ * claims are never reclaimed.
+ */
+export async function claimInstagramComment(commentId: string): Promise<boolean> {
+  if (!commentId) return false;
+
+  const crypto = await import("node:crypto");
+  const key = crypto.createHash("sha256").update(commentId).digest("hex");
+  const ref = db().ref(`automation/processedComments/${key}`);
+  const now = Date.now();
+  const staleAfterMs = 10 * 60 * 1000;
+
+  const result = await ref.transaction((current) => {
+    if (!current || typeof current !== "object") {
+      return {
+        commentId,
+        state: "processing",
+        claimedAt: now,
+        updatedAt: now,
+      };
+    }
+
+    const value = current as Record<string, unknown>;
+    const state = value.state === "completed" ? "completed" : "processing";
+    const claimedAt = typeof value.claimedAt === "number" ? value.claimedAt : 0;
+
+    if (state === "completed") return;
+    if (claimedAt > 0 && now - claimedAt < staleAfterMs) return;
+
+    return {
+      commentId,
+      state: "processing",
+      claimedAt: now,
+      updatedAt: now,
+      reclaimed: true,
+    };
+  });
+
+  return result.committed;
+}
+
+/** Marks a previously claimed comment as completed. */
+export async function completeInstagramComment(commentId: string): Promise<void> {
+  if (!commentId) return;
+  const crypto = await import("node:crypto");
+  const key = crypto.createHash("sha256").update(commentId).digest("hex");
+  await db().ref(`automation/processedComments/${key}`).update({
+    state: "completed",
+    completedAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+}
+
 export async function readActiveRules(now: number = Date.now()): Promise<RuleEngineRule[]> {
   const snap = await db().ref("automation/rules").get();
   if (!snap.exists()) return [];
