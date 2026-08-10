@@ -14,7 +14,11 @@ function fromChange(change: MetaWebhookChange): NormalizedWebhookEvent {
   const field = (change.field ?? "").toLowerCase();
   const value = change.value ?? {};
   const eventType: InternalEventType =
-    field === "comments" ? "comment" : field === "mentions" ? "mention" : "unknown";
+    field === "comments" || field === "live_comments"
+      ? "comment"
+      : field === "mentions"
+        ? "mention"
+        : "unknown";
 
   const commentId = typeof value.id === "string" ? value.id : null;
   const mediaId = typeof value.media?.id === "string" ? value.media.id : null;

@@ -19,13 +19,15 @@ interface MetaMediaResponse {
     thumbnail_url?: string;
     timestamp?: string;
   }>;
-  paging?: {
-    next?: string;
-  };
-  error?: {
-    message?: string;
-    code?: number;
-  };
+  paging?: { next?: string };
+  error?: { message?: string; code?: number; type?: string };
+}
+
+const DEFAULT_GRAPH_VERSION = "v24.0";
+
+function graphVersions(): string[] {
+  const configured = process.env.META_GRAPH_VERSION?.trim();
+  return Array.from(new Set([configured, DEFAULT_GRAPH_VERSION, "v23.0", "v22.0", "v21.0"].filter(Boolean) as string[]));
 }
 
 function getInstagramBusinessId(): string {
@@ -40,32 +42,36 @@ function getAccessToken(): string {
   return value;
 }
 
-/**
- * Fetches media owned by the configured Instagram Professional account.
- * Tokens remain server-side and are never returned to the caller.
- */
-export async function fetchInstagramMedia(limit = 50): Promise<InstagramMediaRecord[]> {
-  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
-  const accountId = getInstagramBusinessId();
-  const accessToken = getAccessToken();
+const MEDIA_FIELDS = [
+  "id",
+  "permalink",
+  "caption",
+  "media_type",
+  "media_url",
+  "thumbnail_url",
+  "timestamp",
+].join(",");
 
-  const fields = [
-    "id",
-    "permalink",
-    "caption",
-    "media_type",
-    "media_url",
-    "thumbnail_url",
-    "timestamp",
-  ].join(",");
+function normalizeMedia(payload: MetaMediaResponse | null, syncedAt: number): InstagramMediaRecord[] {
+  return (payload?.data ?? [])
+    .filter((item) => typeof item.id === "string" && item.id.trim().length > 0)
+    .map((item) => ({
+      id: item.id!.trim(),
+      permalink: typeof item.permalink === "string" ? item.permalink : null,
+      caption: typeof item.caption === "string" ? item.caption : null,
+      mediaType: typeof item.media_type === "string" ? item.media_type : null,
+      mediaUrl: typeof item.media_url === "string" ? item.media_url : null,
+      thumbnailUrl: typeof item.thumbnail_url === "string" ? item.thumbnail_url : null,
+      timestamp: typeof item.timestamp === "string" ? item.timestamp : null,
+      syncedAt,
+    }));
+}
 
-  const url =
-    `https://graph.facebook.com/v21.0/${encodeURIComponent(accountId)}/media` +
-    `?fields=${encodeURIComponent(fields)}` +
-    `&limit=${safeLimit}` +
-    `&access_token=${encodeURIComponent(accessToken)}`;
-
-  const response = await fetch(url);
+async function getJson(url: string): Promise<{ response: Response; payload: MetaMediaResponse | null }> {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
 
   let payload: MetaMediaResponse | null = null;
   try {
@@ -74,30 +80,53 @@ export async function fetchInstagramMedia(limit = 50): Promise<InstagramMediaRec
     payload = null;
   }
 
-  if (!response.ok) {
-    const message =
-      payload?.error?.message ??
-      `Instagram media request failed with HTTP ${response.status}`;
+  return { response, payload };
+}
 
-    throw new Error(message);
+/**
+ * Fetch media owned by the configured Instagram Professional account.
+ * Supports both Meta Graph host variants because Meta has multiple
+ * authentication/API paths for Instagram Professional accounts.
+ */
+export async function fetchInstagramMedia(limit = 50): Promise<InstagramMediaRecord[]> {
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
+  const accountId = getInstagramBusinessId();
+  const accessToken = getAccessToken();
+  const syncedAt = Date.now();
+  const errors: string[] = [];
+
+  // Primary path: Instagram Professional account media through graph.facebook.com.
+  for (const version of graphVersions()) {
+    const url = new URL(`https://graph.facebook.com/${version}/${encodeURIComponent(accountId)}/media`);
+    url.searchParams.set("fields", MEDIA_FIELDS);
+    url.searchParams.set("limit", String(safeLimit));
+    url.searchParams.set("access_token", accessToken);
+
+    try {
+      const { response, payload } = await getJson(url.toString());
+      if (response.ok) return normalizeMedia(payload, syncedAt);
+      errors.push(`facebook/${version}: ${payload?.error?.message ?? `HTTP ${response.status}`}`);
+    } catch (error) {
+      errors.push(`facebook/${version}: ${error instanceof Error ? error.message : "network error"}`);
+    }
   }
 
-  const syncedAt = Date.now();
+  // Fallback path used by the Instagram API authentication model.
+  // Here the token itself identifies the Instagram professional account.
+  for (const version of graphVersions()) {
+    const url = new URL(`https://graph.instagram.com/${version}/me/media`);
+    url.searchParams.set("fields", MEDIA_FIELDS);
+    url.searchParams.set("limit", String(safeLimit));
+    url.searchParams.set("access_token", accessToken);
 
-  return (payload?.data ?? [])
-    .filter((item) => typeof item.id === "string" && item.id.trim().length > 0)
-    .map((item) => {
-      const id = item.id as string;
-      return { 
-      id: id.trim(),
-      permalink: typeof item.permalink === "string" ? item.permalink : null,
-      caption: typeof item.caption === "string" ? item.caption : null,
-      mediaType: typeof item.media_type === "string" ? item.media_type : null,
-      mediaUrl: typeof item.media_url === "string" ? item.media_url : null,
-      thumbnailUrl:
-        typeof item.thumbnail_url === "string" ? item.thumbnail_url : null,
-      timestamp: typeof item.timestamp === "string" ? item.timestamp : null,
-      syncedAt,
-      };
-    });
+    try {
+      const { response, payload } = await getJson(url.toString());
+      if (response.ok) return normalizeMedia(payload, syncedAt);
+      errors.push(`instagram/${version}: ${payload?.error?.message ?? `HTTP ${response.status}`}`);
+    } catch (error) {
+      errors.push(`instagram/${version}: ${error instanceof Error ? error.message : "network error"}`);
+    }
+  }
+
+  throw new Error(`Instagram media sync failed. ${errors.slice(0, 3).join(" | ")}`);
 }

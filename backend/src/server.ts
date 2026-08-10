@@ -387,6 +387,22 @@ async function ingestWebhook(req: express.Request, res: express.Response): Promi
       await writeAutomationLog(event, "error").catch((e) => logger.error("Failed to write error log", e));
     }
 
+    // The rule engine is comment-only. Messaging receipts, DMs, mentions,
+    // and other webhook events can legitimately have no mediaId/comment text.
+    // They are still logged above, but must never be evaluated as comments.
+    if (event.eventType !== "comment") continue;
+
+    // A malformed comment event without a mediaId cannot be mapped to a post.
+    // Keep the webhook successful and log it as an ignored event instead of
+    // producing a misleading rule-engine error.
+    if (!event.mediaId) {
+      logger.warn("Instagram comment event missing mediaId", {
+        eventId: event.eventId,
+        commentId: event.commentId,
+      });
+      continue;
+    }
+
     // Phase 5 Checkpoint 1 — Rule Engine (best-effort, non-blocking).
     await runRuleEngine(event);
   }
@@ -892,12 +908,13 @@ app.get("/api/automation/summary", async (_req, res) => {
 app.get("/api/automation/settings", async (_req, res) => {
   try {
     const isFirebase = isFirebaseAdminConfigured();
-    const metaConfigured = !!process.env.META_ACCESS_TOKEN?.trim();
-    const dryRun =
-      process.env.META_DRY_RUN?.trim().toLowerCase() === "true";
-    const webhookConfigured =
-      !!process.env.META_VERIFY_TOKEN?.trim() ||
-      !!process.env.WEBHOOK_VERIFY_TOKEN?.trim();
+    const accessToken = process.env.META_ACCESS_TOKEN?.trim() ?? "";
+    const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim() ?? "";
+    const metaConfigured = Boolean(accessToken);
+    const dryRun = process.env.META_DRY_RUN?.trim().toLowerCase() === "true";
+    const webhookConfigured = Boolean(
+      process.env.META_VERIFY_TOKEN?.trim() || process.env.WEBHOOK_VERIFY_TOKEN?.trim(),
+    );
 
     let instagram = {
       connected: false,
@@ -905,55 +922,76 @@ app.get("/api/automation/settings", async (_req, res) => {
       accountType: null as string | null,
     };
 
-    const accessToken = process.env.META_ACCESS_TOKEN?.trim();
-    const instagramBusinessId =
-      process.env.INSTAGRAM_BUSINESS_ID?.trim();
+    const configuredVersion = process.env.META_GRAPH_VERSION?.trim();
+    const versions = Array.from(
+      new Set([configuredVersion, "v24.0", "v23.0", "v22.0", "v21.0"].filter(Boolean) as string[]),
+    );
 
-    if (accessToken && instagramBusinessId) {
-      try {
-        const url =
-          `https://graph.facebook.com/v21.0/${encodeURIComponent(
-            instagramBusinessId,
-          )}` +
-          `?fields=id,username,account_type&access_token=${encodeURIComponent(
-            accessToken,
-          )}`;
-
-        const metaResponse = await fetch(url);
-
-        if (metaResponse.ok) {
-          const data = (await metaResponse.json()) as {
-            id?: string;
-            username?: string;
-            account_type?: string;
-          };
-
-          instagram = {
-            connected: true,
-            username:
-              typeof data.username === "string" ? data.username : null,
-            accountType:
-              typeof data.account_type === "string"
-                ? data.account_type
-                : null,
-          };
+    // Check the configured IG user id first. If the token uses Instagram Login,
+    // fall back to graph.instagram.com/me, where the token identifies the IG user.
+    if (accessToken) {
+      for (const version of versions) {
+        if (instagram.connected) break;
+        if (instagramBusinessId) {
+          try {
+            const url = new URL(
+              `https://graph.facebook.com/${version}/${encodeURIComponent(instagramBusinessId)}`,
+            );
+            url.searchParams.set("fields", "id,username,account_type");
+            url.searchParams.set("access_token", accessToken);
+            const metaResponse = await fetch(url.toString());
+            if (metaResponse.ok) {
+              const data = (await metaResponse.json()) as {
+                username?: string;
+                account_type?: string;
+              };
+              instagram = {
+                connected: true,
+                username: typeof data.username === "string" ? data.username : null,
+                accountType: typeof data.account_type === "string" ? data.account_type : "BUSINESS",
+              };
+            }
+          } catch (error) {
+            logger.warn("Instagram business account check failed", {
+              version,
+              error: error instanceof Error ? error.message : "unknown_error",
+            });
+          }
         }
-      } catch (error) {
-        logger.warn("Instagram connection check failed", {
-          error:
-            error instanceof Error ? error.message : "unknown_error",
-        });
+      }
+
+      if (!instagram.connected) {
+        for (const version of versions) {
+          try {
+            const url = new URL(`https://graph.instagram.com/${version}/me`);
+            url.searchParams.set("fields", "id,username,account_type");
+            url.searchParams.set("access_token", accessToken);
+            const response = await fetch(url.toString());
+            if (!response.ok) continue;
+            const data = (await response.json()) as {
+              username?: string;
+              account_type?: string;
+            };
+            instagram = {
+              connected: true,
+              username: typeof data.username === "string" ? data.username : null,
+              accountType: typeof data.account_type === "string" ? data.account_type : "BUSINESS",
+            };
+            break;
+          } catch (error) {
+            logger.warn("Instagram /me connection check failed", {
+              version,
+              error: error instanceof Error ? error.message : "unknown_error",
+            });
+          }
+        }
       }
     }
 
     let lastEventAt: number | null = null;
     try {
       const logs = await readAllLogs(50);
-      const webhookEvents = logs.filter(
-        (log) =>
-          log.channel === "instagram" &&
-          log.type === "comment_received",
-      );
+      const webhookEvents = logs.filter((log) => log.channel === "instagram");
       lastEventAt = webhookEvents[0]?.timestamp ?? null;
     } catch {
       lastEventAt = null;
@@ -974,7 +1012,7 @@ app.get("/api/automation/settings", async (_req, res) => {
         url: "/webhooks/instagram",
       },
       api: {
-        ok: isFirebase && metaConfigured,
+        ok: isFirebase && instagram.connected,
         latencyMs: null,
         lastCheckedAt: apiCheckedAt,
       },

@@ -320,7 +320,9 @@ export async function readPostMapping(mediaId: string): Promise<{
     instagramPostUrl:
       typeof val.instagramPostUrl === "string"
         ? val.instagramPostUrl
-        : null,
+        : typeof val.postUrl === "string"
+          ? val.postUrl
+          : null,
 
     mappedAt:
       typeof val.mappedAt === "number"
@@ -783,7 +785,9 @@ export async function readAllPostMappings(): Promise<
       instagramPostUrl:
         typeof m.instagramPostUrl === "string"
           ? m.instagramPostUrl
-          : null,
+          : typeof m.postUrl === "string"
+            ? m.postUrl
+            : null,
 
       mappedAt:
         typeof m.mappedAt === "number"

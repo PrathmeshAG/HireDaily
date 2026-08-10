@@ -20,7 +20,12 @@ export function PostMappingPage() {
   const { data: jobs } = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs });
   const { data: instagramMedia, isLoading: mediaLoading } = useQuery({
     queryKey: ["automation", "instagram-media"],
-    queryFn: () => getInstagramMedia(50),
+    queryFn: async () => {
+      const cached = await getInstagramMedia(50);
+      if (cached.length > 0) return cached;
+      return syncInstagramMedia(50);
+    },
+    retry: 1,
   });
 
   const [search, setSearch] = useState("");
@@ -291,7 +296,12 @@ function MappingDialog({
   const qc = useQueryClient();
   const { data: media = [], isLoading: mediaLoading } = useQuery({
     queryKey: ["automation", "instagram-media"],
-    queryFn: () => getInstagramMedia(50),
+    queryFn: async () => {
+      const cached = await getInstagramMedia(50);
+      if (cached.length > 0) return cached;
+      return syncInstagramMedia(50);
+    },
+    retry: 1,
   });
 
   const [mediaId, setMediaId] = useState(mapping?.mediaId ?? "");
@@ -433,7 +443,7 @@ function MappingDialog({
                   </div>
                 ) : availableMedia.length === 0 ? (
                   <div className="py-8 text-center text-xs text-white/40">
-                    No Instagram posts found. Use Refresh Posts first.
+                    No Instagram posts are available yet. Use “Refresh Posts” above to sync the latest posts from Meta.
                   </div>
                 ) : (
                   availableMedia.map((item) => {
