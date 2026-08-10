@@ -49,6 +49,128 @@ import { fetchInstagramMedia } from "./services/instagram-media.service.js";
 
 const app = express();
 
+/**
+ * Instagram webhook safety guards.
+ *
+ * Meta can deliver the same webhook more than once and it also delivers
+ * webhook events for replies made by our own Instagram account. Those own
+ * replies must NEVER be fed back into the automation rule engine, otherwise
+ * "Check Your DM" can trigger another "Check Your DM" reply.
+ *
+ * The Firebase claim below remains the cross-instance/idempotency guard.
+ * These in-memory guards additionally stop duplicate processing while two
+ * deliveries are being handled by the same server instance at the same time.
+ */
+const IN_FLIGHT_COMMENT_TTL_MS = 10 * 60 * 1000;
+const inFlightCommentActions = new Map<string, number>();
+
+function cleanupInFlightCommentActions(now = Date.now()): void {
+  for (const [commentId, expiresAt] of inFlightCommentActions.entries()) {
+    if (expiresAt <= now) {
+      inFlightCommentActions.delete(commentId);
+    }
+  }
+}
+
+function claimLocalCommentProcessing(commentId: string): boolean {
+  const now = Date.now();
+  cleanupInFlightCommentActions(now);
+
+  if (inFlightCommentActions.has(commentId)) {
+    return false;
+  }
+
+  inFlightCommentActions.set(commentId, now + IN_FLIGHT_COMMENT_TTL_MS);
+  return true;
+}
+
+let resolvedOwnInstagramIdentity: {
+  id: string | null;
+  username: string | null;
+} | null = null;
+let ownInstagramIdentityPromise: Promise<{
+  id: string | null;
+  username: string | null;
+}> | null = null;
+
+async function resolveOwnInstagramIdentity(): Promise<{
+  id: string | null;
+  username: string | null;
+}> {
+  if (resolvedOwnInstagramIdentity) {
+    return resolvedOwnInstagramIdentity;
+  }
+
+  const configuredId =
+    process.env.INSTAGRAM_BUSINESS_ID?.trim() ||
+    process.env.INSTAGRAM_USER_ID?.trim() ||
+    process.env.META_INSTAGRAM_USER_ID?.trim() ||
+    "";
+
+  const configuredUsername =
+    process.env.INSTAGRAM_USERNAME?.trim().replace(/^@/, "").toLowerCase() || "";
+
+  const accessToken = process.env.META_ACCESS_TOKEN?.trim() || "";
+
+  // Prefer explicit environment values. If the username/id is not complete,
+  // ask Meta once and cache the safe identity fields.
+  let id = configuredId || null;
+  let username = configuredUsername || null;
+
+  if (accessToken && (id || !configuredId)) {
+    try {
+      const graphTarget = id ? encodeURIComponent(id) : "me";
+      const url =
+        `https://graph.facebook.com/v24.0/${graphTarget}` +
+        `?fields=id,username&access_token=${encodeURIComponent(accessToken)}`;
+
+      const response = await fetch(url, { method: "GET" });
+      if (response.ok) {
+        const data = (await response.json()) as {
+          id?: string;
+          username?: string;
+        };
+
+        id = typeof data.id === "string" ? data.id : id;
+        username =
+          typeof data.username === "string"
+            ? data.username.trim().replace(/^@/, "").toLowerCase()
+            : username;
+      }
+    } catch (error) {
+      logger.warn("Failed to resolve own Instagram identity", {
+        error: error instanceof Error ? error.message : "unknown_error",
+      });
+    }
+  }
+
+  resolvedOwnInstagramIdentity = { id, username };
+  return resolvedOwnInstagramIdentity;
+}
+
+async function isOwnInstagramComment(event: {
+  eventType: string;
+  userId: string | null;
+  username: string | null;
+}): Promise<boolean> {
+  if (event.eventType !== "comment") {
+    return false;
+  }
+
+  const identity = await resolveOwnInstagramIdentity();
+
+  const eventUserId = event.userId?.trim() || "";
+  const eventUsername =
+    event.username?.trim().replace(/^@/, "").toLowerCase() || "";
+
+  return (
+    (!!identity.id && !!eventUserId && eventUserId === identity.id) ||
+    (!!identity.username &&
+      !!eventUsername &&
+      eventUsername === identity.username)
+  );
+}
+
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -188,22 +310,36 @@ async function runRuleEngine(event: {
     // the bot will match its own "Check Your DM" reply and create another
     // public reply (self-comment loop).
     //
-    // Meta's comments webhook identifies the author in value.from.id, which
-    // is normalized to event.userId by webhook-parser.ts.
-    const ownInstagramId = process.env.INSTAGRAM_BUSINESS_ID?.trim() || "";
-    const ownInstagramUsername = process.env.INSTAGRAM_USERNAME?.trim().replace(/^@/, "").toLowerCase() || "";
-    const isOwnComment =
-      event.eventType === "comment" &&
-      ((!!ownInstagramId && !!event.userId && event.userId === ownInstagramId) ||
-        (!!ownInstagramUsername && !!event.username && event.username.trim().toLowerCase() === ownInstagramUsername));
+    // The identity check uses both configured values and a one-time Graph API
+    // lookup, so this still works when the webhook payload does not include
+    // our username but does include our user id (or vice versa).
+    const isOwnComment = await isOwnInstagramComment(event);
 
     if (isOwnComment) {
       logger.info("Ignoring own Instagram comment", {
         eventId: event.eventId,
         commentId: event.commentId,
         userId: event.userId,
+        username: event.username,
       });
       return;
+    }
+
+    // A webhook can be delivered twice before the first delivery finishes.
+    // Claim the comment locally BEFORE rule evaluation/external side effects.
+    // Firebase claimInstagramActionOnce remains the durable cross-instance
+    // protection immediately before the actual Meta calls.
+    if (event.eventType === "comment" && event.commentId) {
+      const locallyClaimed = claimLocalCommentProcessing(event.commentId);
+
+      if (!locallyClaimed) {
+        logger.info("Ignoring duplicate in-flight Instagram comment webhook", {
+          eventId: event.eventId,
+          commentId: event.commentId,
+          userId: event.userId,
+        });
+        return;
+      }
     }
 
     const now = Date.now();
