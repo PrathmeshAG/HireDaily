@@ -509,7 +509,7 @@ export async function sendDirectMessage(
     };
   }
 
-  if (!message) {
+  if (!message.trim()) {
     return {
       success: false,
       externalId: null,
@@ -527,7 +527,19 @@ export async function sendDirectMessage(
     };
   }
 
+  const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim();
+
+  if (!instagramBusinessId) {
+    return {
+      success: false,
+      externalId: null,
+      error: "instagram_business_id_missing",
+      dryRun,
+    };
+  }
+
   if (dryRun) {
+    // Validate everything but never call Meta.
     return {
       success: true,
       externalId: `dry-run-private-reply-${commentId}`,
@@ -536,27 +548,21 @@ export async function sendDirectMessage(
     };
   }
 
-  const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim();
-
-  if (!instagramBusinessId) {
-    return {
-      success: false,
-      externalId: null,
-      error: "instagram_business_id_missing",
-      dryRun: false,
-    };
-  }
-
   const url =
     `https://graph.instagram.com/${META_GRAPH_VERSION}/` +
     `${encodeURIComponent(instagramBusinessId)}/messages`;
 
+  // IMPORTANT: A comment-triggered private reply is one message.
+  // The recipient MUST be the original comment_id.
+  // We intentionally send the job URL as part of this single message.
+  // Do not make a second /messages call here: Meta limits a private reply
+  // to one message for the commenter.
   const payload = {
     recipient: {
       comment_id: commentId,
     },
     message: {
-      text: message,
+      text: message.trim(),
     },
   };
 
@@ -571,48 +577,50 @@ export async function sendDirectMessage(
     });
 
     let json: unknown = null;
-
     try {
       json = await response.json();
     } catch {
       json = null;
     }
 
-    if (response.ok) {
-      const data = json as {
-        message_id?: string;
-      } | null;
+    if (!response.ok) {
+      let safeError = `meta_http_${response.status}`;
+
+      if (json && typeof json === "object") {
+        const errorMessage =
+          "error" in json &&
+          typeof (json as { error?: { message?: unknown } }).error?.message ===
+            "string"
+            ? (json as { error: { message: string } }).error.message
+            : null;
+
+        if (errorMessage && !errorMessage.includes(accessToken)) {
+          safeError = errorMessage.slice(0, 200);
+        }
+      }
 
       return {
-        success: true,
-        externalId: data?.message_id ?? null,
-        error: null,
+        success: false,
+        externalId: null,
+        error: safeError,
         dryRun: false,
       };
     }
 
-    const errorMessage =
-      json &&
-      typeof json === "object" &&
-      "error" in json &&
-      typeof (json as any).error?.message === "string"
-        ? (json as any).error.message
-        : `meta_http_${response.status}`;
+    const externalId =
+      (json as { message_id?: string } | null)?.message_id ?? null;
 
     return {
-      success: false,
-      externalId: null,
-      error: errorMessage.slice(0, 200),
+      success: true,
+      externalId,
+      error: null,
       dryRun: false,
     };
   } catch (error) {
     return {
       success: false,
       externalId: null,
-      error:
-        error instanceof Error
-          ? error.message
-          : "unknown_network_error",
+      error: error instanceof Error ? error.message : "unknown_network_error",
       dryRun: false,
     };
   }
@@ -743,6 +751,7 @@ export async function processDirectMessage(
   }
 
   const dmText = await deps.reader.getDmTemplateText(input.rule);
+  
   if (!dmText) {
     return {
       userId: input.userId,
@@ -786,11 +795,10 @@ export async function processDirectMessage(
     };
   }
 
-  // Convert the internal CTA marker into a normal clickable job URL.
-  // Meta's Private Reply endpoint accepts a text message for the initial
-  // comment-triggered private reply. A native website button is not supported
-  // on this private-reply payload, so we keep the CTA label and append the
-  // exact mapped Hire Daily URL as plain text.
+  // Build ONE private-reply message.
+  // The CTA marker is converted into the exact mapped Hire Daily URL.
+  // Do not make a second /messages call for the button: Meta allows only one
+  // private reply for the original comment.
   const dmMessage = buildDmMessage(
     render.rendered,
     input.resolution.jobUrl,
