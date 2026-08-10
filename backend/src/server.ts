@@ -27,11 +27,17 @@ readAllPostMappings,
   writeInstagramMediaCache,
   readAllInstagramMedia,
   claimInstagramActionOnce,
+  isKnownBotComment,
+  rememberBotComment,
 } from "./services/firebase-admin.service.js";
 import { evaluateComment,explainRuleEvaluation, } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
 import { resolvePostJob } from "./services/post-mapping.service.js";
-import { processCommentReplyProduction, processDirectMessageProduction } from "./services/instagram.service.js";
+import {
+  processCommentReplyProduction,
+  processDirectMessageProduction,
+  resolveCommenterId,
+} from "./services/instagram.service.js";
 import { writeCommentReplyLog, writeDmLog } from "./services/firebase-admin.service.js";
 import {
   makeFirebaseUserStore,
@@ -149,9 +155,18 @@ async function isOwnInstagramComment(event: {
   eventType: string;
   userId: string | null;
   username: string | null;
+  commentId?: string | null;
+  parentId?: string | null;
 }): Promise<boolean> {
   if (event.eventType !== "comment") {
     return false;
+  }
+
+  // Durable guard for comments created by our own public-reply API call.
+  // This prevents the self-reply loop even if Meta's `from` identity is
+  // missing or the configured Instagram id cannot be resolved.
+  if (event.commentId && (await isKnownBotComment(event.commentId))) {
+    return true;
   }
 
   const identity = await resolveOwnInstagramIdentity();
@@ -299,6 +314,7 @@ async function runRuleEngine(event: {
   userId: string | null;
   username: string | null;
   commentId: string | null;
+  parentId: string | null;
   eventId: string;
 }): Promise<void> {
   try {
@@ -439,6 +455,9 @@ console.log(
                 });
                 commentStatus = replyData.commentStatus;
                 await writeCommentReplyLog(replyData);
+                if (replyData.externalId && !replyData.dryRun) {
+                  await rememberBotComment(replyData.externalId);
+                }
               }
             } catch (replyError) {
               commentStatus = "failed";
@@ -492,8 +511,15 @@ console.log(
                   timestamp: Date.now(),
                 });
               } else {
+                const dmRecipientId =
+                  event.userId ??
+                  (await resolveCommenterId(
+                    event.commentId,
+                    process.env.META_ACCESS_TOKEN?.trim() ?? "",
+                  ));
+
                 const dmData = await processDirectMessageProduction({
-                  recipientId: event.userId,
+                  recipientId: dmRecipientId,
                   userId: event.userId,
                   username: event.username,
                   mediaId: event.mediaId,

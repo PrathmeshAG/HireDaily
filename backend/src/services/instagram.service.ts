@@ -199,6 +199,8 @@ export interface CommentReplyLogData {
   commentStatus: CommentStatus;
   error: string | null;
   dryRun: boolean;
+  /** Meta id of the public reply created by the bot; used only for self-loop suppression. */
+  externalId?: string | null;
   timestamp: number;
 }
 
@@ -356,6 +358,7 @@ export async function processCommentReply(
       commentStatus: "success",
       error: null,
       dryRun: input.dryRun,
+      externalId: reply.externalId,
       timestamp,
     };
   }
@@ -477,6 +480,48 @@ function safeMetaError(json: unknown, accessToken: string, fallback: string): st
     }
   }
   return fallback;
+}
+
+/**
+ * Fallback resolver for webhook payloads where `from.id` is absent.
+ *
+ * Instagram comment webhooks normally include the commenter id, but the
+ * payload is not guaranteed to contain every identity field in every setup.
+ * When it is missing, read the comment once and use its `from.id` for the
+ * Send API recipient. This keeps the DM flow independent from the username.
+ */
+export async function resolveCommenterId(
+  commentId: string | null,
+  accessToken: string,
+  opts: { fetchImpl?: typeof fetch } = {},
+): Promise<string | null> {
+  const normalizedCommentId = commentId?.trim() || "";
+  if (!normalizedCommentId || !accessToken) return null;
+
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const url =
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/` +
+    `${encodeURIComponent(normalizedCommentId)}?fields=from`;
+
+  try {
+    const result = await fetchJson(fetchImpl, url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!result.ok || !result.json || typeof result.json !== "object") {
+      return null;
+    }
+
+    const from = (result.json as { from?: { id?: unknown } }).from;
+    return typeof from?.id === "string" && from.id.trim()
+      ? from.id.trim()
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function sendInstagramJson(

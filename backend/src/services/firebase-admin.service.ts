@@ -375,6 +375,30 @@ export async function isFirebaseAdminReachable(): Promise<boolean> {
  * instances, unlike the in-memory cooldown service. A claim is permanent so a
  * webhook redelivery can never produce a second external message.
  */
+/**
+ * Persists the external Instagram comment id created by our bot.
+ *
+ * Meta sends webhook events for comments made by the connected account too.
+ * Keeping the returned external comment id gives us a second, durable
+ * self-comment guard even if Meta's webhook `from` identity is incomplete or
+ * the configured Instagram id is stale.
+ */
+export async function rememberBotComment(commentId: string | null): Promise<void> {
+  const normalized = String(commentId ?? "").trim();
+  if (!normalized) return;
+  await db().ref(`automation/instagramBotComments/${normalized}`).set({
+    createdAt: Date.now(),
+  });
+}
+
+/** Returns true when this comment was created by our own automation. */
+export async function isKnownBotComment(commentId: string | null): Promise<boolean> {
+  const normalized = String(commentId ?? "").trim();
+  if (!normalized) return false;
+  const snap = await db().ref(`automation/instagramBotComments/${normalized}`).get();
+  return snap.exists();
+}
+
 export async function claimInstagramActionOnce(
   commentId: string,
   action: "comment_reply" | "dm",

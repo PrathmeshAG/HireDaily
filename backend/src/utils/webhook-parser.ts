@@ -26,6 +26,11 @@ function fromChange(change: MetaWebhookChange): NormalizedWebhookEvent {
       ? value.id.trim()
       : null;
 
+  const parentId =
+    typeof value.parent_id === "string" && value.parent_id.trim()
+      ? value.parent_id.trim()
+      : null;
+
   const mediaId =
     typeof value.media?.id === "string" && value.media.id.trim()
       ? value.media.id.trim()
@@ -56,6 +61,7 @@ function fromChange(change: MetaWebhookChange): NormalizedWebhookEvent {
     userId,
     username,
     commentId,
+    parentId,
 
     messageId: null,
     commentText,
@@ -146,6 +152,7 @@ function fromMessagingEvent(
     username: null,
 
     commentId: null,
+    parentId: null,
 
     messageId,
 
@@ -242,6 +249,7 @@ export function parseWebhookEvents(
           userId: null,
           username: null,
           commentId: null,
+          parentId: null,
           messageId: null,
           commentText: null,
 
@@ -279,6 +287,7 @@ export function parseWebhookEvents(
           userId: null,
           username: null,
           commentId: null,
+          parentId: null,
           messageId: null,
           commentText: null,
 
@@ -300,6 +309,7 @@ export function parseWebhookEvents(
         userId: null,
         username: null,
         commentId: null,
+        parentId: null,
         messageId: null,
         commentText: null,
 

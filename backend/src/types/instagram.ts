@@ -57,6 +57,8 @@ export interface NormalizedWebhookEvent {
   /** Only populated when Meta includes it (typically comments) — messaging events don't carry a username. */
   username: string | null;
   commentId: string | null;
+  /** Parent comment id when this is a reply to another comment. */
+  parentId: string | null;
   messageId: string | null;
   /**
    * Raw comment/message text. Used ONLY transiently by the rule engine for
