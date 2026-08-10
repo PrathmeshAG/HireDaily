@@ -149,14 +149,19 @@ export async function replyToComment(
     return { success: true, externalId: `dry-run-${commentId}`, error: null, dryRun: true };
   }
 
+  // Instagram Login uses the Instagram Graph host. Keep the access token
+  // in the Authorization header and send the reply as JSON.
   const url =
-    `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies` +
-    `?message=${encodeURIComponent(message)}&access_token=${encodeURIComponent(accessToken)}`;
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`;
 
   try {
-const { ok, status, json } = await fetchJson(fetchImpl, url, {
+    const { ok, status, json } = await fetchJson(fetchImpl, url, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ message }),
     });
 
     if (ok) {
