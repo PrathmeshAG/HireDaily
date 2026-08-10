@@ -10,7 +10,7 @@ export interface PostMapping {
   id: string;
   channel: Channel;
   mediaId: string;
-  postUrl: string;
+  instagramPostUrl: string;
   thumbnailUrl: string;
   companyName: string;
   jobTitle: string;

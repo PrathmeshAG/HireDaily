@@ -31,7 +31,7 @@ export const mockPostMappings: PostMapping[] = companies.map((c, i) => ({
   id: `map_${i + 1}`,
   channel: "instagram",
   mediaId: `1789234${(500 + i).toString().padStart(4, "0")}`,
-  postUrl: `https://www.instagram.com/p/C${(i + 1).toString().padStart(3, "0")}xHireDaily/`,
+  instagramPostUrl: `https://www.instagram.com/p/C${(i + 1).toString().padStart(3, "0")}xHireDaily/`,
   thumbnailUrl: "",
   companyName: c.company,
   jobTitle: c.title,

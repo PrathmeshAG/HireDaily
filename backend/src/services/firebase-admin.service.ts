@@ -824,6 +824,60 @@ export async function deletePostMapping(mediaId: string): Promise<void> {
   await db().ref(`automation/postMappings/${mediaId}`).remove();
 }
 
+export interface InstagramMediaCacheRecord {
+  id: string;
+  permalink: string | null;
+  caption: string | null;
+  mediaType: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  timestamp: string | null;
+  syncedAt: number;
+}
+
+/** Reads cached Instagram media without exposing any Meta credentials. */
+export async function readAllInstagramMedia(): Promise<InstagramMediaCacheRecord[]> {
+  const snap = await db().ref("automation/instagramMedia").get();
+  if (!snap.exists()) return [];
+
+  const raw = snap.val() as Record<string, unknown>;
+  const out: InstagramMediaCacheRecord[] = [];
+
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const item = value as Record<string, unknown>;
+
+    out.push({
+      id: typeof item.id === "string" ? item.id : id,
+      permalink: typeof item.permalink === "string" ? item.permalink : null,
+      caption: typeof item.caption === "string" ? item.caption : null,
+      mediaType: typeof item.mediaType === "string" ? item.mediaType : null,
+      mediaUrl: typeof item.mediaUrl === "string" ? item.mediaUrl : null,
+      thumbnailUrl:
+        typeof item.thumbnailUrl === "string" ? item.thumbnailUrl : null,
+      timestamp: typeof item.timestamp === "string" ? item.timestamp : null,
+      syncedAt: typeof item.syncedAt === "number" ? item.syncedAt : 0,
+    });
+  }
+
+  return out.sort((a, b) => b.syncedAt - a.syncedAt);
+}
+
+/** Upserts synchronized Instagram media keyed by the real Meta media ID. */
+export async function writeInstagramMediaCache(
+  media: InstagramMediaCacheRecord[],
+): Promise<void> {
+  if (media.length === 0) return;
+
+  const updates: Record<string, InstagramMediaCacheRecord> = {};
+  for (const item of media) {
+    updates[item.id] = item;
+  }
+
+  await db().ref("automation/instagramMedia").update(updates);
+}
+
+
 // ===========================================================================
 // Phase 6 Checkpoint 3 — Read-only automation API data-access helpers
 // (users / logs / analytics). These are READ-ONLY bindings for the frontend:

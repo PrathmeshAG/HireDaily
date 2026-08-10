@@ -57,17 +57,55 @@ export async function getRecentLogs(limit = 6): Promise<LogEntry[]> {
   return logs;
 }
 
-// ---------- Post Mappings ----------
+// ---------- Instagram Media / Post Mappings ----------
+
+export interface InstagramMedia {
+  id: string;
+  permalink: string | null;
+  caption: string | null;
+  mediaType: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  timestamp: string | null;
+  syncedAt: number | null;
+}
+
+export async function getInstagramMedia(limit = 50): Promise<InstagramMedia[]> {
+  const { media } = await request<{ media: InstagramMedia[] }>(
+    `/api/automation/instagram/media?limit=${encodeURIComponent(limit)}`,
+  );
+  return media;
+}
+
+export async function syncInstagramMedia(limit = 50): Promise<InstagramMedia[]> {
+  const { media } = await request<{ media: InstagramMedia[] }>(
+    "/api/automation/instagram/media/sync",
+    {
+      method: "POST",
+      body: JSON.stringify({ limit }),
+    },
+  );
+  return media;
+}
 
 export async function getPostMappings(): Promise<PostMapping[]> {
   const { mappings } = await request<{
-    mappings: { id: string; mediaId: string; jobId: string; jobTitleCache: string | null; mappedAt: number | null }[];
+    mappings: {
+      id: string;
+      mediaId: string;
+      jobId: string;
+      jobTitleCache: string | null;
+      instagramPostUrl: string | null;
+      mappedAt: number | null;
+      updatedAt: number | null;
+    }[];
   }>("/api/automation/post-mappings");
+
   return mappings.map((m) => ({
     id: m.id,
     channel: "instagram",
     mediaId: m.mediaId,
-    postUrl: "",
+    instagramPostUrl: m.instagramPostUrl ?? "",
     thumbnailUrl: "",
     companyName: "",
     jobTitle: m.jobTitleCache ?? "",
@@ -80,14 +118,19 @@ export async function getPostMappings(): Promise<PostMapping[]> {
 export async function createPostMapping(
   data: Omit<PostMapping, "id" | "createdAt" | "status">,
 ): Promise<PostMapping> {
-  const created = await request<{ id: string; mediaId: string; jobId: string }>("/api/automation/post-mappings", {
-    method: "POST",
-    body: JSON.stringify({
-      mediaId: data.mediaId,
-      jobId: data.jobId,
-      jobTitleCache: data.jobTitle || null,
-    }),
-  });
+  const created = await request<{ id: string; mediaId: string; jobId: string }>(
+    "/api/automation/post-mappings",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        mediaId: data.mediaId,
+        instagramPostUrl: data.instagramPostUrl,
+        jobId: data.jobId,
+        jobTitleCache: data.jobTitle || null,
+      }),
+    },
+  );
+
   return {
     ...data,
     id: created.mediaId,
@@ -103,20 +146,22 @@ export async function updatePostMapping(
   await request(`/api/automation/post-mappings/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify({
+      instagramPostUrl: data.instagramPostUrl,
       jobId: data.jobId,
-      jobTitleCache: typeof data.jobTitle === "string" ? data.jobTitle : undefined,
+      jobTitleCache:
+        typeof data.jobTitle === "string" ? data.jobTitle : undefined,
     }),
   });
 }
 
 export async function archivePostMapping(id: string): Promise<void> {
-  // Backend mappings are keyed by mediaId; archiving is a UI-only status.
-  // For Checkpoint 2 we keep the mapping (no destructive archive API).
   void id;
 }
 
 export async function deletePostMapping(id: string): Promise<void> {
-  await request(`/api/automation/post-mappings/${encodeURIComponent(id)}`, { method: "DELETE" });
+  await request(`/api/automation/post-mappings/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 // ---------- Rules ----------
@@ -288,7 +333,21 @@ export async function getSettings(): Promise<AutomationSettings> {
     dryRun: boolean;
     webhookConfigured: boolean;
     serviceStatus: string;
-    instagram: { connected: boolean; username: string | null; accountType: string | null };
+    instagram: {
+      connected: boolean;
+      username: string | null;
+      accountType: string | null;
+    };
+    webhook?: {
+      subscribed: boolean;
+      lastEventAt: number | null;
+      url: string;
+    };
+    api?: {
+      ok: boolean;
+      latencyMs: number | null;
+      lastCheckedAt: number | null;
+    };
   }>("/api/automation/settings");
 
   return {
@@ -299,14 +358,14 @@ export async function getSettings(): Promise<AutomationSettings> {
       tokenExpiresAt: null,
     },
     webhook: {
-      subscribed: data.webhookConfigured,
-      lastEventAt: null,
-      url: "",
+      subscribed: data.webhook?.subscribed ?? data.webhookConfigured,
+      lastEventAt: data.webhook?.lastEventAt ?? null,
+      url: data.webhook?.url ?? "/webhooks/instagram",
     },
     api: {
-      ok: data.serviceStatus === "operational",
-      latencyMs: null,
-      lastCheckedAt: Date.now(),
+      ok: data.api?.ok ?? data.serviceStatus === "operational",
+      latencyMs: data.api?.latencyMs ?? null,
+      lastCheckedAt: data.api?.lastCheckedAt ?? Date.now(),
     },
   };
 }

@@ -24,6 +24,8 @@ readAllPostMappings,
   readAllUsers,
   readAllLogs,
   readRecentAnalytics,
+  readAllInstagramMedia,
+  writeInstagramMediaCache,
 } from "./services/firebase-admin.service.js";
 import { evaluateComment,explainRuleEvaluation, } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
@@ -42,6 +44,7 @@ import {
 } from "./services/user-analytics.service.js";
 import type { RuleEvaluationContext } from "./types/rule-engine.js";
 import { logger } from "./utils/logger.js";
+import { fetchInstagramMedia } from "./services/instagram-media.service.js";
 
 const app = express();
 
@@ -573,6 +576,47 @@ app.delete("/api/automation/templates/:id", async (req, res) => {
 });
 
 /** GET /api/automation/post-mappings — list all post mappings. */
+/** GET /api/automation/instagram/media — read cached Instagram media. */
+app.get("/api/automation/instagram/media", async (req, res) => {
+  try {
+    const limit = Math.min(
+      Math.max(Number(req.query.limit ?? 50) || 50, 1),
+      100,
+    );
+    const media = (await readAllInstagramMedia()).slice(0, limit);
+    res.status(200).json({ media });
+  } catch (e) {
+    logger.error("Failed to read Instagram media cache", { error: e });
+    res.status(500).json({ error: "failed_to_read_instagram_media" });
+  }
+});
+
+/** POST /api/automation/instagram/media/sync — fetch and cache latest media. */
+app.post("/api/automation/instagram/media/sync", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const limit = Math.min(
+      Math.max(
+        typeof body.limit === "number" ? Math.floor(body.limit) : 50,
+        1,
+      ),
+      100,
+    );
+
+    const media = await fetchInstagramMedia(limit);
+    await writeInstagramMediaCache(media);
+
+    res.status(200).json({ media });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "unknown_error";
+    logger.error("Failed to sync Instagram media", { error: message });
+    res.status(502).json({
+      error: "instagram_media_sync_failed",
+      message,
+    });
+  }
+});
+
 app.get("/api/automation/post-mappings", async (_req, res) => {
   try {
     const mappings = await readAllPostMappings();
@@ -593,6 +637,16 @@ app.post("/api/automation/post-mappings", async (req, res) => {
       res.status(400).json({ error: "mediaId_and_jobId_required" });
       return;
     }
+
+    const existing = await readPostMapping(mediaId);
+    if (existing) {
+      res.status(409).json({
+        error: "post_mapping_already_exists",
+        mediaId,
+      });
+      return;
+    }
+
     await writePostMapping(mediaId, {
   jobId,
   jobTitleCache:
@@ -600,13 +654,12 @@ app.post("/api/automation/post-mappings", async (req, res) => {
       ? body.jobTitleCache.trim()
       : null,
 
-  instagramPostUrl:
-    typeof body.instagramPostUrl === "string"
-      ? body.instagramPostUrl.trim()
-      : null,
-
-  mappedAt: Date.now(),
-  updatedAt: Date.now(),
+      instagramPostUrl:
+        typeof body.instagramPostUrl === "string"
+          ? body.instagramPostUrl.trim()
+          : null,
+      mappedAt: Date.now(),
+      updatedAt: Date.now(),
 });
     res.status(201).json({ id: mediaId, mediaId, jobId });
   } catch (e) {
@@ -652,9 +705,7 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
     const instagramPostUrl =
       typeof body.instagramPostUrl === "string"
         ? body.instagramPostUrl.trim()
-        : typeof (existing as any).instagramPostUrl === "string"
-          ? (existing as any).instagramPostUrl
-          : null;
+        : existing.instagramPostUrl;
 
     await writePostMapping(mediaId, {
       ...existing,
@@ -861,16 +912,14 @@ app.get("/api/automation/settings", async (_req, res) => {
     if (accessToken && instagramBusinessId) {
       try {
         const url =
-          `https://graph.instagram.com/v21.0/${encodeURIComponent(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(
             instagramBusinessId,
           )}` +
           `?fields=id,username,account_type&access_token=${encodeURIComponent(
             accessToken,
           )}`;
 
-        const metaResponse = await fetch(url, {
-          method: "GET",
-        });
+        const metaResponse = await fetch(url);
 
         if (metaResponse.ok) {
           const data = (await metaResponse.json()) as {
@@ -882,9 +931,7 @@ app.get("/api/automation/settings", async (_req, res) => {
           instagram = {
             connected: true,
             username:
-              typeof data.username === "string"
-                ? data.username
-                : null,
+              typeof data.username === "string" ? data.username : null,
             accountType:
               typeof data.account_type === "string"
                 ? data.account_type
@@ -899,13 +946,38 @@ app.get("/api/automation/settings", async (_req, res) => {
       }
     }
 
+    let lastEventAt: number | null = null;
+    try {
+      const logs = await readAllLogs(50);
+      const webhookEvents = logs.filter(
+        (log) =>
+          log.channel === "instagram" &&
+          log.type === "comment_received",
+      );
+      lastEventAt = webhookEvents[0]?.timestamp ?? null;
+    } catch {
+      lastEventAt = null;
+    }
+
+    const apiCheckedAt = Date.now();
+
     res.status(200).json({
       firebaseConfigured: isFirebase,
       metaConfigured,
       dryRun,
       webhookConfigured,
-      serviceStatus: isFirebase ? "operational" : "degraded",
+      serviceStatus: isFirebase && metaConfigured ? "operational" : "degraded",
       instagram,
+      webhook: {
+        subscribed: webhookConfigured,
+        lastEventAt,
+        url: "/webhooks/instagram",
+      },
+      api: {
+        ok: isFirebase && metaConfigured,
+        latencyMs: null,
+        lastCheckedAt: apiCheckedAt,
+      },
     });
   } catch (e) {
     logger.error("Failed to load settings", { error: e });
