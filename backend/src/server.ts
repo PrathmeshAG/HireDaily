@@ -628,6 +628,27 @@ app.get("/api/automation/instagram/media", async (req, res) => {
   }
 });
 
+
+app.get("/debug/meta-token", async () => {
+  const token = process.env.META_ACCESS_TOKEN?.trim();
+
+  if (!token) {
+    return { ok: false, error: "META_ACCESS_TOKEN missing" };
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/v24.0/me?fields=id,name&access_token=${encodeURIComponent(token)}`
+  );
+
+  const data = await response.json();
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data,
+  };
+});
+
 /** POST /api/automation/instagram/media/sync — fetch and cache latest media. */
 app.post("/api/automation/instagram/media/sync", async (req, res) => {
   try {
