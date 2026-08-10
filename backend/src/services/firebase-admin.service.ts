@@ -206,70 +206,6 @@ export async function writeAutomationSettings(partial: Record<string, unknown>):
  *
  * Never touches `jobs/*` — only `automation/rules`.
  */
-
-/**
- * Atomically claims a comment for automation processing.
- *
- * Webhooks can be delivered more than once and, in a serverless deployment,
- * two invocations can execute concurrently on different instances. The old
- * in-memory cooldown/seen-comment map cannot protect that case. This Firebase
- * transaction is the cross-instance idempotency gate: exactly one invocation
- * can create the claim for a given Instagram comment id.
- *
- * A stale "processing" claim older than 10 minutes may be reclaimed so a
- * crashed invocation does not permanently block the comment. Completed
- * claims are never reclaimed.
- */
-export async function claimInstagramComment(commentId: string): Promise<boolean> {
-  if (!commentId) return false;
-
-  const crypto = await import("node:crypto");
-  const key = crypto.createHash("sha256").update(commentId).digest("hex");
-  const ref = db().ref(`automation/processedComments/${key}`);
-  const now = Date.now();
-  const staleAfterMs = 10 * 60 * 1000;
-
-  const result = await ref.transaction((current) => {
-    if (!current || typeof current !== "object") {
-      return {
-        commentId,
-        state: "processing",
-        claimedAt: now,
-        updatedAt: now,
-      };
-    }
-
-    const value = current as Record<string, unknown>;
-    const state = value.state === "completed" ? "completed" : "processing";
-    const claimedAt = typeof value.claimedAt === "number" ? value.claimedAt : 0;
-
-    if (state === "completed") return;
-    if (claimedAt > 0 && now - claimedAt < staleAfterMs) return;
-
-    return {
-      commentId,
-      state: "processing",
-      claimedAt: now,
-      updatedAt: now,
-      reclaimed: true,
-    };
-  });
-
-  return result.committed;
-}
-
-/** Marks a previously claimed comment as completed. */
-export async function completeInstagramComment(commentId: string): Promise<void> {
-  if (!commentId) return;
-  const crypto = await import("node:crypto");
-  const key = crypto.createHash("sha256").update(commentId).digest("hex");
-  await db().ref(`automation/processedComments/${key}`).update({
-    state: "completed",
-    completedAt: Date.now(),
-    updatedAt: Date.now(),
-  });
-}
-
 export async function readActiveRules(now: number = Date.now()): Promise<RuleEngineRule[]> {
   const snap = await db().ref("automation/rules").get();
   if (!snap.exists()) return [];
@@ -433,6 +369,29 @@ export async function isFirebaseAdminReachable(): Promise<boolean> {
 }
 
 /**
+ * Atomically claims one side-effect for an Instagram comment.
+ *
+ * Firebase RTDB transactions make this safe across concurrent Vercel/serverless
+ * instances, unlike the in-memory cooldown service. A claim is permanent so a
+ * webhook redelivery can never produce a second external message.
+ */
+export async function claimInstagramActionOnce(
+  commentId: string,
+  action: "comment_reply" | "dm",
+): Promise<boolean> {
+  const normalized = String(commentId ?? "").trim();
+  if (!normalized) return false;
+
+  const ref = db().ref(`automation/instagramClaims/${normalized}/${action}`);
+  const result = await ref.transaction((current) => {
+    if (current !== null && current !== undefined) return undefined;
+    return { claimedAt: Date.now() };
+  });
+
+  return result.committed;
+}
+
+/**
  * Reads the comment reply template text for a rule from
  * `automation/templates/{commentTemplateId}`. Returns null when the rule has
  * no comment template or the template does not exist / has no text. Only
@@ -462,7 +421,7 @@ export async function writeCommentReplyLog(
     jobId: string | null;
     ruleId: string | null;
     keyword: string | null;
-    commentStatus: "pending" | "success" | "failed";
+    commentStatus: "pending" | "success" | "failed" | "skipped";
     error: string | null;
     dryRun: boolean;
     timestamp: number;
@@ -476,7 +435,9 @@ export async function writeCommentReplyLog(
     detail:
       data.commentStatus === "success"
         ? `Comment reply ${data.dryRun ? "(dry-run) " : ""}sent`
-        : `Comment reply failed: ${data.error ?? "unknown"}`,
+        : data.commentStatus === "skipped"
+          ? `Comment reply skipped: ${data.error ?? "duplicate_suppressed"}`
+          : `Comment reply failed: ${data.error ?? "unknown"}`,
     ruleKeyword: data.keyword,
     timestamp: data.timestamp,
     userId: data.userId,
@@ -521,8 +482,8 @@ export async function writeDmLog(
     jobId: string | null;
     ruleId: string | null;
     keyword: string | null;
-    commentStatus: "pending" | "success" | "failed";
-    dmStatus: "pending" | "success" | "failed";
+    commentStatus: "pending" | "success" | "failed" | "skipped";
+    dmStatus: "pending" | "success" | "failed" | "skipped";
     error: string | null;
     dryRun: boolean;
     timestamp: number;
@@ -536,7 +497,9 @@ export async function writeDmLog(
     detail:
       data.dmStatus === "success"
         ? `DM ${data.dryRun ? "(dry-run) " : ""}sent`
-        : `DM failed: ${data.error ?? "unknown"}`,
+        : data.dmStatus === "skipped"
+          ? `DM skipped: ${data.error ?? "duplicate_suppressed"}`
+          : `DM failed: ${data.error ?? "unknown"}`,
     ruleKeyword: data.keyword,
     timestamp: data.timestamp,
     userId: data.userId,

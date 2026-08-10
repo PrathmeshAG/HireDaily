@@ -87,10 +87,9 @@ function makeResolution(partial: Partial<PostJobResolution> = {}): PostJobResolu
 /** A mock fetch that records the URL it was called with (never hits the network). */
 function makeMockFetch(onUrl?: (url: string) => void) {
   const calls: string[] = [];
-  const impl = async (input: string | Request | URL, init?: RequestInit) => {
+  const impl = async (input: string | Request | URL) => {
     const url = typeof input === "string" ? input : input.toString();
-    const body = typeof init?.body === "string" ? init.body : "";
-    calls.push(`${url} ${body}`);
+    calls.push(url);
     if (onUrl) onUrl(url);
     return {
       ok: true,
@@ -154,10 +153,28 @@ test("sendDirectMessage builds the correct Meta DM endpoint and returns success"
   assert(result.error === null, "no error");
   assert(mock.calls.length === 1, "one network call");
   assert(
-    mock.calls[0].startsWith(`https://graph.instagram.com/${META_GRAPH_VERSION}/27813166828303890/messages`),
+    mock.calls[0] === `https://graph.instagram.com/${META_GRAPH_VERSION}/user_123/messages`,
     "correct DM endpoint",
   );
-  assert(!mock.calls[0].includes("secret-token"), "token not exposed in URL");
+});
+
+test("sendDirectMessage sends one native URL button when CTA is present", async () => {
+  const mock = makeMockFetch();
+  const result = await sendDirectMessage(
+    "user_123",
+    "Here is the job:\n\n[[CTA:View Job & Apply]]",
+    "secret-token",
+    {
+      dryRun: false,
+      fetchImpl: mock.impl,
+      ctaUrl: "https://hire-daily.vercel.app/jobs/job_42",
+      commentId: "comment_42",
+      instagramBusinessId: "ig_123",
+    },
+  );
+  assert(result.success === true, "button DM success");
+  assert(mock.calls.length === 1, "exactly one Meta call");
+  assert(mock.calls[0] === `https://graph.instagram.com/${META_GRAPH_VERSION}/ig_123/messages`, "Instagram messages endpoint");
 });
 
 test("sendDirectMessage returns failure when recipient id missing", async () => {
@@ -165,7 +182,7 @@ test("sendDirectMessage returns failure when recipient id missing", async () => 
   const result = await sendDirectMessage("", "Hello", "token", { dryRun: false, fetchImpl: mock.impl });
   assert(result.success === false, "success false");
   assert(result.externalId === null, "no externalId");
-  assert(result.error === "comment_id_missing", "comment_id_missing");
+  assert(result.error === "recipient_id_missing", "recipient_id_missing");
   assert(mock.calls.length === 0, "no network call");
 });
 
@@ -346,7 +363,7 @@ test("location rendered in DM", async () => {
   assert(url.includes("Location: Remote"), "location rendered: " + url);
 });
 
-test("missing recipient ID is safe for comment private replies", async () => {
+test("missing recipient ID → no DM (failed)", async () => {
   const mock = makeMockFetch();
   const result = await processDirectMessage(
     {
@@ -364,9 +381,9 @@ test("missing recipient ID is safe for comment private replies", async () => {
     },
     { reader: readerWithDmTemplate(DM_TEMPLATE), fetchImpl: mock.impl },
   );
-  assert(result.dmStatus === "success", "dmStatus success");
-  assert(result.error === null, "no error");
-  assert(mock.calls.length === 1, "one Meta call");
+  assert(result.dmStatus === "failed", "dmStatus failed");
+  assert(result.error === "recipient_id_missing", "recipient_id_missing");
+  assert(mock.calls.length === 0, "no Meta call");
 });
 
 test("missing post mapping → no DM (failed)", async () => {

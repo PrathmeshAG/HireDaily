@@ -26,8 +26,7 @@ readAllPostMappings,
   readRecentAnalytics,
   readAllInstagramMedia,
   writeInstagramMediaCache,
-  claimInstagramComment,
-  completeInstagramComment,
+  claimInstagramActionOnce,
 } from "./services/firebase-admin.service.js";
 import { evaluateComment,explainRuleEvaluation, } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
@@ -191,6 +190,15 @@ async function runRuleEngine(event: {
     const context = toRuleContext(event);
     const result = evaluateComment(activeRules, context, now);
 
+    if (result.matched) {
+      try {
+        const { analytics } = trackingStores();
+        await incrementDailyAnalytics(await analytics, dateKey(now), "commentsMatched");
+      } catch (error) {
+        logger.warn("Failed to record commentsMatched analytics", { error });
+      }
+    }
+
 console.log("🔥 RULE ENGINE RESULT", {
   matched: result.matched,
   ruleId: result.ruleId,
@@ -214,42 +222,11 @@ console.log(
     const follow = checkFollowCapability();
 
     if (result.matched && result.rule) {
-      // Firebase transaction = cross-instance idempotency. The previous
-      // in-memory seen-comment set was not sufficient on Vercel because two
-      // webhook invocations can run on different serverless instances at the
-      // same time. Only the invocation that successfully claims this exact
-      // Instagram comment may send a reply/DM.
-      let persistentClaimed = true;
-      if (event.commentId) {
-        try {
-          persistentClaimed = await claimInstagramComment(event.commentId);
-        } catch (claimError) {
-          // Fail closed: if the idempotency store is unavailable, do not risk
-          // sending duplicate customer-facing messages.
-          persistentClaimed = false;
-          logger.error("Comment idempotency claim failed; automation suppressed", {
-            eventId: event.eventId,
-            commentId: event.commentId,
-            error: claimError,
-          });
-        }
-      }
-
-      const decision = persistentClaimed
-        ? cooldownService.shouldFire(context, result.rule, now)
-        : { allowed: false, duplicate: true, cooldownApplied: false };
-
+      const decision = cooldownService.shouldFire(context, result.rule, now);
       result.cooldownApplied = decision.cooldownApplied;
       result.duplicate = decision.duplicate;
       if (decision.allowed) {
         cooldownService.record(context, result.rule, now);
-
-        try {
-          const { analytics } = trackingStores();
-          await incrementDailyAnalytics(await analytics, dateKey(now), "commentsMatched");
-        } catch (error) {
-          logger.warn("Failed to record commentsMatched analytics", { error });
-        }
       }
 
 // Phase 5 Checkpoint 2 — resolve the Instagram post to the Hire Daily
@@ -274,94 +251,145 @@ console.log(
             reason: resolution.reason,
           });
 
-          // Comment-triggered automation is exactly one pipeline per claimed
-          // comment. The rule's replyMode decides which customer-facing
-          // channels are enabled; it never causes duplicate sends.
+          // Phase 5 Checkpoint 3 — send a PUBLIC comment reply (only for a
+          // comment event with a real comment id). Best-effort: a failure
+          // here must NOT break the Phase 4 webhook 200 response. The
+          // commentStatus (pending/success/failed) is persisted to Firebase,
+          // and any error is stored safely (never the token).
           if (event.eventType === "comment" && event.commentId) {
-            let commentStatus: "pending" | "success" | "failed" = "pending";
-            let dmStatus: "pending" | "success" | "failed" | "skipped" = "skipped";
-
-            // Public comment reply.
-            if (result.rule.replyMode !== "dm_only") {
-              try {
-                const replyData = await processCommentReplyProduction({
-                  commentId: event.commentId,
-                  mediaId: event.mediaId,
-                  userId: event.userId,
-                  username: event.username,
-                  rule: result.rule,
-                  matchedKeyword: result.matchedKeyword,
-                  resolution,
-                });
-                commentStatus = replyData.commentStatus;
-                await writeCommentReplyLog(replyData);
-              } catch (replyError) {
-                commentStatus = "failed";
-                logger.error("Comment reply flow failed", {
-                  eventId: event.eventId,
-                  commentId: event.commentId,
-                  error: replyError,
-                });
-                await writeCommentReplyLog({
-                  userId: event.userId,
-                  username: event.username,
-                  mediaId: event.mediaId,
-                  commentId: event.commentId,
-                  jobId: resolution.jobId,
-                  ruleId: result.rule.id,
-                  keyword: result.matchedKeyword,
-                  commentStatus: "failed",
-                  error: "comment_reply_flow_failed",
-                  dryRun,
-                  timestamp: Date.now(),
-                }).catch((e) => logger.error("Failed to write reply log", e));
-              }
+            let commentStatus: "pending" | "success" | "failed" | "skipped" = "pending";
+            let dmStatus: "pending" | "success" | "failed" | "skipped" = "pending";
+            let commentClaimed = true;
+            if (!dryRun) {
+              commentClaimed = await claimInstagramActionOnce(event.commentId, "comment_reply");
             }
 
-            // Private reply / DM. Meta's private-reply API permits one private
-            // reply for the comment, so this is one message only. The CTA
-            // marker is converted into the exact public Hire Daily URL.
-            if (result.rule.replyMode !== "comment_only") {
-              dmStatus = "pending";
-              try {
-                const dmData = await processDirectMessageProduction({
-                  recipientId: event.userId,
-                  userId: event.userId,
-                  username: event.username,
-                  mediaId: event.mediaId,
-                  commentId: event.commentId,
-                  rule: result.rule,
-                  matchedKeyword: result.matchedKeyword,
-                  resolution,
-                  commentStatus,
-                });
-                dmStatus = dmData.dmStatus;
-                await writeDmLog(dmData);
-              } catch (dmError) {
-                dmStatus = "failed";
-                logger.error("DM flow failed", {
-                  eventId: event.eventId,
-                  commentId: event.commentId,
-                  error: dmError,
-                });
-                await writeDmLog({
-                  userId: event.userId,
-                  username: event.username,
-                  mediaId: event.mediaId,
-                  commentId: event.commentId,
-                  jobId: resolution.jobId,
-                  ruleId: result.rule.id,
-                  keyword: result.matchedKeyword,
-                  commentStatus,
-                  dmStatus: "failed",
-                  error: "dm_flow_failed",
-                  dryRun,
-                  timestamp: Date.now(),
-                }).catch((e) => logger.error("Failed to write DM log", e));
-              }
+            if (!commentClaimed) {
+              commentStatus = "skipped";
+              logger.info("Duplicate Instagram comment reply suppressed", {
+                commentId: event.commentId,
+                mediaId: event.mediaId,
+              });
+              await writeCommentReplyLog({
+                userId: event.userId,
+                username: event.username,
+                mediaId: event.mediaId,
+                commentId: event.commentId,
+                jobId: resolution.jobId,
+                ruleId: result.rule.id,
+                keyword: result.matchedKeyword,
+                commentStatus: "skipped",
+                error: "duplicate_suppressed",
+                dryRun,
+                timestamp: Date.now(),
+              }).catch((e) => logger.error("Failed to write duplicate reply log", e));
+            } else try {
+              const replyData = await processCommentReplyProduction({
+                commentId: event.commentId,
+                mediaId: event.mediaId,
+                userId: event.userId,
+                username: event.username,
+                rule: result.rule,
+                matchedKeyword: result.matchedKeyword,
+                resolution,
+              });
+              commentStatus = replyData.commentStatus;
+              await writeCommentReplyLog(replyData);
+            } catch (replyError) {
+              commentStatus = "failed";
+              logger.error("Comment reply flow failed", {
+                eventId: event.eventId,
+                commentId: event.commentId,
+                error: replyError,
+              });
+              await writeCommentReplyLog({
+                userId: event.userId,
+                username: event.username,
+                mediaId: event.mediaId,
+                commentId: event.commentId,
+                jobId: resolution.jobId,
+                ruleId: result.rule.id,
+                keyword: result.matchedKeyword,
+                commentStatus: "failed",
+                error: "comment_reply_flow_failed",
+                dryRun,
+                timestamp: Date.now(),
+              }).catch((e) => logger.error("Failed to write reply log", e));
             }
 
-            // Tracking is best-effort and never blocks Meta's webhook ACK.
+            // Phase 5 Checkpoint 4 — send a private DM with the exact mapped
+            // job URL. The DM is a separate, independently-tracked operation
+            // from the public comment reply. The recipient is the actual
+            // commenter userId (never mediaId/commentId/jobId). Best-effort:
+            // a failure here must NOT break the Phase 4 webhook 200 or the
+            // comment reply result. dmStatus (pending/success/failed) is
+            // persisted alongside commentStatus.
+            let dmClaimed = true;
+            if (!dryRun) {
+              dmClaimed = await claimInstagramActionOnce(event.commentId, "dm");
+            }
+
+            if (!dmClaimed) {
+              dmStatus = "skipped";
+              logger.info("Duplicate Instagram DM suppressed", {
+                commentId: event.commentId,
+                mediaId: event.mediaId,
+              });
+              await writeDmLog({
+                userId: event.userId,
+                username: event.username,
+                mediaId: event.mediaId,
+                commentId: event.commentId,
+                jobId: resolution.jobId,
+                ruleId: result.rule.id,
+                keyword: result.matchedKeyword,
+                commentStatus,
+                dmStatus: "skipped",
+                error: "duplicate_suppressed",
+                dryRun,
+                timestamp: Date.now(),
+              }).catch((e) => logger.error("Failed to write duplicate DM log", e));
+            } else try {
+              const dmData = await processDirectMessageProduction({
+                recipientId: event.userId,
+                userId: event.userId,
+                username: event.username,
+                mediaId: event.mediaId,
+                commentId: event.commentId,
+                rule: result.rule,
+                matchedKeyword: result.matchedKeyword,
+                resolution,
+                commentStatus,
+              });
+              dmStatus = dmData.dmStatus;
+              await writeDmLog(dmData);
+            } catch (dmError) {
+              dmStatus = "failed";
+              logger.error("DM flow failed", {
+                eventId: event.eventId,
+                commentId: event.commentId,
+                error: dmError,
+              });
+              await writeDmLog({
+                userId: event.userId,
+                username: event.username,
+                mediaId: event.mediaId,
+                commentId: event.commentId,
+                jobId: resolution.jobId,
+                ruleId: result.rule.id,
+                keyword: result.matchedKeyword,
+                commentStatus,
+                dmStatus: "failed",
+                error: "dm_flow_failed",
+                dryRun,
+                timestamp: Date.now(),
+              }).catch((e) => logger.error("Failed to write DM log", e));
+            }
+
+            // Phase 5 Checkpoint 5 — analytics + user tracking for the matched
+            // comment event. followStatus is unsupported (no confirmed Meta
+            // capability), which increments followUnsupported. Best-effort:
+            // never blocks the webhook 200. Dry-run is honored (no fake sends).
             try {
               const { user: userStoreP, analytics: analyticsStoreP } = trackingStores();
               await applyTracking(await userStoreP, await analyticsStoreP, {
@@ -380,18 +408,6 @@ console.log(
             } catch (trackErr) {
               logger.error("Analytics tracking failed", { eventId: event.eventId, error: trackErr });
             }
-
-            // Finalize the atomic claim only after the complete automation
-            // attempt has finished. A redelivered webhook is then a no-op.
-            if (decision.allowed) {
-              await completeInstagramComment(event.commentId).catch((e: unknown) =>
-                logger.error("Failed to finalize comment idempotency claim", {
-                  eventId: event.eventId,
-                  commentId: event.commentId,
-                  error: e,
-                }),
-              );
-            }
           }
         } catch (resolveError) {
           logger.error("Post job resolution failed", {
@@ -399,15 +415,6 @@ console.log(
             mediaId: event.mediaId,
             error: resolveError,
           });
-          if (event.commentId && decision.allowed) {
-            await completeInstagramComment(event.commentId).catch((e: unknown) =>
-              logger.error("Failed to finalize comment idempotency claim", {
-                eventId: event.eventId,
-                commentId: event.commentId,
-                error: e,
-              }),
-            );
-          }
         }
       }
     }
@@ -671,27 +678,6 @@ app.get("/api/automation/instagram/media", async (req, res) => {
   }
 });
 
-
-app.get("/debug/meta-token", async () => {
-  const token = process.env.META_ACCESS_TOKEN?.trim();
-
-  if (!token) {
-    return { ok: false, error: "META_ACCESS_TOKEN missing" };
-  }
-
-  const response = await fetch(
-    `https://graph.facebook.com/v24.0/me?fields=id,name&access_token=${encodeURIComponent(token)}`
-  );
-
-  const data = await response.json();
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    data,
-  };
-});
-
 /** POST /api/automation/instagram/media/sync — fetch and cache latest media. */
 app.post("/api/automation/instagram/media/sync", async (req, res) => {
   try {
@@ -914,40 +900,23 @@ app.get("/api/automation/analytics", async (_req, res) => {
     // existing read-only post mapping cache. This works in dry-run too, so
     // Analytics can show which posts are actually triggering rules even when
     // no real outbound reply/DM is sent.
+    const postCounts = new Map<string, number>();
     const mappings = await readAllPostMappings();
-    const mappingByMediaId = new Map<
-      string,
-      { postLabel: string; postUrl: string | null }
-    >();
+    const mappingLabels = new Map<string, string>();
     for (const mapping of mappings) {
-      // Analytics should represent real, currently mapped Instagram posts.
-      // Do not surface synthetic/test media IDs that have no production mapping.
-      if (mapping.status !== "active") continue;
-      mappingByMediaId.set(mapping.mediaId, {
-        postLabel: mapping.jobTitleCache?.trim() || "Instagram post",
-        postUrl: mapping.instagramPostUrl,
-      });
+      mappingLabels.set(
+        mapping.mediaId,
+        mapping.jobTitleCache?.trim() || mapping.mediaId,
+      );
     }
-
-    const postMeta = new Map<
-      string,
-      { postLabel: string; triggers: number; mediaId: string; postUrl: string | null }
-    >();
 
     for (const log of logs) {
       if (log.type === "keyword_matched" && log.ruleKeyword) {
         keywordCounts.set(log.ruleKeyword, (keywordCounts.get(log.ruleKeyword) ?? 0) + 1);
       }
       if (log.type === "keyword_matched" && log.mediaId) {
-        const mapping = mappingByMediaId.get(log.mediaId);
-        if (!mapping) continue;
-        const existing = postMeta.get(log.mediaId);
-        postMeta.set(log.mediaId, {
-          postLabel: mapping.postLabel,
-          triggers: (existing?.triggers ?? 0) + 1,
-          mediaId: log.mediaId,
-          postUrl: mapping.postUrl,
-        });
+        const label = mappingLabels.get(log.mediaId) ?? log.mediaId;
+        postCounts.set(label, (postCounts.get(label) ?? 0) + 1);
       }
     }
 
@@ -956,9 +925,9 @@ app.get("/api/automation/analytics", async (_req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    const topPosts = [...postMeta.values()]
-      .sort((a, b) => b.triggers - a.triggers)
-      .slice(0, 6);
+    const topPosts = [...postCounts.entries()]
+      .map(([postLabel, triggers]) => ({ postLabel, triggers }))
+      .slice(0, 10);
 
     const users = (await readAllUsers()).length;
 

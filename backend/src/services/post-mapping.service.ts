@@ -131,5 +131,8 @@ export async function resolvePostJob(mediaId: string): Promise<PostJobResolution
     },
     getJob: async (id) => readJob(id),
   };
-  return resolvePostJobWithReader(mediaId, reader, env.publicAppUrl);
+  const publicBaseUrl = process.env.NODE_ENV === "production"
+    ? "https://hire-daily.vercel.app"
+    : env.publicAppUrl;
+  return resolvePostJobWithReader(mediaId, reader, publicBaseUrl);
 }

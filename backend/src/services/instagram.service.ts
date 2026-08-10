@@ -29,36 +29,7 @@ import type { RuleEngineRule } from "../types/rule-engine.js";
 import type { PostJobResolution } from "./post-mapping.service.js";
 
 /** Meta Graph API version used by this backend for comment replies. */
-export const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION?.trim() || "v24.0";
-
-function metaApiHosts(): string[] {
-  const configured = env.meta.apiHost || "graph.instagram.com";
-  const fallback = configured === "graph.instagram.com"
-    ? "graph.facebook.com"
-    : "graph.instagram.com";
-  return Array.from(new Set([configured, fallback]));
-}
-
-function isOAuthFailure(status: number, json: unknown): boolean {
-  if (status === 401) return true;
-  if (!json || typeof json !== "object") return false;
-  const error = (json as { error?: { code?: unknown; type?: unknown; message?: unknown } }).error;
-  if (!error) return false;
-  if (error.code === 190) return true;
-  if (error.type === "OAuthException") return true;
-  return typeof error.message === "string" && /oauth|access token/i.test(error.message);
-}
-
-function safeMetaError(status: number, json: unknown, accessToken: string): string {
-  let safeError = `meta_http_${status}`;
-  if (json && typeof json === "object") {
-    const errorMessage = (json as { error?: { message?: unknown } }).error?.message;
-    if (typeof errorMessage === "string" && !errorMessage.includes(accessToken)) {
-      safeError = errorMessage.slice(0, 200);
-    }
-  }
-  return safeError;
-}
+export const META_GRAPH_VERSION = "v24.0";
 
 /** Data needed to render a comment reply template. */
 export interface ReplyTemplateData {
@@ -178,38 +149,34 @@ export async function replyToComment(
     return { success: true, externalId: `dry-run-${commentId}`, error: null, dryRun: true };
   }
 
-  let lastError = "meta_request_failed";
+  const url =
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies` +
+    `?message=${encodeURIComponent(message)}&access_token=${encodeURIComponent(accessToken)}`;
 
-  for (const host of metaApiHosts()) {
-    const url =
-      `https://${host}/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`;
+  try {
+const { ok, status, json } = await fetchJson(fetchImpl, url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
 
-    try {
-      const { ok, status, json } = await fetchJson(fetchImpl, url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ message }),
-      });
-
-      if (ok) {
-        const id = (json as { id?: string } | null)?.id ?? null;
-        return { success: true, externalId: id ?? null, error: null, dryRun: false };
-      }
-
-      lastError = safeMetaError(status, json, accessToken);
-      if (!isOAuthFailure(status, json)) {
-        return { success: false, externalId: null, error: lastError, dryRun: false };
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "unknown_network_error";
-      return { success: false, externalId: null, error: msg, dryRun: false };
+    if (ok) {
+      const id = (json as { id?: string } | null)?.id ?? null;
+      return { success: true, externalId: id ?? null, error: null, dryRun: false };
     }
-  }
 
-  return { success: false, externalId: null, error: lastError, dryRun: false };
+    // Extract a safe error message (never the token).
+    let safeError = `meta_http_${status}`;
+    if (json && typeof json === "object") {
+      const err = (json as { error?: { message?: unknown } }).error?.message;
+      if (typeof err === "string" && !err.includes(accessToken)) {
+        safeError = err.slice(0, 200);
+      }
+    }
+    return { success: false, externalId: null, error: safeError, dryRun: false };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown_network_error";
+    return { success: false, externalId: null, error: msg, dryRun: false };
+  }
 }
 
 /** Comment status persisted to Firebase for a reply attempt. */
@@ -482,207 +449,223 @@ export interface DmLogData {
   jobId: string | null;
   ruleId: string | null;
   keyword: string | null;
-  commentStatus: CommentStatus;
-  dmStatus: DmStatus;
+  commentStatus: CommentStatus | "skipped";
+  dmStatus: DmStatus | "skipped";
   error: string | null;
   dryRun: boolean;
   timestamp: number;
 }
 
-
-
 function extractDmCta(message: string): { text: string; label: string | null } {
   const match = message.match(/\[\[CTA:([^\]]{1,40})\]\]/i);
-  if (!match) return { text: message, label: null };
-
+  if (!match) return { text: message.trim(), label: null };
   const label = match[1].trim();
-  const text = message
-    .replace(match[0], "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const text = message.replace(match[0], "").replace(/\n{3,}/g, "\n\n").trim();
+  return { text, label: label || "View Job & Apply" };
+}
 
-  return {
-    text,
-    label: label || "Apply Now",
-  };
+function safeMetaError(json: unknown, accessToken: string, fallback: string): string {
+  if (json && typeof json === "object") {
+    const message = (json as { error?: { message?: unknown } }).error?.message;
+    if (typeof message === "string" && !message.includes(accessToken)) {
+      return message.slice(0, 200);
+    }
+  }
+  return fallback;
+}
+
+async function sendInstagramJson(
+  fetchImpl: typeof fetch,
+  url: string,
+  accessToken: string,
+  body: unknown,
+): Promise<{ ok: boolean; status: number; json: unknown }> {
+  return fetchJson(fetchImpl, url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 /**
- * Sends an Instagram Private Reply to the commenter via the Meta Graph API
- * messaging endpoint. The network call is injected so tests substitute a mock and never
- * hit the real API. When `dryRun` is true no network call happens at all.
+ * Sends exactly one Instagram DM for a comment-triggered automation.
  *
- * Endpoint used (Instagram Private Replies):
- *   POST https://graph.instagram.com/{version}/{ig_user_id}/messages
- *     { recipient: { comment_id }, message: { text } }
+ * CTA mode:
+ *   1. Try the documented Instagram Button Template using recipient.id.
+ *   2. If Meta rejects the structured button request with an HTTP error,
+ *      fall back to the documented Private Reply using comment_id and plain
+ *      text. This fallback is only attempted after a definite HTTP rejection;
+ *      network/timeout errors are never retried, preventing accidental double
+ *      sends when Meta may have processed an unknown request outcome.
  *
- * Private replies are intentionally text-only here. Meta documents one private
- * reply per comment; rich button/quick-reply messages use a normal recipient
- * id after a messaging interaction, not the comment_id private-reply shape.
- * The CTA marker therefore becomes a real public Hire Daily URL in this first
- * private reply instead of pretending a native button exists.
- *
- * Never exposes the access token in logs/errors.
+ * No second successful message is intentionally sent.
  */
 export async function sendDirectMessage(
-  commentId: string,
+  recipientId: string,
   message: string,
   accessToken: string,
   opts: {
     dryRun?: boolean;
     fetchImpl?: typeof fetch;
+    ctaUrl?: string | null;
+    ctaLabel?: string | null;
+    commentId?: string | null;
+    instagramBusinessId?: string | null;
   } = {},
 ): Promise<ReplyResult> {
   const dryRun = opts.dryRun ?? false;
   const fetchImpl = opts.fetchImpl ?? fetch;
+  const cta = extractDmCta(message);
+  const ctaUrl = opts.ctaUrl?.trim() || null;
+  const ctaLabel = opts.ctaLabel?.trim() || cta.label || "View Job & Apply";
+  const instagramBusinessId = opts.instagramBusinessId?.trim() || null;
 
-  if (!commentId) {
-    return {
-      success: false,
-      externalId: null,
-      error: "comment_id_missing",
-      dryRun,
-    };
+  if (!recipientId) {
+    return { success: false, externalId: null, error: "recipient_id_missing", dryRun };
   }
-
-  if (!message.trim()) {
-    return {
-      success: false,
-      externalId: null,
-      error: "message_empty",
-      dryRun,
-    };
+  if (!cta.text && !cta.label) {
+    return { success: false, externalId: null, error: "message_empty", dryRun };
   }
-
   if (!accessToken) {
-    return {
-      success: false,
-      externalId: null,
-      error: "meta_access_token_missing",
-      dryRun,
-    };
+    return { success: false, externalId: null, error: "meta_access_token_missing", dryRun };
+  }
+  if (cta.label && !ctaUrl) {
+    return { success: false, externalId: null, error: "cta_url_missing", dryRun };
   }
 
-  const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim();
+  if (dryRun) {
+    return {
+      success: true,
+      externalId: `dry-run-dm-${opts.commentId ?? recipientId}`,
+      error: null,
+      dryRun: true,
+    };
+  }
 
   if (!instagramBusinessId) {
     return {
       success: false,
       externalId: null,
       error: "instagram_business_id_missing",
-      dryRun,
+      dryRun: false,
     };
   }
 
-  if (dryRun) {
-    // Validate everything but never call Meta.
-    return {
-      success: true,
-      externalId: `dry-run-private-reply-${commentId}`,
-      error: null,
-      dryRun: true,
+  const messagesUrl =
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/` +
+    `${encodeURIComponent(instagramBusinessId)}/messages`;
+
+  // Native URL button: one structured message. Meta documents Button Template
+  // for the Instagram Send API at /{ig_user_id}/messages with recipient.id.
+  if (cta.label && ctaUrl) {
+    const buttonPayload = {
+      recipient: { id: recipientId },
+      message: {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text: cta.text || "Here is the job you requested.",
+            buttons: [
+              {
+                type: "web_url",
+                url: ctaUrl,
+                title: ctaLabel.slice(0, 20),
+              },
+            ],
+          },
+        },
+      },
     };
-  }
-
-  const payload = {
-    recipient: {
-      comment_id: commentId,
-    },
-    message: {
-      text: message.trim(),
-    },
-  };
-
-  let lastError = "meta_request_failed";
-
-  for (const host of metaApiHosts()) {
-    const url =
-      `https://${host}/${META_GRAPH_VERSION}/` +
-      `${encodeURIComponent(instagramBusinessId)}/messages`;
 
     try {
-      const response = await fetchImpl(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const buttonResult = await sendInstagramJson(
+        fetchImpl,
+        messagesUrl,
+        accessToken,
+        buttonPayload,
+      );
 
-      let json: unknown = null;
-      try {
-        json = await response.json();
-      } catch {
-        json = null;
+      if (buttonResult.ok) {
+        const id = (buttonResult.json as { message_id?: string } | null)?.message_id ?? null;
+        return { success: true, externalId: id, error: null, dryRun: false };
       }
 
-      if (response.ok) {
-        const externalId =
-          (json as { message_id?: string } | null)?.message_id ?? null;
-        return {
-          success: true,
-          externalId,
-          error: null,
-          dryRun: false,
-        };
-      }
-
-      lastError = safeMetaError(response.status, json, accessToken);
-      if (!isOAuthFailure(response.status, json)) {
+      // Definite HTTP rejection: attempt ONE documented private reply fallback
+      // if we have the originating comment id. Do not retry on network errors.
+      if (!opts.commentId) {
         return {
           success: false,
           externalId: null,
-          error: lastError,
+          error: safeMetaError(buttonResult.json, accessToken, `meta_http_${buttonResult.status}`),
           dryRun: false,
         };
       }
-    } catch (error) {
+
+      const fallbackPayload = {
+        recipient: { comment_id: opts.commentId },
+        message: { text: `${cta.text}\n\n${ctaLabel}: ${ctaUrl}`.trim() },
+      };
+
+      const fallbackResult = await sendInstagramJson(
+        fetchImpl,
+        messagesUrl,
+        accessToken,
+        fallbackPayload,
+      );
+
+      if (fallbackResult.ok) {
+        const id = (fallbackResult.json as { message_id?: string } | null)?.message_id ?? null;
+        return { success: true, externalId: id, error: null, dryRun: false };
+      }
+
       return {
         success: false,
         externalId: null,
-        error: error instanceof Error ? error.message : "unknown_network_error",
+        error: safeMetaError(
+          fallbackResult.json,
+          accessToken,
+          `button_rejected_${buttonResult.status};private_reply_rejected_${fallbackResult.status}`,
+        ),
         dryRun: false,
       };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown_network_error";
+      return { success: false, externalId: null, error: msg, dryRun: false };
     }
   }
 
-  return {
-    success: false,
-    externalId: null,
-    error: lastError,
-    dryRun: false,
+  // No CTA marker: send a documented Private Reply using the originating
+  // comment id. This is the safe comment-to-DM path.
+  if (!opts.commentId) {
+    return { success: false, externalId: null, error: "comment_id_missing", dryRun: false };
+  }
+
+  const privateReplyPayload = {
+    recipient: { comment_id: opts.commentId },
+    message: { text: cta.text },
   };
-}
 
-/**
- * Builds the production-safe DM text from a rendered template.
- *
- * Example:
- *   "Here is the job [[CTA:View Job & Apply]]"
- *
- * becomes a single private-reply message with a real, clickable public URL:
- *   "Here is the job
- *
- *    View Job & Apply:
- *    https://hiredaily.app/jobs/..."
- *
- * The URL is the exact mapped Hire Daily job URL.
- */
-export function buildDmMessage(
-  renderedTemplate: string,
-  jobUrl: string,
-): string {
-  const cta = extractDmCta(renderedTemplate);
-  let message = cta.text.trim();
-
-  if (cta.label && jobUrl) {
-    if (!message.includes(jobUrl)) {
-      message = `${message}\n\n${cta.label}: ${jobUrl}`.trim();
+  try {
+    const result = await sendInstagramJson(fetchImpl, messagesUrl, accessToken, privateReplyPayload);
+    if (result.ok) {
+      const id = (result.json as { message_id?: string } | null)?.message_id ?? null;
+      return { success: true, externalId: id, error: null, dryRun: false };
     }
-  }
 
-  return message;
+    return {
+      success: false,
+      externalId: null,
+      error: safeMetaError(result.json, accessToken, `meta_http_${result.status}`),
+      dryRun: false,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown_network_error";
+    return { success: false, externalId: null, error: msg, dryRun: false };
+  }
 }
 
 /** Read-only data-access contract for the DM orchestrator. */
@@ -691,10 +674,8 @@ export interface DmDataReader {
 }
 
 /**
- * Orchestrates a single Instagram Private Reply for a matched rule. The
- * private message is addressed using the original comment ID (ManyChat-style
- * comment → private reply flow). The DM is NOT sent when:
- *   - comment ID is missing
+ * Orchestrates a single DM for a matched rule. The DM is NOT sent when:
+ *   - recipient ID is missing
  *   - post mapping is missing
  *   - the job does not exist
  *   - the job URL is missing
@@ -708,11 +689,11 @@ export async function processDirectMessage(
     userId: string | null;
     username: string | null;
     mediaId: string | null;
-    rule: RuleEngineRule;
     commentId: string | null;
+    rule: RuleEngineRule;
     matchedKeyword: string | null;
     resolution: PostJobResolution;
-    commentStatus: CommentStatus;
+    commentStatus: CommentStatus | "skipped";
     accessToken: string;
     dryRun: boolean;
     logger?: ReplyLogger;
@@ -725,20 +706,19 @@ export async function processDirectMessage(
   const log = input.logger ?? noopLogger;
   const timestamp = Date.now();
 
-  // Private Replies are addressed by the original comment ID.
-  // The commenter user ID is retained only for safe logging/analytics.
-  if (!input.commentId) {
+  // Recipient must be the actual commenter user id (never mediaId/commentId/jobId).
+  if (!input.recipientId) {
     return {
       userId: input.userId,
       username: input.username,
       mediaId: input.mediaId,
-      commentId: null,
+      commentId: input.commentId,
       jobId: input.resolution.jobId,
       ruleId: input.rule.id,
       keyword: input.matchedKeyword,
       commentStatus: input.commentStatus,
       dmStatus: "failed",
-      error: "comment_id_missing",
+      error: "recipient_id_missing",
       dryRun: input.dryRun,
       timestamp,
     };
@@ -781,7 +761,6 @@ export async function processDirectMessage(
   }
 
   const dmText = await deps.reader.getDmTemplateText(input.rule);
-  
   if (!dmText) {
     return {
       userId: input.userId,
@@ -825,24 +804,13 @@ export async function processDirectMessage(
     };
   }
 
-  // Build ONE private-reply message.
-  // The CTA marker is converted into the exact mapped Hire Daily URL.
-  // Do not make a second /messages call for the button: Meta allows only one
-  // private reply for the original comment.
-  const dmMessage = buildDmMessage(
-    render.rendered,
-    input.resolution.jobUrl,
-  );
-
-  const dm = await sendDirectMessage(
-    input.commentId,
-    dmMessage,
-    input.accessToken,
-    {
-      dryRun: input.dryRun,
-      fetchImpl: deps.fetchImpl,
-    },
-  );
+  const dm = await sendDirectMessage(input.recipientId, render.rendered, input.accessToken, {
+    dryRun: input.dryRun,
+    fetchImpl: deps.fetchImpl,
+    ctaUrl: input.resolution.jobUrl,
+    commentId: input.commentId,
+    instagramBusinessId: env.meta.instagramBusinessId,
+  });
 
   if (dm.success) {
     log.info("DM sent", {
@@ -906,7 +874,7 @@ export async function processDirectMessageProduction(
     rule: RuleEngineRule;
     matchedKeyword: string | null;
     resolution: PostJobResolution;
-    commentStatus: CommentStatus;
+    commentStatus: CommentStatus | "skipped";
   },
 ): Promise<DmLogData> {
   const { readDmTemplateText } = await import("./firebase-admin.service.js");
