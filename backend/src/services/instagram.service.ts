@@ -218,6 +218,37 @@ const noopLogger: ReplyLogger = {
   error: () => {},
 };
 
+// Webhook providers may retry the same event. Keep a short-lived in-process
+// idempotency cache so one comment cannot trigger two public replies or two
+// private replies when the duplicate delivery reaches the same server
+// instance. The key is the real Instagram comment ID + rule ID.
+//
+// NOTE: This protects duplicate/concurrent deliveries on the same runtime.
+// For cross-instance/serverless guarantees, the webhook caller should also
+// persist an atomic idempotency key in Firebase/Redis.
+const RECENT_ACTION_TTL_MS = 10 * 60 * 1000;
+const recentActionClaims = new Map<string, number>();
+
+function claimRecentAction(key: string, now = Date.now()): boolean {
+  for (const [existingKey, claimedAt] of recentActionClaims) {
+    if (now - claimedAt > RECENT_ACTION_TTL_MS) {
+      recentActionClaims.delete(existingKey);
+    }
+  }
+
+  const claimedAt = recentActionClaims.get(key);
+  if (claimedAt !== undefined && now - claimedAt <= RECENT_ACTION_TTL_MS) {
+    return false;
+  }
+
+  recentActionClaims.set(key, now);
+  return true;
+}
+
+function releaseRecentAction(key: string): void {
+  recentActionClaims.delete(key);
+}
+
 /**
  * Orchestrates a single public comment reply for a matched rule:
  *   1. resolve the post mapping → job (jobId + jobUrl + job data)
@@ -331,6 +362,27 @@ export async function processCommentReply(
     };
   }
 
+  const actionKey = `instagram:comment-reply:${input.commentId}:${input.rule.id}`;
+  if (!input.dryRun && !claimRecentAction(actionKey, timestamp)) {
+    log.info("Duplicate comment event suppressed", {
+      commentId: input.commentId,
+      ruleId: input.rule.id,
+    });
+    return {
+      userId: input.userId,
+      username: input.username,
+      mediaId: input.mediaId,
+      commentId: input.commentId,
+      jobId: input.resolution.jobId,
+      ruleId: input.rule.id,
+      keyword: input.matchedKeyword,
+      commentStatus: "success",
+      error: "duplicate_event_suppressed",
+      dryRun: input.dryRun,
+      timestamp,
+    };
+  }
+
   const reply = await replyToComment(input.commentId, render.rendered, input.accessToken, {
     dryRun: input.dryRun,
     fetchImpl: deps.fetchImpl,
@@ -365,6 +417,9 @@ export async function processCommentReply(
     error: reply.error,
     dryRun: reply.dryRun,
   });
+  if (!input.dryRun) {
+    releaseRecentAction(actionKey);
+  }
   return {
     userId: input.userId,
     username: input.username,
@@ -804,6 +859,28 @@ export async function processDirectMessage(
     input.resolution.jobUrl,
   );
 
+  const dmActionKey = `instagram:dm:${input.commentId}:${input.rule.id}`;
+  if (!input.dryRun && !claimRecentAction(dmActionKey, timestamp)) {
+    log.info("Duplicate DM event suppressed", {
+      commentId: input.commentId,
+      ruleId: input.rule.id,
+    });
+    return {
+      userId: input.userId,
+      username: input.username,
+      mediaId: input.mediaId,
+      commentId: input.commentId,
+      jobId: input.resolution.jobId,
+      ruleId: input.rule.id,
+      keyword: input.matchedKeyword,
+      commentStatus: input.commentStatus,
+      dmStatus: "failed",
+      error: "duplicate_event_suppressed",
+      dryRun: input.dryRun,
+      timestamp,
+    };
+  }
+
   const dm = await sendDirectMessage(
     input.commentId,
     dmMessage,
@@ -844,6 +921,9 @@ export async function processDirectMessage(
     error: dm.error,
     dryRun: dm.dryRun,
   });
+  if (!input.dryRun) {
+    releaseRecentAction(dmActionKey);
+  }
   return {
     userId: input.userId,
     username: input.username,
