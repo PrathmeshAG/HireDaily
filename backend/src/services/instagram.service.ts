@@ -473,111 +473,143 @@ function extractDmCta(message: string): { text: string; label: string | null } {
 }
 
 /**
- * Sends a private DM to an Instagram user via the Meta Graph API messaging
- * endpoint. The network call is injected so tests substitute a mock and never
+ * Sends an Instagram Private Reply to the commenter via the Meta Graph API
+ * messaging endpoint. The network call is injected so tests substitute a mock and never
  * hit the real API. When `dryRun` is true no network call happens at all.
  *
- * Endpoint used (Instagram Private Messaging):
- *   POST https://graph.facebook.com/{version}/{recipient_id}/messages
- *     ?recipient={"id":...}&message={"text":...}&access_token=...
+ * Endpoint used (Instagram Private Replies):
+ *   POST https://graph.instagram.com/{version}/{ig_user_id}/messages
+ *     { recipient: { comment_id }, message: { text } }
  *
  * Never exposes the access token in logs/errors.
  */
 export async function sendDirectMessage(
-  recipientId: string,
+  commentId: string,
   message: string,
   accessToken: string,
-  opts: { dryRun?: boolean; fetchImpl?: typeof fetch; ctaUrl?: string | null } = {},
+  opts: {
+    dryRun?: boolean;
+    fetchImpl?: typeof fetch;
+  } = {},
 ): Promise<ReplyResult> {
   const dryRun = opts.dryRun ?? false;
   const fetchImpl = opts.fetchImpl ?? fetch;
 
-  if (!recipientId) {
-    return { success: false, externalId: null, error: "recipient_id_missing", dryRun };
-  }
-  if (!message) {
-    return { success: false, externalId: null, error: "message_empty", dryRun };
-  }
-  if (!accessToken) {
-    return { success: false, externalId: null, error: "meta_access_token_missing", dryRun };
+  if (!commentId) {
+    return {
+      success: false,
+      externalId: null,
+      error: "comment_id_missing",
+      dryRun,
+    };
   }
 
-  const cta = extractDmCta(message);
-  if (!cta.text && !cta.label) {
-    return { success: false, externalId: null, error: "message_empty", dryRun };
+  if (!message) {
+    return {
+      success: false,
+      externalId: null,
+      error: "message_empty",
+      dryRun,
+    };
+  }
+
+  if (!accessToken) {
+    return {
+      success: false,
+      externalId: null,
+      error: "meta_access_token_missing",
+      dryRun,
+    };
   }
 
   if (dryRun) {
-    // Build + validate the request payload, but NEVER call the real Meta API.
-    return { success: true, externalId: `dry-run-dm-${recipientId}`, error: null, dryRun: true };
+    return {
+      success: true,
+      externalId: `dry-run-private-reply-${commentId}`,
+      error: null,
+      dryRun: true,
+    };
   }
 
-  const igAccountId = process.env.INSTAGRAM_BUSINESS_ID?.trim() || "";
-  if (!igAccountId) {
-    return { success: false, externalId: null, error: "instagram_business_id_missing", dryRun: false };
-  }
+  const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim();
 
-  const recipientPayload = { id: recipientId };
-  const messagePayload = cta.label
-    ? {
-        attachment: {
-          type: "template",
-          payload: {
-            template_type: "generic",
-            elements: [
-              {
-                title: "Hire Daily",
-                subtitle: cta.text.slice(0, 640),
-                buttons: [
-                  {
-                    type: "web_url",
-                    url: opts.ctaUrl ?? extractFirstUrl(message) ?? "",
-                    title: cta.label.slice(0, 20),
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      }
-    : { text: cta.text };
-
-  if (cta.label && !(opts.ctaUrl ?? extractFirstUrl(message))) {
-    return { success: false, externalId: null, error: "cta_url_missing", dryRun: false };
+  if (!instagramBusinessId) {
+    return {
+      success: false,
+      externalId: null,
+      error: "instagram_business_id_missing",
+      dryRun: false,
+    };
   }
 
   const url =
-    `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(igAccountId)}/messages`;
+    `https://graph.instagram.com/${META_GRAPH_VERSION}/` +
+    `${encodeURIComponent(instagramBusinessId)}/messages`;
+
+  const payload = {
+    recipient: {
+      comment_id: commentId,
+    },
+    message: {
+      text: message,
+    },
+  };
 
   try {
-    const { ok, status, json } = await fetchJson(fetchImpl, url, {
+    const response = await fetchImpl(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({
-        recipient: recipientPayload,
-        message: messagePayload,
-      }),
+      body: JSON.stringify(payload),
     });
 
-    if (ok) {
-      const id = (json as { message_id?: string } | null)?.message_id ?? null;
-      return { success: true, externalId: id ?? null, error: null, dryRun: false };
+    let json: unknown = null;
+
+    try {
+      json = await response.json();
+    } catch {
+      json = null;
     }
 
-    let safeError = `meta_http_${status}`;
-    if (json && typeof json === "object") {
-      const err = (json as { error?: { message?: unknown } }).error?.message;
-      if (typeof err === "string" && !err.includes(accessToken)) {
-        safeError = err.slice(0, 200);
-      }
+    if (response.ok) {
+      const data = json as {
+        message_id?: string;
+      } | null;
+
+      return {
+        success: true,
+        externalId: data?.message_id ?? null,
+        error: null,
+        dryRun: false,
+      };
     }
-    return { success: false, externalId: null, error: safeError, dryRun: false };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "unknown_network_error";
-    return { success: false, externalId: null, error: msg, dryRun: false };
+
+    const errorMessage =
+      json &&
+      typeof json === "object" &&
+      "error" in json &&
+      typeof (json as any).error?.message === "string"
+        ? (json as any).error.message
+        : `meta_http_${response.status}`;
+
+    return {
+      success: false,
+      externalId: null,
+      error: errorMessage.slice(0, 200),
+      dryRun: false,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      externalId: null,
+      error:
+        error instanceof Error
+          ? error.message
+          : "unknown_network_error",
+      dryRun: false,
+    };
   }
 }
 
@@ -587,8 +619,10 @@ export interface DmDataReader {
 }
 
 /**
- * Orchestrates a single DM for a matched rule. The DM is NOT sent when:
- *   - recipient ID is missing
+ * Orchestrates a single Instagram Private Reply for a matched rule. The
+ * private message is addressed using the original comment ID (ManyChat-style
+ * comment → private reply flow). The DM is NOT sent when:
+ *   - comment ID is missing
  *   - post mapping is missing
  *   - the job does not exist
  *   - the job URL is missing
@@ -602,8 +636,8 @@ export async function processDirectMessage(
     userId: string | null;
     username: string | null;
     mediaId: string | null;
-    commentId: string | null;
     rule: RuleEngineRule;
+    commentId: string | null;
     matchedKeyword: string | null;
     resolution: PostJobResolution;
     commentStatus: CommentStatus;
@@ -619,19 +653,20 @@ export async function processDirectMessage(
   const log = input.logger ?? noopLogger;
   const timestamp = Date.now();
 
-  // Recipient must be the actual commenter user id (never mediaId/commentId/jobId).
-  if (!input.recipientId) {
+  // Private Replies are addressed by the original comment ID.
+  // The commenter user ID is retained only for safe logging/analytics.
+  if (!input.commentId) {
     return {
       userId: input.userId,
       username: input.username,
       mediaId: input.mediaId,
-      commentId: input.commentId,
+      commentId: null,
       jobId: input.resolution.jobId,
       ruleId: input.rule.id,
       keyword: input.matchedKeyword,
       commentStatus: input.commentStatus,
       dmStatus: "failed",
-      error: "recipient_id_missing",
+      error: "comment_id_missing",
       dryRun: input.dryRun,
       timestamp,
     };
@@ -717,11 +752,15 @@ export async function processDirectMessage(
     };
   }
 
-  const dm = await sendDirectMessage(input.recipientId, render.rendered, input.accessToken, {
-    dryRun: input.dryRun,
-    fetchImpl: deps.fetchImpl,
-    ctaUrl: input.resolution.jobUrl,
-  });
+  const dm = await sendDirectMessage(
+    input.commentId,
+    render.rendered,
+    input.accessToken,
+    {
+      dryRun: input.dryRun,
+      fetchImpl: deps.fetchImpl,
+    },
+  );
 
   if (dm.success) {
     log.info("DM sent", {
