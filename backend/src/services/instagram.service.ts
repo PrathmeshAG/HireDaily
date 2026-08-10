@@ -459,18 +459,23 @@ export interface DmLogData {
   timestamp: number;
 }
 
-// function extractFirstUrl(message: string): string | null {
-//   const match = message.match(/https?:\/\/[^\s)]+/i);
-//   return match?.[0] ?? null;
-// }
 
-// function extractDmCta(message: string): { text: string; label: string | null } {
-//   const match = message.match(/\[\[CTA:([^\]]{1,40})\]\]/i);
-//   if (!match) return { text: message, label: null };
-//   const label = match[1].trim();
-//   const text = message.replace(match[0], "").replace(/\n{3,}/g, "\n\n").trim();
-//   return { text, label: label || "Apply Now" };
-// }
+
+function extractDmCta(message: string): { text: string; label: string | null } {
+  const match = message.match(/\[\[CTA:([^\]]{1,40})\]\]/i);
+  if (!match) return { text: message, label: null };
+
+  const label = match[1].trim();
+  const text = message
+    .replace(match[0], "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return {
+    text,
+    label: label || "Apply Now",
+  };
+}
 
 /**
  * Sends an Instagram Private Reply to the commenter via the Meta Graph API
@@ -613,6 +618,35 @@ export async function sendDirectMessage(
   }
 }
 
+/**
+ * Builds the production-safe DM text from a rendered template.
+ *
+ * Example:
+ *   "Here is the job [[CTA:View Job & Apply]]"
+ *
+ * becomes:
+ *   "Here is the job
+ *
+ *    View Job & Apply: https://hiredaily.app/jobs/..."
+ *
+ * The URL is the exact mapped Hire Daily job URL.
+ */
+export function buildDmMessage(
+  renderedTemplate: string,
+  jobUrl: string,
+): string {
+  const cta = extractDmCta(renderedTemplate);
+  let message = cta.text.trim();
+
+  if (cta.label && jobUrl) {
+    if (!message.includes(jobUrl)) {
+      message = `${message}\n\n${cta.label}: ${jobUrl}`.trim();
+    }
+  }
+
+  return message;
+}
+
 /** Read-only data-access contract for the DM orchestrator. */
 export interface DmDataReader {
   getDmTemplateText(rule: RuleEngineRule): Promise<string | null>;
@@ -752,9 +786,19 @@ export async function processDirectMessage(
     };
   }
 
+  // Convert the internal CTA marker into a normal clickable job URL.
+  // Meta's Private Reply endpoint accepts a text message for the initial
+  // comment-triggered private reply. A native website button is not supported
+  // on this private-reply payload, so we keep the CTA label and append the
+  // exact mapped Hire Daily URL as plain text.
+  const dmMessage = buildDmMessage(
+    render.rendered,
+    input.resolution.jobUrl,
+  );
+
   const dm = await sendDirectMessage(
     input.commentId,
-    render.rendered,
+    dmMessage,
     input.accessToken,
     {
       dryRun: input.dryRun,
