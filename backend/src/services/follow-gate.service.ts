@@ -1,6 +1,7 @@
 import { env } from "../config/env.js";
 import {
   claimInstagramActionOnce,
+  releaseInstagramActionClaim,
   readAllRules,
   readUserRecord,
   updateInstagramUserFollowState,
@@ -198,10 +199,11 @@ export async function handleFollowGateInteraction(input: {
   const pending = user?.pendingFollowGate ?? null;
 
   if (!pending) {
-    // Safe response for a stale/manual interaction with no pending job.
-    await sendFollowGateMessage(input.userId, env.meta.accessToken, {
-      dryRun: env.meta.dryRun,
-      instagramBusinessId: env.meta.instagramBusinessId,
+    // There is no job context left to unlock. In particular, do not resend
+    // the Follow Gate for stale/repeated clicks after a successful unlock.
+    logger.info("Ignoring Follow Gate interaction with no pending job", {
+      userId: input.userId,
+      followStatus: check.status,
     });
     return true;
   }
@@ -227,30 +229,77 @@ export async function handleFollowGateInteraction(input: {
   const resolution = await resolvePostJob(pending.mediaId);
   const jobClaimed = await claimInstagramActionOnce(pending.commentId, "job_dm");
   if (!jobClaimed) {
-    await updateInstagramUserFollowState(input.userId, { pendingFollowGate: null });
+    logger.info("Ignoring duplicate/pending Job DM interaction", {
+      userId: input.userId,
+      commentId: pending.commentId,
+    });
     return true;
   }
 
-  const dm = await processDirectMessageProduction({
-    recipientId: input.userId,
-    userId: input.userId,
-    username: input.username ?? user?.username ?? null,
-    mediaId: pending.mediaId,
-    // Important: the user has now responded, so use the normal messaging
-    // window and the existing View Job & Apply button implementation.
-    commentId: null,
-    rule,
-    matchedKeyword: pending.matchedKeyword,
-    resolution,
-    commentStatus: pending.commentStatus,
-  });
+  let dm: DmLogData;
+  try {
+    dm = await processDirectMessageProduction({
+      recipientId: input.userId,
+      userId: input.userId,
+      username: input.username ?? user?.username ?? null,
+      mediaId: pending.mediaId,
+      // Important: the user has now responded, so use the normal messaging
+      // window and the existing View Job & Apply button implementation.
+      commentId: null,
+      rule,
+      matchedKeyword: pending.matchedKeyword,
+      resolution,
+      commentStatus: pending.commentStatus,
+    });
+  } catch (error) {
+    await releaseInstagramActionClaim(pending.commentId, "job_dm").catch((releaseError) =>
+      logger.error("Failed to release Job DM claim after exception", {
+        userId: input.userId,
+        commentId: pending.commentId,
+        error: releaseError,
+      }),
+    );
+    logger.error("Verified Follow Gate Job DM threw an error", {
+      userId: input.userId,
+      commentId: pending.commentId,
+      error,
+    });
+    return true;
+  }
 
   await writeDmLog(dm);
+
+  if (dm.dmStatus === "success") {
+    // Only clear the pending job after the EXISTING Job DM + CTA was actually
+    // accepted by Meta. A failed send must remain retryable.
+    await updateInstagramUserFollowState(input.userId, {
+      pendingFollowGate: null,
+      followConfirmed: true,
+      followStatus: "verified",
+      lastFollowCheckAt: now,
+    });
+    return true;
+  }
+
+  // The user is verified, but the existing Job DM did not send. Keep the
+  // pending job and release the claim so a later interaction can retry it.
+  await releaseInstagramActionClaim(pending.commentId, "job_dm").catch((releaseError) =>
+    logger.error("Failed to release Job DM claim after failed send", {
+      userId: input.userId,
+      commentId: pending.commentId,
+      error: releaseError,
+    }),
+  );
   await updateInstagramUserFollowState(input.userId, {
-    pendingFollowGate: null,
+    pendingFollowGate: pending,
     followConfirmed: true,
     followStatus: "verified",
     lastFollowCheckAt: now,
+  });
+  logger.error("Verified user Job DM failed; pending job preserved for retry", {
+    userId: input.userId,
+    commentId: pending.commentId,
+    error: dm.error,
   });
 
   return true;

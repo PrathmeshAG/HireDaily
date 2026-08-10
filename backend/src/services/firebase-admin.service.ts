@@ -415,6 +415,20 @@ export async function claimInstagramActionOnce(
   return result.committed;
 }
 
+/** Releases a previously claimed action when the external operation failed.
+ * This is intentionally limited to the action key supplied by the caller so
+ * a failed Follow Gate job-DM attempt can be retried without weakening the
+ * existing idempotency guarantees for successful actions.
+ */
+export async function releaseInstagramActionClaim(
+  key: string,
+  action: "comment_reply" | "dm" | "follow_gate" | "follow_check" | "job_dm",
+): Promise<void> {
+  const normalized = String(key ?? "").trim();
+  if (!normalized) return;
+  await db().ref(`automation/instagramClaims/${normalized}/${action}`).remove();
+}
+
 /**
  * Reads the comment reply template text for a rule from
  * `automation/templates/{commentTemplateId}`. Returns null when the rule has
