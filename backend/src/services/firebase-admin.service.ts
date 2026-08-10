@@ -295,6 +295,7 @@ export async function readPostMapping(mediaId: string): Promise<{
   instagramPostUrl: string | null;
   mappedAt: number | null;
   updatedAt: number | null;
+  status: "active" | "archived";
 } | null> {
   if (!mediaId) return null;
 
@@ -333,6 +334,7 @@ export async function readPostMapping(mediaId: string): Promise<{
       typeof val.updatedAt === "number"
         ? val.updatedAt
         : null,
+    status: val.status === "archived" ? "archived" : "active",
   };
 }
 /**
@@ -743,6 +745,7 @@ export async function readAllPostMappings(): Promise<
     instagramPostUrl: string | null;
     mappedAt: number | null;
     updatedAt: number | null;
+    status: "active" | "archived";
   }[]
 > {
   const snap = await db()
@@ -761,6 +764,7 @@ export async function readAllPostMappings(): Promise<
     instagramPostUrl: string | null;
     mappedAt: number | null;
     updatedAt: number | null;
+    status: "active" | "archived";
   }[] = [];
 
   for (const [mediaId, value] of Object.entries(raw)) {
@@ -798,6 +802,7 @@ export async function readAllPostMappings(): Promise<
         typeof m.updatedAt === "number"
           ? m.updatedAt
           : null,
+      status: m.status === "archived" ? "archived" : "active",
     });
   }
 
@@ -816,6 +821,7 @@ export async function writePostMapping(
     instagramPostUrl?: string | null;
     mappedAt: number;
     updatedAt?: number;
+    status?: "active" | "archived";
   },
 ): Promise<void> {
   await db()

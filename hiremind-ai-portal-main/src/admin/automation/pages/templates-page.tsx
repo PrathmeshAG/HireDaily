@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Loader2, Save, X, MessageSquareText, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Save, X, MessageSquareText, Eye, Link2 } from "lucide-react";
 import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from "../services/automation-service";
 import type { Template, TemplateKind } from "../types";
 import { TableToolbar } from "../components/table-toolbar";
@@ -20,6 +20,15 @@ function renderPreview(text: string): string {
   let out = text;
   for (const [k, v] of Object.entries(SAMPLE_VARS)) out = out.split(k).join(v);
   return out;
+}
+
+function splitCtaPreview(text: string): { body: string; label: string | null } {
+  const match = text.match(/\[\[CTA:([^\]]{1,40})\]\]/i);
+  if (!match) return { body: renderPreview(text), label: null };
+  return {
+    body: renderPreview(text.replace(match[0], "").replace(/\n{3,}/g, "\n\n").trim()),
+    label: match[1].trim() || "Apply Now",
+  };
 }
 
 export function TemplatesPage() {
@@ -225,17 +234,45 @@ function TemplateDialog({
                 </button>
               ))}
             </div>
+            {kind === "dm" && (
+              <div className="rounded-xl border border-[#00e5ff]/15 bg-[#00e5ff]/5 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-white">DM CTA button</p>
+                    <p className="mt-0.5 text-[11px] text-white/40">Adds a real Instagram web button using the mapped job URL.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setText((t) => t.includes("[[CTA:") ? t : `${t.trim()}\n\n[[CTA:Apply Now]]`)}
+                    className="btn-ghost-glow flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs"
+                  >
+                    <Link2 className="h-3.5 w-3.5" /> Add button
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
             <label className={`${label} flex items-center gap-1.5`}><Eye className="h-3.5 w-3.5" /> Live preview</label>
             <div className="glass rounded-xl p-4 text-sm leading-relaxed text-white/85">
-              {text.trim() ? (
-                <p className="whitespace-pre-wrap">{renderPreview(text)}</p>
-              ) : (
+              {text.trim() ? (() => {
+                const preview = splitCtaPreview(text);
+                return (
+                  <div>
+                    <p className="whitespace-pre-wrap">{preview.body}</p>
+                    {preview.label && (
+                      <div className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#00e5ff] px-4 py-2.5 text-xs font-semibold text-[#041018] shadow-lg shadow-cyan-500/20">
+                        <Link2 className="h-3.5 w-3.5" /> {preview.label}
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : (
                 <p className="text-white/40">Start typing to see the preview…</p>
               )}
             </div>
+            {kind === "dm" && <p className="mt-2 text-[10px] text-white/30">The CTA URL is resolved server-side from the mapped job. The raw URL does not need to appear in the DM text.</p>}
           </div>
         </div>
 

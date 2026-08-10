@@ -37,7 +37,7 @@ export interface PostJobResolution {
  */
 export interface DataReader {
   /** Returns the post mapping for a media id, or null when absent. */
-  getPostMapping(mediaId: string): Promise<{ jobId: string; jobTitleCache: string | null } | null>;
+  getPostMapping(mediaId: string): Promise<{ jobId: string; jobTitleCache: string | null; status?: "active" | "archived" } | null>;
 /** Returns the job record for a job id, or null when absent. */
   getJob(jobId: string): Promise<{
     jobTitle: string | null;
@@ -89,6 +89,9 @@ export async function resolvePostJobWithReader(
   }
 
   const { jobId, jobTitleCache } = mapping;
+  if (mapping.status === "archived") {
+    return notMapped(mediaId, "post_mapping_archived", jobId || null);
+  }
   if (!jobId) {
     return notMapped(mediaId, "post_mapping_invalid", jobId);
   }
@@ -124,7 +127,7 @@ export async function resolvePostJob(mediaId: string): Promise<PostJobResolution
   const reader: DataReader = {
     getPostMapping: async (id) => {
       const m = await readPostMapping(id);
-      return m ? { jobId: m.jobId, jobTitleCache: m.jobTitleCache } : null;
+      return m ? { jobId: m.jobId, jobTitleCache: m.jobTitleCache, status: m.status } : null;
     },
     getJob: async (id) => readJob(id),
   };

@@ -105,7 +105,7 @@ function AutomationDashboard() {
           {page === "users" && <UsersPage />}
           {page === "logs" && <LogsPage />}
           {page === "analytics" && <AnalyticsPage />}
-          {page === "settings" && <SettingsPage />}
+          {page === "settings" && <SettingsPage onNavigate={(target) => setPage(target)} />}
         </div>
       </div>
     </div>

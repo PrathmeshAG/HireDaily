@@ -129,7 +129,7 @@ export async function replyToComment(
   commentId: string,
   message: string,
   accessToken: string,
-  opts: { dryRun?: boolean; fetchImpl?: typeof fetch } = {},
+  opts: { dryRun?: boolean; fetchImpl?: typeof fetch; ctaUrl?: string | null } = {},
 ): Promise<ReplyResult> {
   const dryRun = opts.dryRun ?? false;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -456,6 +456,19 @@ export interface DmLogData {
   timestamp: number;
 }
 
+function extractFirstUrl(message: string): string | null {
+  const match = message.match(/https?:\/\/[^\s)]+/i);
+  return match?.[0] ?? null;
+}
+
+function extractDmCta(message: string): { text: string; label: string | null } {
+  const match = message.match(/\[\[CTA:([^\]]{1,40})\]\]/i);
+  if (!match) return { text: message, label: null };
+  const label = match[1].trim();
+  const text = message.replace(match[0], "").replace(/\n{3,}/g, "\n\n").trim();
+  return { text, label: label || "Apply Now" };
+}
+
 /**
  * Sends a private DM to an Instagram user via the Meta Graph API messaging
  * endpoint. The network call is injected so tests substitute a mock and never
@@ -471,7 +484,7 @@ export async function sendDirectMessage(
   recipientId: string,
   message: string,
   accessToken: string,
-  opts: { dryRun?: boolean; fetchImpl?: typeof fetch } = {},
+  opts: { dryRun?: boolean; fetchImpl?: typeof fetch; ctaUrl?: string | null } = {},
 ): Promise<ReplyResult> {
   const dryRun = opts.dryRun ?? false;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -486,13 +499,41 @@ export async function sendDirectMessage(
     return { success: false, externalId: null, error: "meta_access_token_missing", dryRun };
   }
 
+  const cta = extractDmCta(message);
+  if (!cta.text && !cta.label) {
+    return { success: false, externalId: null, error: "message_empty", dryRun };
+  }
+
   if (dryRun) {
     // Build + validate the request payload, but NEVER call the real Meta API.
     return { success: true, externalId: `dry-run-dm-${recipientId}`, error: null, dryRun: true };
   }
 
   const recipientPayload = JSON.stringify({ id: recipientId });
-  const messagePayload = JSON.stringify({ text: message });
+  const messagePayload = cta.label
+    ? JSON.stringify({
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "generic",
+            elements: [
+              {
+                title: "Hire Daily",
+                subtitle: cta.text.slice(0, 640),
+                buttons: [
+                  { type: "web_url", url: opts.ctaUrl ?? extractFirstUrl(message) ?? "", title: cta.label.slice(0, 20) },
+                ],
+              },
+            ],
+          },
+        },
+      })
+    : JSON.stringify({ text: cta.text });
+
+  if (cta.label && !(opts.ctaUrl ?? extractFirstUrl(message))) {
+    return { success: false, externalId: null, error: "cta_url_missing", dryRun: false };
+  }
+
   const url =
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(recipientId)}/messages` +
     `?recipient=${encodeURIComponent(recipientPayload)}` +
@@ -663,6 +704,7 @@ export async function processDirectMessage(
   const dm = await sendDirectMessage(input.recipientId, render.rendered, input.accessToken, {
     dryRun: input.dryRun,
     fetchImpl: deps.fetchImpl,
+    ctaUrl: input.resolution.jobUrl,
   });
 
   if (dm.success) {

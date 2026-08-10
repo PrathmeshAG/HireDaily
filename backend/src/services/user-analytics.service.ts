@@ -64,6 +64,8 @@ export interface TrackingEvent {
   followStatus: FollowStatus | null;
   automationError: boolean;
   dryRun: boolean;
+  /** Set false when the inbound comment was already counted upstream. */
+  recordCommentReceived?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +218,7 @@ export async function applyTracking(
 ): Promise<void> {
   const date = dateKey(event.now);
 
-  if (event.commentReceived) {
+  if (event.commentReceived && event.recordCommentReceived !== false) {
     await incrementDailyAnalytics(analyticsStore, date, "commentsReceived");
   }
   if (event.matched) {

@@ -189,6 +189,15 @@ async function runRuleEngine(event: {
     const context = toRuleContext(event);
     const result = evaluateComment(activeRules, context, now);
 
+    if (result.matched) {
+      try {
+        const { analytics } = trackingStores();
+        await incrementDailyAnalytics(await analytics, dateKey(now), "commentsMatched");
+      } catch (error) {
+        logger.warn("Failed to record commentsMatched analytics", { error });
+      }
+    }
+
 console.log("🔥 RULE ENGINE RESULT", {
   matched: result.matched,
   ruleId: result.ruleId,
@@ -338,7 +347,8 @@ console.log(
                 username: event.username,
                 now: Date.now(),
                 commentReceived: true,
-                matched: true,
+                matched: false,
+                recordCommentReceived: false,
                 commentReplyStatus: commentStatus,
                 dmStatus,
                 followStatus: follow.status,
@@ -391,6 +401,16 @@ async function ingestWebhook(req: express.Request, res: express.Response): Promi
     // and other webhook events can legitimately have no mediaId/comment text.
     // They are still logged above, but must never be evaluated as comments.
     if (event.eventType !== "comment") continue;
+
+    // Count every real inbound comment, including comments that arrive before
+    // a post mapping exists. This keeps Analytics aligned with the webhook
+    // stream instead of only counting comments that successfully automated.
+    try {
+      const { analytics } = trackingStores();
+      await incrementDailyAnalytics(await analytics, dateKey(Date.now()), "commentsReceived");
+    } catch (error) {
+      logger.warn("Failed to record commentsReceived analytics", { error });
+    }
 
     // A malformed comment event without a mediaId cannot be mapped to a post.
     // Keep the webhook successful and log it as an ignored event instead of
@@ -572,6 +592,7 @@ app.patch("/api/automation/templates/:id", async (req, res) => {
       ...body,
       id,
       updatedAt: Date.now(),
+     
     });
     res.status(200).json({ id });
   } catch (e) {
@@ -676,6 +697,7 @@ app.post("/api/automation/post-mappings", async (req, res) => {
           : null,
       mappedAt: Date.now(),
       updatedAt: Date.now(),
+      status: "active",
 });
     res.status(201).json({ id: mediaId, mediaId, jobId });
   } catch (e) {
@@ -717,6 +739,8 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
         ? body.jobTitleCache.trim()
         : existing.jobTitleCache;
 
+    const status = body.status === "archived" ? "archived" : body.status === "active" ? "active" : existing.status;
+
     // Keep the Instagram post URL if the frontend sends it.
     const instagramPostUrl =
       typeof body.instagramPostUrl === "string"
@@ -735,6 +759,7 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
 
       // Useful for debugging/admin UI.
       updatedAt: Date.now(),
+      status,
     });
 
     res.status(200).json({
@@ -821,20 +846,27 @@ app.get("/api/automation/analytics", async (_req, res) => {
 
     // Keyword counts from keyword_matched logs (ruleKeyword).
     const keywordCounts = new Map<string, number>();
-    // Post counts from comment_sent/dm_sent logs that carry a postLabel via
-    // the mapping label is not stored on logs; approximate post aggregates
-    // from the post-mapping count + matched logs by mediaId. To keep this
-    // dependency-free and read-only, we derive topPosts from distinct
-    // postLabel-associated logs is not available, so we source topPosts from
-    // the matched keyword logs' mediaId-labelled rules is not present either.
-    // Instead, we expose what the existing frontend supports using the data
-    // we DO have: keyword aggregates (from ruleKeyword on keyword_matched)
-    // and a stable, safe placeholder for posts (from the mapping count).
+    // Post counts are derived from matched events and resolved through the
+    // existing read-only post mapping cache. This works in dry-run too, so
+    // Analytics can show which posts are actually triggering rules even when
+    // no real outbound reply/DM is sent.
     const postCounts = new Map<string, number>();
+    const mappings = await readAllPostMappings();
+    const mappingLabels = new Map<string, string>();
+    for (const mapping of mappings) {
+      mappingLabels.set(
+        mapping.mediaId,
+        mapping.jobTitleCache?.trim() || mapping.mediaId,
+      );
+    }
 
     for (const log of logs) {
       if (log.type === "keyword_matched" && log.ruleKeyword) {
         keywordCounts.set(log.ruleKeyword, (keywordCounts.get(log.ruleKeyword) ?? 0) + 1);
+      }
+      if (log.type === "keyword_matched" && log.mediaId) {
+        const label = mappingLabels.get(log.mediaId) ?? log.mediaId;
+        postCounts.set(label, (postCounts.get(label) ?? 0) + 1);
       }
     }
 
@@ -906,6 +938,7 @@ app.get("/api/automation/summary", async (_req, res) => {
  * firebaseConfigured, metaConfigured, dryRun, webhookConfigured, serviceStatus.
  */
 app.get("/api/automation/settings", async (_req, res) => {
+  const apiStartedAt = Date.now();
   try {
     const isFirebase = isFirebaseAdminConfigured();
     const accessToken = process.env.META_ACCESS_TOKEN?.trim() ?? "";
@@ -1013,7 +1046,7 @@ app.get("/api/automation/settings", async (_req, res) => {
       },
       api: {
         ok: isFirebase && instagram.connected,
-        latencyMs: null,
+        latencyMs: Math.max(0, Date.now() - apiStartedAt),
         lastCheckedAt: apiCheckedAt,
       },
     });

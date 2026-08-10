@@ -89,9 +89,13 @@ export interface LogEntry {
 
 export interface DailyAnalytics {
   date: string; // yyyy-mm-dd
+  commentsReceived: number;
   triggers: number;
   repliesSent: number;
   dmsSent: number;
+  commentsFailed: number;
+  dmsFailed: number;
+  automationErrors: number;
 }
 
 export interface KeywordStat {

@@ -1,14 +1,50 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
-  Instagram, Webhook, Activity, ShieldCheck, CheckCircle2, XCircle, Loader2, KeyRound, Eye, EyeOff, RefreshCw,
+  Instagram, Webhook, Activity, ShieldCheck, CheckCircle2, XCircle, KeyRound, Eye, EyeOff, RefreshCw, ScrollText,
 } from "lucide-react";
-import { getSettings } from "../services/automation-service";
+import { checkBackendHealth, getSettings } from "../services/automation-service";
 import { StatusBadge } from "../components/status-badge";
 
-export function SettingsPage() {
-  const { data, isLoading } = useQuery({ queryKey: ["automation", "settings"], queryFn: getSettings });
+export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => void }) {
+  const qc = useQueryClient();
+  const { data, isLoading, refetch } = useQuery({ queryKey: ["automation", "settings"], queryFn: getSettings, staleTime: 15_000 });
+  const [healthBusy, setHealthBusy] = useState(false);
+
+  const refreshConnection = async () => {
+    setHealthBusy(true);
+    try {
+      const health = await checkBackendHealth();
+      const refreshed = await refetch();
+      const settings = refreshed.data;
+      if (settings?.instagram.connected && settings.api.ok) {
+        toast.success(`Instagram @${settings.instagram.username ?? "account"} is connected`);
+      } else {
+        toast.error(health.firebaseAdmin ? "Backend is online, but Instagram connection needs attention" : "Backend is online, but Firebase is not configured");
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setHealthBusy(false);
+    }
+  };
+
+  const runHealthCheck = async () => {
+    setHealthBusy(true);
+    try {
+      const started = performance.now();
+      const health = await checkBackendHealth();
+      await refetch();
+      const latency = Math.round(performance.now() - started);
+      await qc.invalidateQueries({ queryKey: ["automation", "settings"] });
+      toast.success(`Health check passed in ${latency}ms${health.firebaseAdmin ? "" : " — Firebase unavailable"}`);
+    } catch (e) {
+      toast.error(`Health check failed: ${(e as Error).message}`);
+    } finally {
+      setHealthBusy(false);
+    }
+  };
 
   return (
     <div>
@@ -44,7 +80,7 @@ export function SettingsPage() {
                 </span>
               </Row>
             </div>
-            <button className="btn-ghost-glow mt-5 w-full rounded-xl py-2.5 text-sm">Reconnect account</button>
+            <button onClick={refreshConnection} disabled={healthBusy} className="btn-ghost-glow mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm disabled:opacity-60"><RefreshCw className={`h-3.5 w-3.5 ${healthBusy ? "animate-spin" : ""}`} /> Re-check connection</button>
           </div>
 
           <div className="glass card-glow rounded-2xl p-6">
@@ -67,7 +103,7 @@ export function SettingsPage() {
                 <span className="truncate text-xs text-white/60">{data?.webhook.url ?? "—"}</span>
               </Row>
             </div>
-            <button className="btn-ghost-glow mt-5 w-full rounded-xl py-2.5 text-sm">View webhook logs</button>
+            <button onClick={() => onNavigate?.("logs")} className="btn-ghost-glow mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm"><ScrollText className="h-3.5 w-3.5" /> View webhook logs</button>
           </div>
 
           <div className="glass card-glow rounded-2xl p-6">
@@ -93,8 +129,8 @@ export function SettingsPage() {
                 </span>
               </Row>
             </div>
-            <button className="btn-ghost-glow mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm">
-              <Loader2 className="h-3.5 w-3.5" /> Run health check
+            <button onClick={runHealthCheck} disabled={healthBusy} className="btn-ghost-glow mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm disabled:opacity-60">
+              <RefreshCw className={`h-3.5 w-3.5 ${healthBusy ? "animate-spin" : ""}`} /> Run health check
             </button>
           </div>
         </div>
@@ -107,7 +143,7 @@ export function SettingsPage() {
           </span>
           <div>
             <h2 className="font-semibold text-white">API Credentials</h2>
-            <p className="text-xs text-white/40">UI only for now — nothing here is saved yet.</p>
+            <p className="text-xs text-white/40">Credentials stay server-side. This panel only reports safe configuration status.</p>
           </div>
         </div>
 
@@ -133,7 +169,7 @@ export function SettingsPage() {
             </div>
           </div>
           <button
-            onClick={() => toast.info("Reconnect isn't wired up yet — UI only for this phase.")}
+            onClick={refreshConnection}
             className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm"
           >
             <RefreshCw className="h-3.5 w-3.5" /> Reconnect

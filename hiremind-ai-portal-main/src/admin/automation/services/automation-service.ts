@@ -43,6 +43,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+// ---------- Health / Dashboard ----------
+
+export async function checkBackendHealth(): Promise<{
+  status: string;
+  service: string;
+  firebaseAdmin: boolean;
+  timestamp: string;
+}> {
+  return request("/health");
+}
+
 // ---------- Dashboard ----------
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
@@ -98,6 +109,7 @@ export async function getPostMappings(): Promise<PostMapping[]> {
       instagramPostUrl: string | null;
       mappedAt: number | null;
       updatedAt: number | null;
+      status: "active" | "archived";
     }[];
   }>("/api/automation/post-mappings");
 
@@ -110,7 +122,7 @@ export async function getPostMappings(): Promise<PostMapping[]> {
     companyName: "",
     jobTitle: m.jobTitleCache ?? "",
     jobId: m.jobId,
-    status: "active",
+    status: m.status,
     createdAt: m.mappedAt ?? 0,
   }));
 }
@@ -155,7 +167,10 @@ export async function updatePostMapping(
 }
 
 export async function archivePostMapping(id: string): Promise<void> {
-  void id;
+  await request(`/api/automation/post-mappings/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "archived" }),
+  });
 }
 
 export async function deletePostMapping(id: string): Promise<void> {
@@ -315,9 +330,13 @@ export async function getAnalytics(): Promise<AutomationAnalytics> {
   return {
     daily: data.daily.map((d) => ({
       date: d.date,
+      commentsReceived: d.commentsReceived,
       triggers: d.commentsMatched,
       repliesSent: d.commentsSent,
       dmsSent: d.dmsSent,
+      commentsFailed: d.commentsFailed,
+      dmsFailed: d.dmsFailed,
+      automationErrors: d.automationErrors,
     })),
     topKeywords: data.topKeywords,
     topPosts: data.topPosts,

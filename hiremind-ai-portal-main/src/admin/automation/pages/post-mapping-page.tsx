@@ -182,8 +182,8 @@ export function PostMappingPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-white/60">{m.mediaId}</td>
-                    <td className="px-4 py-3 text-white/80">{m.companyName}</td>
-                    <td className="px-4 py-3 text-white/80">{m.jobTitle}</td>
+                    <td className="px-4 py-3 text-white/80">{jobs?.find((j) => j.id === m.jobId)?.companyName || m.companyName || "—"}</td>
+                    <td className="px-4 py-3 text-white/80">{jobs?.find((j) => j.id === m.jobId)?.role || m.jobTitle || "—"}</td>
                     <td className="px-4 py-3">
                       <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-white/60 ring-1 ring-white/10">{m.jobId}</span>
                     </td>
@@ -312,20 +312,13 @@ function MappingDialog({
 
   const selectedJob = jobs.find((j) => j.id === jobId);
   const selectedMedia = media.find((item) => item.id === mediaId);
-  const jobDetailUrl =
-    jobId && typeof window !== "undefined"
-      ? `${window.location.origin}/jobs/${jobId}`
-      : "";
+  const jobDetailUrl = jobId && typeof window !== "undefined" ? `${window.location.origin}/jobs/${jobId}` : "";
   const officialApplyUrl = selectedJob?.applyLink ?? "";
 
   const availableMedia = media.filter((item) => {
     if (!mediaSearch.trim()) return true;
     const q = mediaSearch.toLowerCase();
-    return (
-      item.id.toLowerCase().includes(q) ||
-      (item.caption ?? "").toLowerCase().includes(q) ||
-      (item.permalink ?? "").toLowerCase().includes(q)
-    );
+    return item.id.toLowerCase().includes(q) || (item.caption ?? "").toLowerCase().includes(q) || (item.permalink ?? "").toLowerCase().includes(q);
   });
 
   const selectMedia = (id: string) => {
@@ -340,7 +333,6 @@ function MappingDialog({
       toast.error("Instagram post and job are required");
       return;
     }
-
     if (!instagramPostUrl.trim()) {
       toast.error("Selected Instagram post has no permalink");
       return;
@@ -348,11 +340,7 @@ function MappingDialog({
 
     setBusy(true);
     try {
-      const jobRef = selectedJob ?? {
-        role: mapping?.jobTitle ?? "",
-        companyName: mapping?.companyName ?? "",
-      };
-
+      const jobRef = selectedJob ?? { role: mapping?.jobTitle ?? "", companyName: mapping?.companyName ?? "" };
       if (mapping) {
         await updatePostMapping(mapping.id, {
           mediaId: mapping.mediaId,
@@ -374,7 +362,6 @@ function MappingDialog({
         });
         toast.success("Mapping created");
       }
-
       await qc.invalidateQueries({ queryKey: ["automation", "mappings"] });
       onSaved();
     } catch (e) {
@@ -384,10 +371,8 @@ function MappingDialog({
     }
   };
 
-  const input =
-    "w-full rounded-xl bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 ring-1 ring-white/10 focus:outline-none focus:ring-[#00e5ff]/50";
-  const readonlyInput =
-    "w-full truncate rounded-xl bg-white/[0.03] px-4 py-3 text-sm text-white/60 ring-1 ring-white/5";
+  const input = "w-full rounded-xl bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 ring-1 ring-white/10 focus:outline-none focus:ring-[#00e5ff]/50";
+  const readonlyInput = "min-w-0 flex-1 truncate rounded-xl bg-white/[0.03] px-4 py-3 text-sm text-white/60 ring-1 ring-white/5";
 
   const copy = (value: string) => {
     if (!value) return;
@@ -396,226 +381,135 @@ function MappingDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm animate-fade-up">
-      <div className="glass-strong my-8 w-full max-w-2xl rounded-2xl p-6 animate-scale-in">
-        <div className="flex items-center justify-between">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm animate-fade-up">
+      <div className="glass-strong my-4 w-full max-w-6xl rounded-2xl p-5 shadow-2xl animate-scale-in md:p-6">
+        <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-4">
           <div>
-            <h2 className="text-lg font-semibold text-white">
-              {mapping ? "Edit mapping" : "New post mapping"}
-            </h2>
-            <p className="mt-1 text-xs text-white/40">
-              {mapping
-                ? "The Instagram media identity is locked to prevent rule mismatches."
-                : "Select an Instagram post. Media ID and permalink are filled automatically."}
-            </p>
+            <h2 className="text-lg font-semibold text-white">{mapping ? "Edit mapping" : "New post mapping"}</h2>
+            <p className="mt-1 text-xs text-white/40">Select the Instagram post and the Hire Daily job. Media ID and permalink are managed automatically.</p>
           </div>
-          <button onClick={onClose} className="btn-ghost-glow rounded-lg p-1.5">
-            <X className="h-4 w-4" />
-          </button>
+          <button onClick={onClose} className="btn-ghost-glow rounded-lg p-1.5"><X className="h-4 w-4" /></button>
         </div>
 
-        <div className="mt-5 space-y-4">
-          {!mapping && (
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <label className="text-xs font-medium text-white/60">
-                  Instagram posts
-                </label>
-                <span className="text-[11px] text-white/30">
-                  {media.length} available
-                </span>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-white/45">Instagram post</p>
+                <p className="mt-1 text-sm text-white/70">{mapping ? "Locked media identity" : "Choose from synced posts"}</p>
               </div>
+              <span className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] text-white/40">{media.length} synced</span>
+            </div>
 
-              <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-                <input
-                  value={mediaSearch}
-                  onChange={(e) => setMediaSearch(e.target.value)}
-                  placeholder="Search caption, media ID or URL..."
-                  className={`${input} pl-9`}
-                />
-              </div>
-
-              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                {mediaLoading ? (
-                  <div className="py-8 text-center text-xs text-white/40">
-                    Loading Instagram posts...
-                  </div>
-                ) : availableMedia.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-white/40">
-                    No Instagram posts are available yet. Use “Refresh Posts” above to sync the latest posts from Meta.
-                  </div>
+            {mapping ? (
+              <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-black/10">
+                {selectedMedia?.thumbnailUrl || selectedMedia?.mediaUrl ? (
+                  <img src={selectedMedia.thumbnailUrl ?? selectedMedia.mediaUrl ?? ""} alt="Instagram post" className="h-56 w-full object-cover" />
                 ) : (
-                  availableMedia.map((item) => {
+                  <div className="flex h-56 items-center justify-center bg-gradient-to-br from-white/10 to-white/[0.02]"><Instagram className="h-8 w-8 text-white/25" /></div>
+                )}
+                <div className="p-3">
+                  <p className="line-clamp-2 text-sm text-white">{selectedMedia?.caption?.split("\n")[0] || mapping.jobTitle || "Instagram post"}</p>
+                  <p className="mt-1 font-mono text-[10px] text-white/35">{mediaId}</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="relative mt-4">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                  <input value={mediaSearch} onChange={(e) => setMediaSearch(e.target.value)} placeholder="Search caption, media ID or URL…" className={`${input} pl-9`} />
+                </div>
+                <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                  {mediaLoading ? (
+                    <div className="py-12 text-center text-xs text-white/40">Loading Instagram posts…</div>
+                  ) : availableMedia.length === 0 ? (
+                    <div className="py-12 text-center text-xs text-white/40">No Instagram posts found. Use Refresh Posts first.</div>
+                  ) : availableMedia.map((item) => {
                     const selected = item.id === mediaId;
                     return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => selectMedia(item.id)}
-                        className={`flex w-full items-center gap-3 rounded-xl p-2 text-left transition ${
-                          selected
-                            ? "bg-[#00e5ff]/10 ring-1 ring-[#00e5ff]/30"
-                            : "bg-white/[0.02] ring-1 ring-white/5 hover:bg-white/5"
-                        }`}
-                      >
-                        {item.thumbnailUrl || item.mediaUrl ? (
-                          <img
-                            src={item.thumbnailUrl ?? item.mediaUrl ?? ""}
-                            alt=""
-                            className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/5">
-                            <Instagram className="h-5 w-5 text-white/30" />
-                          </div>
-                        )}
+                      <button key={item.id} type="button" onClick={() => selectMedia(item.id)} className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition ${selected ? "bg-[#00e5ff]/10 ring-1 ring-[#00e5ff]/30" : "bg-white/[0.02] ring-1 ring-white/5 hover:bg-white/5"}`}>
+                        {item.thumbnailUrl || item.mediaUrl ? <img src={item.thumbnailUrl ?? item.mediaUrl ?? ""} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" /> : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/5"><Instagram className="h-5 w-5 text-white/30" /></div>}
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm text-white">
-                            {item.caption?.split("\n")[0] || "Instagram post"}
-                          </p>
-                          <p className="mt-1 truncate font-mono text-[10px] text-white/35">
-                            {item.id}
-                          </p>
-                          <p className="truncate text-[10px] text-white/35">
-                            {item.permalink || "No permalink"}
-                          </p>
+                          <p className="truncate text-sm text-white">{item.caption?.split("\n")[0] || "Instagram post"}</p>
+                          <p className="mt-1 truncate font-mono text-[10px] text-white/35">{item.id}</p>
+                          <p className="truncate text-[10px] text-white/35">{item.permalink || "No permalink"}</p>
                         </div>
+                        {selected && <span className="rounded-full bg-[#00e5ff]/15 px-2 py-1 text-[10px] text-[#67e8f9]">Selected</span>}
                       </button>
                     );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1.5 block text-xs text-white/50">
-              Instagram media ID
-            </label>
-            <input
-              value={mediaId}
-              readOnly
-              className={readonlyInput}
-              placeholder="Select an Instagram post"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs text-white/50">
-              Instagram Post URL
-            </label>
-            <div className="flex gap-1.5">
-              <div className={readonlyInput}>{instagramPostUrl || "Select an Instagram post"}</div>
-              {instagramPostUrl && (
-                <a
-                  href={instagramPostUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-ghost-glow shrink-0 rounded-xl p-2.5"
-                  aria-label="Open Instagram post"
-                >
-                  <Instagram className="h-3.5 w-3.5" />
-                </a>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs text-white/50">Linked job</label>
-            <select value={jobId} onChange={(e) => setJobId(e.target.value)} className={input}>
-              <option value="" className="bg-[#111827]">
-                Select a job
-              </option>
-              {jobs.map((j) => (
-                <option key={j.id} value={j.id} className="bg-[#111827]">
-                  {j.role} — {j.companyName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rounded-xl border border-dashed border-white/10 p-3">
-            <p className="mb-2 text-[11px] uppercase tracking-wider text-white/40">
-              Verification
-            </p>
-            <div className="space-y-2.5">
-              <div>
-                <label className="mb-1 block text-xs text-white/50">Job Detail URL</label>
-                <div className="flex gap-1.5">
-                  <div className={readonlyInput}>
-                    {jobDetailUrl || "Select a job to preview the link"}
-                  </div>
-                  {jobDetailUrl && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => copy(jobDetailUrl)}
-                        className="btn-ghost-glow shrink-0 rounded-xl p-2.5"
-                        aria-label="Copy"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <a
-                        href={jobDetailUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-ghost-glow shrink-0 rounded-xl p-2.5"
-                        aria-label="Open"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </>
-                  )}
+                  })}
                 </div>
-              </div>
+              </>
+            )}
 
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs text-white/50">Official Apply URL</label>
+                <label className="mb-1.5 block text-xs text-white/50">Instagram media ID</label>
+                <div className={readonlyInput}>{mediaId || "Select an Instagram post"}</div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs text-white/50">Instagram Post URL</label>
                 <div className="flex gap-1.5">
-                  <div className={readonlyInput}>
-                    {officialApplyUrl || "Select a job to preview the link"}
-                  </div>
-                  {officialApplyUrl && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => copy(officialApplyUrl)}
-                        className="btn-ghost-glow shrink-0 rounded-xl p-2.5"
-                        aria-label="Copy"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <a
-                        href={officialApplyUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-ghost-glow shrink-0 rounded-xl p-2.5"
-                        aria-label="Open"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </>
-                  )}
+                  <div className={readonlyInput}>{instagramPostUrl || "Select an Instagram post"}</div>
+                  {instagramPostUrl && <a href={instagramPostUrl} target="_blank" rel="noreferrer" className="btn-ghost-glow shrink-0 rounded-xl p-2.5" aria-label="Open Instagram post"><Instagram className="h-3.5 w-3.5" /></a>}
                 </div>
               </div>
             </div>
-          </div>
+          </section>
+
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-white/45">Hire Daily job</p>
+            <p className="mt-1 text-sm text-white/70">Link the post to the job delivered by the automation.</p>
+
+            <div className="mt-4">
+              <label className="mb-1.5 block text-xs text-white/50">Linked job</label>
+              <select value={jobId} onChange={(e) => setJobId(e.target.value)} className={input}>
+                <option value="" className="bg-[#111827]">Select a job</option>
+                {jobs.map((j) => <option key={j.id} value={j.id} className="bg-[#111827]">{j.role} — {j.companyName}</option>)}
+              </select>
+            </div>
+
+            {selectedJob && (
+              <div className="mt-4 rounded-xl bg-gradient-to-r from-[#00e5ff]/10 to-[#7c3aed]/10 p-4 ring-1 ring-white/10">
+                <p className="text-xs text-white/40">Selected job</p>
+                <p className="mt-1 text-base font-semibold text-white">{selectedJob.role}</p>
+                <p className="mt-0.5 text-xs text-white/55">{selectedJob.companyName}{selectedJob.location ? ` · ${selectedJob.location}` : ""}</p>
+              </div>
+            )}
+
+            <div className="mt-4 rounded-xl border border-dashed border-white/10 p-3">
+              <p className="mb-3 text-[11px] uppercase tracking-wider text-white/40">Link verification</p>
+              <LinkPreview label="Job Detail URL" value={jobDetailUrl} onCopy={copy} />
+              <div className="mt-3"><LinkPreview label="Official Apply URL" value={officialApplyUrl} onCopy={copy} /></div>
+            </div>
+          </section>
         </div>
 
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-ghost-glow rounded-xl px-4 py-2.5 text-sm">
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={busy}
-            className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm disabled:opacity-60"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-            {mapping ? "Save changes" : "Create mapping"}
-          </button>
+        <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/5 pt-4">
+          <p className="text-xs text-white/35">Media ID is the stable automation key. Changing the Instagram post requires a new mapping.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="btn-ghost-glow rounded-xl px-4 py-2.5 text-sm">Cancel</button>
+            <button onClick={submit} disabled={busy} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm disabled:opacity-60">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+              {mapping ? "Save changes" : "Create mapping"}
+            </button>
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function LinkPreview({ label, value, onCopy }: { label: string; value: string; onCopy: (value: string) => void }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs text-white/50">{label}</label>
+      <div className="flex gap-1.5">
+        <div className="min-w-0 flex-1 truncate rounded-xl bg-white/[0.03] px-3.5 py-2.5 text-xs text-white/60 ring-1 ring-white/5">{value || `Select a job to preview ${label.toLowerCase()}`}</div>
+        {value && <>
+          <button type="button" onClick={() => onCopy(value)} className="btn-ghost-glow shrink-0 rounded-xl p-2.5" aria-label={`Copy ${label}`}><Copy className="h-3.5 w-3.5" /></button>
+          <a href={value} target="_blank" rel="noreferrer" className="btn-ghost-glow shrink-0 rounded-xl p-2.5" aria-label={`Open ${label}`}><ExternalLink className="h-3.5 w-3.5" /></a>
+        </>}
       </div>
     </div>
   );
