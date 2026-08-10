@@ -610,8 +610,17 @@ export async function sendDirectMessage(
   // Native URL button: one structured message. Meta documents Button Template
   // for the Instagram Send API at /{ig_user_id}/messages with recipient.id.
   if (cta.label && ctaUrl) {
+    // A comment-triggered DM must use the originating comment as the
+    // recipient. Sending a button template to recipient.id uses the normal
+    // messaging window and can fail with:
+    //   403 ... This message is sent outside of allowed window.
+    // A fresh commenter may have no existing DM conversation yet. Meta's
+    // Private Reply mechanism is keyed by comment_id and is allowed for the
+    // comment-triggered window (up to 7 days).
     const buttonPayload = {
-      recipient: { id: recipientId },
+      recipient: opts.commentId
+        ? { comment_id: opts.commentId }
+        : { id: recipientId },
       message: {
         attachment: {
           type: "template",
@@ -643,18 +652,55 @@ export async function sendDirectMessage(
         return { success: true, externalId: id, error: null, dryRun: false };
       }
 
-      // IMPORTANT: Do NOT fall back to a plain URL message. The product
-      // contract here is a native "View Job & Apply" button. A fallback
-      // private-reply would make behaviour inconsistent across users and can
-      // also consume the one comment-triggered private reply.
+      const buttonError = safeMetaError(
+        buttonResult.json,
+        accessToken,
+        `meta_http_${buttonResult.status}`,
+      );
+
+      // If Meta rejects the structured button for this account, preserve the
+      // core comment-to-DM workflow by retrying the same Private Reply with
+      // the job URL as plain text. This retry is still addressed by
+      // comment_id, so it does not depend on the recipient's 24-hour
+      // messaging window. A failed API request does not consume the private
+      // reply; a successful retry does.
+      if (opts.commentId) {
+        const fallbackText = cta.text
+          ? `${cta.text}\n\nApply here: ${ctaUrl}`
+          : `Here is the job you requested.\n\nApply here: ${ctaUrl}`;
+        const fallbackPayload = {
+          recipient: { comment_id: opts.commentId },
+          message: { text: fallbackText },
+        };
+
+        try {
+          const fallbackResult = await sendInstagramJson(
+            fetchImpl,
+            messagesUrl,
+            accessToken,
+            fallbackPayload,
+          );
+          if (fallbackResult.ok) {
+            const id =
+              (fallbackResult.json as { message_id?: string } | null)?.message_id ??
+              null;
+            return {
+              success: true,
+              externalId: id,
+              error: null,
+              dryRun: false,
+            };
+          }
+        } catch {
+          // Return the original button error below; logging keeps the failure
+          // actionable without masking Meta's original response.
+        }
+      }
+
       return {
         success: false,
         externalId: null,
-        error: `button_template_rejected_${buttonResult.status}:${safeMetaError(
-          buttonResult.json,
-          accessToken,
-          `meta_http_${buttonResult.status}`,
-        )}`,
+        error: `button_template_rejected_${buttonResult.status}:${buttonError}`,
         dryRun: false,
       };
     } catch (err) {
