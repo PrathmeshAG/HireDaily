@@ -459,18 +459,18 @@ export interface DmLogData {
   timestamp: number;
 }
 
-function extractFirstUrl(message: string): string | null {
-  const match = message.match(/https?:\/\/[^\s)]+/i);
-  return match?.[0] ?? null;
-}
+// function extractFirstUrl(message: string): string | null {
+//   const match = message.match(/https?:\/\/[^\s)]+/i);
+//   return match?.[0] ?? null;
+// }
 
-function extractDmCta(message: string): { text: string; label: string | null } {
-  const match = message.match(/\[\[CTA:([^\]]{1,40})\]\]/i);
-  if (!match) return { text: message, label: null };
-  const label = match[1].trim();
-  const text = message.replace(match[0], "").replace(/\n{3,}/g, "\n\n").trim();
-  return { text, label: label || "Apply Now" };
-}
+// function extractDmCta(message: string): { text: string; label: string | null } {
+//   const match = message.match(/\[\[CTA:([^\]]{1,40})\]\]/i);
+//   if (!match) return { text: message, label: null };
+//   const label = match[1].trim();
+//   const text = message.replace(match[0], "").replace(/\n{3,}/g, "\n\n").trim();
+//   return { text, label: label || "Apply Now" };
+// }
 
 /**
  * Sends an Instagram Private Reply to the commenter via the Meta Graph API
