@@ -26,6 +26,7 @@ readAllPostMappings,
   readRecentAnalytics,
   writeInstagramMediaCache,
   readAllInstagramMedia,
+  claimInstagramActionOnce,
 } from "./services/firebase-admin.service.js";
 import { evaluateComment,explainRuleEvaluation, } from "./services/rule-engine.service.js";
 import { cooldownService } from "./services/cooldown.service.js";
@@ -190,11 +191,11 @@ async function runRuleEngine(event: {
     // Meta's comments webhook identifies the author in value.from.id, which
     // is normalized to event.userId by webhook-parser.ts.
     const ownInstagramId = process.env.INSTAGRAM_BUSINESS_ID?.trim() || "";
+    const ownInstagramUsername = process.env.INSTAGRAM_USERNAME?.trim().replace(/^@/, "").toLowerCase() || "";
     const isOwnComment =
       event.eventType === "comment" &&
-      !!ownInstagramId &&
-      !!event.userId &&
-      event.userId === ownInstagramId;
+      ((!!ownInstagramId && !!event.userId && event.userId === ownInstagramId) ||
+        (!!ownInstagramUsername && !!event.username && event.username.trim().toLowerCase() === ownInstagramUsername));
 
     if (isOwnComment) {
       logger.info("Ignoring own Instagram comment", {
@@ -270,20 +271,42 @@ console.log(
           // commentStatus (pending/success/failed) is persisted to Firebase,
           // and any error is stored safely (never the token).
           if (event.eventType === "comment" && event.commentId) {
-            let commentStatus: "pending" | "success" | "failed" = "pending";
+            let commentStatus: "pending" | "success" | "failed" | "skipped" = "pending";
             let dmStatus: "pending" | "success" | "failed" | "skipped" = "pending";
             try {
-              const replyData = await processCommentReplyProduction({
-                commentId: event.commentId,
-                mediaId: event.mediaId,
-                userId: event.userId,
-                username: event.username,
-                rule: result.rule,
-                matchedKeyword: result.matchedKeyword,
-                resolution,
-              });
-              commentStatus = replyData.commentStatus;
-              await writeCommentReplyLog(replyData);
+              const claimed = await claimInstagramActionOnce(event.commentId, "comment_reply");
+              if (!claimed) {
+                commentStatus = "skipped";
+                logger.info("Skipping duplicate Instagram comment reply", {
+                  eventId: event.eventId,
+                  commentId: event.commentId,
+                });
+                await writeCommentReplyLog({
+                  userId: event.userId,
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  jobId: resolution.jobId,
+                  ruleId: result.rule.id,
+                  keyword: result.matchedKeyword,
+                  commentStatus: "skipped",
+                  error: "duplicate_suppressed",
+                  dryRun,
+                  timestamp: Date.now(),
+                });
+              } else {
+                const replyData = await processCommentReplyProduction({
+                  commentId: event.commentId,
+                  mediaId: event.mediaId,
+                  userId: event.userId,
+                  username: event.username,
+                  rule: result.rule,
+                  matchedKeyword: result.matchedKeyword,
+                  resolution,
+                });
+                commentStatus = replyData.commentStatus;
+                await writeCommentReplyLog(replyData);
+              }
             } catch (replyError) {
               commentStatus = "failed";
               logger.error("Comment reply flow failed", {
@@ -314,19 +337,42 @@ console.log(
             // comment reply result. dmStatus (pending/success/failed) is
             // persisted alongside commentStatus.
             try {
-              const dmData = await processDirectMessageProduction({
-                recipientId: event.userId,
-                userId: event.userId,
-                username: event.username,
-                mediaId: event.mediaId,
-                commentId: event.commentId,
-                rule: result.rule,
-                matchedKeyword: result.matchedKeyword,
-                resolution,
-                commentStatus,
-              });
-              dmStatus = dmData.dmStatus;
-              await writeDmLog(dmData);
+              const claimed = await claimInstagramActionOnce(event.commentId, "dm");
+              if (!claimed) {
+                dmStatus = "skipped";
+                logger.info("Skipping duplicate Instagram DM", {
+                  eventId: event.eventId,
+                  commentId: event.commentId,
+                });
+                await writeDmLog({
+                  userId: event.userId,
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  jobId: resolution.jobId,
+                  ruleId: result.rule.id,
+                  keyword: result.matchedKeyword,
+                  commentStatus,
+                  dmStatus: "skipped",
+                  error: "duplicate_suppressed",
+                  dryRun,
+                  timestamp: Date.now(),
+                });
+              } else {
+                const dmData = await processDirectMessageProduction({
+                  recipientId: event.userId,
+                  userId: event.userId,
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  rule: result.rule,
+                  matchedKeyword: result.matchedKeyword,
+                  resolution,
+                  commentStatus,
+                });
+                dmStatus = dmData.dmStatus;
+                await writeDmLog(dmData);
+              }
             } catch (dmError) {
               dmStatus = "failed";
               logger.error("DM flow failed", {
@@ -411,6 +457,9 @@ async function ingestWebhook(req: express.Request, res: express.Response): Promi
     }
 
     // Phase 5 Checkpoint 1 — Rule Engine (best-effort, non-blocking).
+    // Duplicate protection is applied atomically immediately before each
+    // external side effect (comment reply / DM), so concurrent Vercel
+    // instances cannot both send the same action.
     await runRuleEngine(event);
   }
   // Always 200 so Meta doesn't retry/resend events that we already parsed.

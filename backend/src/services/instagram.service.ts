@@ -498,15 +498,14 @@ async function sendInstagramJson(
 /**
  * Sends exactly one Instagram DM for a comment-triggered automation.
  *
- * CTA mode:
- *   1. Try the documented Instagram Button Template using recipient.id.
- *   2. If Meta rejects the structured button request with an HTTP error,
- *      fall back to the documented Private Reply using comment_id and plain
- *      text. This fallback is only attempted after a definite HTTP rejection;
- *      network/timeout errors are never retried, preventing accidental double
- *      sends when Meta may have processed an unknown request outcome.
+ * CTA mode: send one native Instagram Button Template using recipient.id.
+ * There is intentionally NO plain-link fallback: if Meta rejects the button
+ * request, the function fails and the exact safe Meta error is logged. This
+ * keeps the product behaviour deterministic instead of giving some users a
+ * button and others a plain URL.
  *
- * No second successful message is intentionally sent.
+ * The caller claims the DM action atomically in Firebase before invoking this
+ * function, preventing concurrent Vercel instances from sending duplicates.
  */
 export async function sendDirectMessage(
   recipientId: string,
@@ -599,42 +598,18 @@ export async function sendDirectMessage(
         return { success: true, externalId: id, error: null, dryRun: false };
       }
 
-      // Definite HTTP rejection: attempt ONE documented private reply fallback
-      // if we have the originating comment id. Do not retry on network errors.
-      if (!opts.commentId) {
-        return {
-          success: false,
-          externalId: null,
-          error: safeMetaError(buttonResult.json, accessToken, `meta_http_${buttonResult.status}`),
-          dryRun: false,
-        };
-      }
-
-      const fallbackPayload = {
-        recipient: { comment_id: opts.commentId },
-        message: { text: `${cta.text}\n\n${ctaLabel}: ${ctaUrl}`.trim() },
-      };
-
-      const fallbackResult = await sendInstagramJson(
-        fetchImpl,
-        messagesUrl,
-        accessToken,
-        fallbackPayload,
-      );
-
-      if (fallbackResult.ok) {
-        const id = (fallbackResult.json as { message_id?: string } | null)?.message_id ?? null;
-        return { success: true, externalId: id, error: null, dryRun: false };
-      }
-
+      // IMPORTANT: Do NOT fall back to a plain URL message. The product
+      // contract here is a native "View Job & Apply" button. A fallback
+      // private-reply would make behaviour inconsistent across users and can
+      // also consume the one comment-triggered private reply.
       return {
         success: false,
         externalId: null,
-        error: safeMetaError(
-          fallbackResult.json,
+        error: `button_template_rejected_${buttonResult.status}:${safeMetaError(
+          buttonResult.json,
           accessToken,
-          `button_rejected_${buttonResult.status};private_reply_rejected_${fallbackResult.status}`,
-        ),
+          `meta_http_${buttonResult.status}`,
+        )}`,
         dryRun: false,
       };
     } catch (err) {
