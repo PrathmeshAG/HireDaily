@@ -108,10 +108,30 @@ test("Messaging postback uses message.mid as eventId and sender.id as IGSID", ()
   });
   const event = events[0];
   assert(event.eventType === "message_interaction", "postback is a messaging interaction");
-  assert(event.eventId === "mid_123", "message.mid is eventId");
+  assert(event.messageId === "mid_123", "postback.mid is preserved as messageId");
+  assert(event.eventId.startsWith("postback_1700000000000_igsid_123_mid_123_"), "postback gets a per-interaction id");
   assert(event.userId === "igsid_123", "sender.id is IGSID");
   assert(event.username === null, "username remains null for messaging events");
   assert(event.interactionPayload === FOLLOW_GATE_PAYLOAD, "payload parsed");
+});
+
+test("Two taps on the same postback message get different idempotency ids", () => {
+  const make = (timestamp: number) => parseWebhookEvents({
+    object: "instagram",
+    entry: [{
+      id: "ig_business_1",
+      messaging: [{
+        sender: { id: "igsid_123" },
+        recipient: { id: "ig_business_1" },
+        timestamp,
+        postback: { title: "I've Followed ✅", payload: FOLLOW_GATE_PAYLOAD, mid: "mid_same_button" },
+      }],
+    }],
+  })[0];
+  const first = make(1700000000000);
+  const second = make(1700000005000);
+  assert(first.eventId !== second.eventId, "separate taps are not deduped as one interaction");
+  assert(first.messageId === second.messageId, "the original button message id remains the same");
 });
 
 test("Echo/self messaging interaction is ignored by the parser", () => {

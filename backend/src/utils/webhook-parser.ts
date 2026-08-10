@@ -136,6 +136,19 @@ function fromMessagingEvent(
   const interactionPayload = postbackPayload ?? quickReplyPayload ?? textFollowConfirmation;
   const interactionTitle = postbackTitle ?? quickReplyTitle ?? (textFollowConfirmation ? messageText : null);
 
+  // IMPORTANT: `postback.mid` identifies the message containing the button,
+  // not the user's click itself. If the user taps the same "I've Followed"
+  // button twice, Meta can send the same postback.mid again. Using that value
+  // directly as the idempotency key would suppress the second verification
+  // attempt — exactly when the user may have followed between the two taps.
+  // For postbacks, create a stable per-interaction id from the webhook
+  // timestamp + sender + button message id + payload. Redeliveries of the same
+  // webhook produce the same id, while later taps produce a different one.
+  const postbackInteractionId =
+    postbackPayload
+      ? `postback_${item.timestamp ?? Date.now()}_${userId ?? "unknown"}_${messageId ?? "no_mid"}_${postbackPayload}`
+      : null;
+
   let eventType: InternalEventType = "unknown";
   let summary = "Unrecognized messaging event";
 
@@ -158,6 +171,7 @@ function fromMessagingEvent(
   return {
     eventType,
     eventId:
+      postbackInteractionId ??
       messageId ??
       `${eventType}_${item.timestamp ?? Date.now()}_${userId ?? "unknown"}_${randomSuffix()}`,
     mediaId: null,
