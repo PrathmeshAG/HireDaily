@@ -88,10 +88,7 @@ let resolvedOwnInstagramIdentity: {
   id: string | null;
   username: string | null;
 } | null = null;
-let ownInstagramIdentityPromise: Promise<{
-  id: string | null;
-  username: string | null;
-}> | null = null;
+
 
 async function resolveOwnInstagramIdentity(): Promise<{
   id: string | null;
