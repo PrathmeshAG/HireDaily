@@ -248,16 +248,17 @@ const submit = async () => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm animate-fade-up">
-      <div className="glass-strong my-8 w-full max-w-xl rounded-2xl p-6 animate-scale-in">
+      <div className="glass-strong my-6 w-full max-w-3xl rounded-2xl p-5 md:p-6 animate-scale-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">{rule ? "Edit rule" : "New automation rule"}</h2>
           <button onClick={onClose} className="btn-ghost-glow rounded-lg p-1.5"><X className="h-4 w-4" /></button>
         </div>
 
 <div className="mt-5 space-y-3">
-          <div>
-            <label className={label}>Mode</label>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className={label}>Mode</label>
+              <div className="grid grid-cols-2 gap-2">
               {(["keyword", "any_comment"] as RuleMode[]).map((m) => (
                 <label
                   key={m}
@@ -278,6 +279,15 @@ const submit = async () => {
                   {m === "keyword" ? "Keyword" : "Any comment"}
                 </label>
               ))}
+              </div>
+            </div>
+
+            <div>
+              <label className={label}>Match type</label>
+              <select value={matchType} onChange={(e) => setMatchType(e.target.value as MatchType)} className={input}>
+                <option value="contains" className="bg-[#111827]">Contains</option>
+                <option value="exact" className="bg-[#111827]">Exact match</option>
+              </select>
             </div>
           </div>
 
@@ -288,21 +298,12 @@ const submit = async () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>Match type</label>
-              <select value={matchType} onChange={(e) => setMatchType(e.target.value as MatchType)} className={input}>
-                <option value="contains" className="bg-[#111827]">Contains</option>
-                <option value="exact" className="bg-[#111827]">Exact match</option>
-              </select>
-            </div>
-            <div>
-              <label className={label}>Scope</label>
+          <div>
+            <label className={label}>Scope</label>
               <select value={scope} onChange={(e) => setScope(e.target.value as typeof scope)} className={input}>
                 <option value="all_posts" className="bg-[#111827]">All posts</option>
                 <option value="specific_post" className="bg-[#111827]">Specific post</option>
               </select>
-            </div>
           </div>
 
           {scope === "specific_post" && (
@@ -317,7 +318,7 @@ const submit = async () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 md:grid-cols-2">
             <div>
               <label className={label}>Comment template</label>
               <select value={commentTemplateId} onChange={(e) => setCommentTemplateId(e.target.value)} className={input}>
@@ -340,7 +341,7 @@ const submit = async () => {
 
           <div>
             <label className={label}>Reply Type</label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2">
               {(["comment_only", "dm_only", "comment_and_dm"] as ReplyMode[]).map((rm) => (
                 <label
                   key={rm}
@@ -364,16 +365,18 @@ const submit = async () => {
             </div>
           </div>
 
-          <div>
-            <label className={label}>Cooldown (minutes)</label>
-            <input
-              type="number" min={0} value={cooldownMinutes}
-              onChange={(e) => setCooldownMinutes(Number(e.target.value))}
-              className={input}
-            />
-          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <label className={label}>Cooldown (minutes)</label>
+              <input
+                type="number" min={0} value={cooldownMinutes}
+                onChange={(e) => setCooldownMinutes(Number(e.target.value))}
+                className={input}
+              />
+            </div>
 
-          <label className="flex items-center gap-2.5 pt-1 text-sm text-white/80">
+            <label className="flex min-h-11 items-center gap-2.5 rounded-xl bg-white/[0.025] px-3.5 text-sm text-white/80 ring-1 ring-white/10">
+
             <button
               type="button"
               onClick={() => setActive((a) => !a)}
@@ -383,6 +386,7 @@ const submit = async () => {
             </button>
             Rule active
           </label>
+          </div>
         </div>
 
         <div className="mt-6 flex justify-end gap-2">

@@ -324,7 +324,12 @@ export async function getAnalytics(): Promise<AutomationAnalytics> {
       automationErrors: number;
     }[];
     topKeywords: { keyword: string; count: number }[];
-    topPosts: { postLabel: string; triggers: number }[];
+    topPosts: {
+      postLabel: string;
+      triggers: number;
+      mediaId?: string;
+      postUrl?: string | null;
+    }[];
   }>("/api/automation/analytics");
 
   return {

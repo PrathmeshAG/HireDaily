@@ -106,6 +106,8 @@ export interface KeywordStat {
 export interface PostStat {
   postLabel: string;
   triggers: number;
+  mediaId?: string;
+  postUrl?: string | null;
 }
 
 export interface AutomationAnalytics {

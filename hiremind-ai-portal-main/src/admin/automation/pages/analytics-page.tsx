@@ -113,24 +113,66 @@ export function AnalyticsPage() {
           </div>
         </div>
 
-        <div className="glass rounded-2xl p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Top Posts</h2>
-          <div className="mt-4 space-y-3">
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Top Posts</h2>
+              <p className="mt-1 text-[11px] text-white/30">Mapped posts with the most rule matches</p>
+            </div>
+            <span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] text-white/40 ring-1 ring-white/10">
+              Top 6
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2.5">
             {isLoading ? (
-              Array.from({ length: 5 }, (_, i) => <div key={i} className="shimmer-loading h-8 rounded-lg" />)
+              Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="shimmer-loading h-14 rounded-xl" />
+              ))
             ) : (data?.topPosts ?? []).length === 0 ? (
-              <EmptyChart label="No matched posts yet" />
+              <EmptyChart label="No mapped post matches yet" />
             ) : (
-              (data?.topPosts ?? []).map((p) => {
+              (data?.topPosts ?? []).map((p, index) => {
                 const max = data?.topPosts[0]?.triggers || 1;
                 return (
-                  <div key={p.postLabel}>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="truncate text-white/75">{p.postLabel}</span>
-                      <span className="shrink-0 text-white/50">{p.triggers}</span>
-                    </div>
-                    <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/5">
-                      <div className="h-1.5 rounded-full bg-gradient-to-r from-[#00e5ff] to-[#7c3aed]" style={{ width: `${(p.triggers / max) * 100}%` }} />
+                  <div
+                    key={p.mediaId ?? `${p.postLabel}-${index}`}
+                    className="group rounded-xl border border-white/5 bg-white/[0.025] px-3.5 py-3 transition hover:border-[#00e5ff]/20 hover:bg-white/[0.04]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#00e5ff]/15 to-[#7c3aed]/15 text-[11px] font-semibold text-white/70 ring-1 ring-white/10">
+                        {index + 1}
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate text-xs font-medium text-white/80" title={p.postLabel}>
+                            {p.postLabel}
+                          </span>
+                          <span className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/60">
+                            {p.triggers} {p.triggers === 1 ? "match" : "matches"}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[#00e5ff] to-[#7c3aed] transition-all"
+                            style={{ width: `${Math.max(8, (p.triggers / max) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {p.postUrl && (
+                        <a
+                          href={p.postUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 rounded-lg p-2 text-white/35 transition hover:bg-white/5 hover:text-[#00e5ff]"
+                          aria-label={`Open ${p.postLabel} on Instagram`}
+                          title="Open Instagram post"
+                        >
+                          ↗
+                        </a>
+                      )}
                     </div>
                   </div>
                 );

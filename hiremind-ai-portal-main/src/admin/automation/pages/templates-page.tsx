@@ -234,23 +234,38 @@ function TemplateDialog({
                 </button>
               ))}
             </div>
-            {kind === "dm" && (
-              <div className="rounded-xl border border-[#00e5ff]/15 bg-[#00e5ff]/5 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-medium text-white">DM CTA button</p>
-                    <p className="mt-0.5 text-[11px] text-white/40">Adds a real Instagram web button using the mapped job URL.</p>
-                  </div>
+            <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-white">
+                    {kind === "dm" ? "Job link button" : "Job link"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-white/40">
+                    {kind === "dm"
+                      ? "Adds an Instagram web button using the mapped job URL."
+                      : "Adds {{jobLink}} to the comment. Instagram comment replies use a clickable URL, not a native button."}
+                  </p>
+                </div>
+
+                {kind === "dm" ? (
                   <button
                     type="button"
-                    onClick={() => setText((t) => t.includes("[[CTA:") ? t : `${t.trim()}\n\n[[CTA:Apply Now]]`)}
+                    onClick={() => setText((t) => t.includes("[[CTA:") ? t : `${t.trim()}\n\n[[CTA:View Job & Apply]]`)}
                     className="btn-ghost-glow flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs"
                   >
                     <Link2 className="h-3.5 w-3.5" /> Add button
                   </button>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setText((t) => t.includes("{{jobLink}}") ? t : `${t.trim()}\n\n{{jobLink}}`)}
+                    className="btn-ghost-glow flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs"
+                  >
+                    <Link2 className="h-3.5 w-3.5" /> Insert job link
+                  </button>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div>
@@ -272,7 +287,11 @@ function TemplateDialog({
                 <p className="text-white/40">Start typing to see the preview…</p>
               )}
             </div>
-            {kind === "dm" && <p className="mt-2 text-[10px] text-white/30">The CTA URL is resolved server-side from the mapped job. The raw URL does not need to appear in the DM text.</p>}
+            <p className="mt-2 text-[10px] text-white/30">
+              {kind === "dm"
+                ? "The button URL is resolved server-side from the mapped job."
+                : "Comment replies are plain text; {{jobLink}} is rendered to the mapped Hire Daily job URL."}
+            </p>
           </div>
         </div>
 

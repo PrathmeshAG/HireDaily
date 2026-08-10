@@ -850,23 +850,40 @@ app.get("/api/automation/analytics", async (_req, res) => {
     // existing read-only post mapping cache. This works in dry-run too, so
     // Analytics can show which posts are actually triggering rules even when
     // no real outbound reply/DM is sent.
-    const postCounts = new Map<string, number>();
     const mappings = await readAllPostMappings();
-    const mappingLabels = new Map<string, string>();
+    const mappingByMediaId = new Map<
+      string,
+      { postLabel: string; postUrl: string | null }
+    >();
     for (const mapping of mappings) {
-      mappingLabels.set(
-        mapping.mediaId,
-        mapping.jobTitleCache?.trim() || mapping.mediaId,
-      );
+      // Analytics should represent real, currently mapped Instagram posts.
+      // Do not surface synthetic/test media IDs that have no production mapping.
+      if (mapping.status !== "active") continue;
+      mappingByMediaId.set(mapping.mediaId, {
+        postLabel: mapping.jobTitleCache?.trim() || "Instagram post",
+        postUrl: mapping.instagramPostUrl,
+      });
     }
+
+    const postMeta = new Map<
+      string,
+      { postLabel: string; triggers: number; mediaId: string; postUrl: string | null }
+    >();
 
     for (const log of logs) {
       if (log.type === "keyword_matched" && log.ruleKeyword) {
         keywordCounts.set(log.ruleKeyword, (keywordCounts.get(log.ruleKeyword) ?? 0) + 1);
       }
       if (log.type === "keyword_matched" && log.mediaId) {
-        const label = mappingLabels.get(log.mediaId) ?? log.mediaId;
-        postCounts.set(label, (postCounts.get(label) ?? 0) + 1);
+        const mapping = mappingByMediaId.get(log.mediaId);
+        if (!mapping) continue;
+        const existing = postMeta.get(log.mediaId);
+        postMeta.set(log.mediaId, {
+          postLabel: mapping.postLabel,
+          triggers: (existing?.triggers ?? 0) + 1,
+          mediaId: log.mediaId,
+          postUrl: mapping.postUrl,
+        });
       }
     }
 
@@ -875,9 +892,9 @@ app.get("/api/automation/analytics", async (_req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    const topPosts = [...postCounts.entries()]
-      .map(([postLabel, triggers]) => ({ postLabel, triggers }))
-      .slice(0, 10);
+    const topPosts = [...postMeta.values()]
+      .sort((a, b) => b.triggers - a.triggers)
+      .slice(0, 6);
 
     const users = (await readAllUsers()).length;
 
