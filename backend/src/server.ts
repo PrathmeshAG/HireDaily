@@ -1056,8 +1056,12 @@ app.get("/api/automation/analytics", async (_req, res) => {
   try {
     const daily = await readRecentAnalytics(14);
     const logs = await readAllLogs(500);
+    const rules = await readAllRules();
+    const rulesById = new Map(rules.map((rule) => [rule.id, rule]));
 
-    // Keyword counts from keyword_matched logs (ruleKeyword).
+    // Keyword counts from keyword_matched logs. Older log records can have a
+    // missing ruleKeyword even though the human-readable detail contains the
+    // matched keyword, so use that detail as a backward-compatible fallback.
     const keywordCounts = new Map<string, number>();
     // Top-post counts come from matched-rule logs keyed by the real Instagram
     // mediaId, then resolve the existing post mapping/job for a human label.
@@ -1066,8 +1070,24 @@ app.get("/api/automation/analytics", async (_req, res) => {
     for (const log of logs) {
       if (log.type !== "keyword_matched") continue;
 
-      if (log.ruleKeyword) {
-        keywordCounts.set(log.ruleKeyword, (keywordCounts.get(log.ruleKeyword) ?? 0) + 1);
+      let keyword = log.ruleKeyword?.trim() || null;
+      if (!keyword && log.detail) {
+        const detailMatch = log.detail.match(/matched keyword\s+[\"]([^\"]+)[\"]\s*$/i);
+        if (detailMatch?.[1]) keyword = detailMatch[1].trim();
+      }
+
+      // If a legacy log has no keyword in either field, only infer it when
+      // the matched rule had exactly one keyword. Never invent a keyword for
+      // an any-comment rule or a multi-keyword rule.
+      if (!keyword && log.ruleId) {
+        const rule = rulesById.get(log.ruleId);
+        if (rule?.mode === "keyword" && rule.keywords.length === 1) {
+          keyword = rule.keywords[0];
+        }
+      }
+
+      if (keyword) {
+        keywordCounts.set(keyword, (keywordCounts.get(keyword) ?? 0) + 1);
       }
 
       if (log.mediaId) {
@@ -1183,18 +1203,40 @@ app.get("/api/automation/settings", async (req, res) => {
     const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim();
 
     if (accessToken && instagramBusinessId) {
-      try {
-        const url =
-          `https://graph.facebook.com/v24.0/${encodeURIComponent(instagramBusinessId)}` +
-          `?fields=id,username,account_type&access_token=${encodeURIComponent(accessToken)}`;
+      const connectionChecks: Array<{ url: string; source: string }> = [
+        {
+          // Facebook Login / Page-token path. This is the same host used by
+          // the production comment + media APIs. Keep the required fields
+          // minimal so a field-level API change cannot report a healthy
+          // connection as disconnected.
+          url:
+            `https://graph.facebook.com/v24.0/${encodeURIComponent(instagramBusinessId)}` +
+            `?fields=id,username&access_token=${encodeURIComponent(accessToken)}`,
+          source: "facebook",
+        },
+        {
+          // Instagram Login path. Some tokens are valid only on the
+          // graph.instagram.com host and use /me rather than the business ID.
+          url:
+            `https://graph.instagram.com/v24.0/me` +
+            `?fields=user_id,username,account_type&access_token=${encodeURIComponent(accessToken)}`,
+          source: "instagram",
+        },
+      ];
 
-        const metaStartedAt = Date.now();
-        const metaResponse = await fetch(url, { method: "GET" });
-        const latencyMs = Date.now() - metaStartedAt;
+      for (const check of connectionChecks) {
+        try {
+          const metaStartedAt = Date.now();
+          const metaResponse = await fetch(check.url, { method: "GET" });
+          const latencyMs = Date.now() - metaStartedAt;
 
-        if (metaResponse.ok) {
+          if (!metaResponse.ok) {
+            continue;
+          }
+
           const data = (await metaResponse.json()) as {
             id?: string;
+            user_id?: string;
             username?: string;
             account_type?: string;
           };
@@ -1204,13 +1246,19 @@ app.get("/api/automation/settings", async (req, res) => {
             username: typeof data.username === "string" ? data.username : null,
             accountType: typeof data.account_type === "string" ? data.account_type : null,
           };
-
           res.locals.metaLatencyMs = latencyMs;
+
+          logger.info("Instagram connection check succeeded", {
+            source: check.source,
+            accountIdConfigured: Boolean(instagramBusinessId),
+          });
+          break;
+        } catch (error) {
+          logger.warn("Instagram connection check attempt failed", {
+            source: check.source,
+            error: error instanceof Error ? error.message : "unknown_error",
+          });
         }
-      } catch (error) {
-        logger.warn("Instagram connection check failed", {
-          error: error instanceof Error ? error.message : "unknown_error",
-        });
       }
     }
 
