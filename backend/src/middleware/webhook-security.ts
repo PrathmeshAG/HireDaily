@@ -9,6 +9,33 @@ export function computeMetaSignature(rawBody: Buffer | string, appSecret: string
   return `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
 }
 
+function computeMetaDigest(rawBody: Buffer, appSecret: string): string {
+  return createHmac("sha256", appSecret).update(rawBody).digest("hex");
+}
+
+/**
+ * Meta documents that webhook signatures are generated from an escaped
+ * Unicode representation of the payload. Do not parse/re-serialize JSON: that
+ * could change whitespace, key order, or punctuation. Only escape the actual
+ * non-ASCII UTF-16 code units (plus the legacy characters documented by Meta).
+ */
+export function escapeUnicodeForMetaSignature(rawBody: Buffer): Buffer {
+  const text = rawBody.toString("utf8");
+  let escaped = "";
+
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+
+    if (code > 0x7f || code === 0x3c || code === 0x25 || code === 0x40) {
+      escaped += `\\u${code.toString(16).padStart(4, "0")}`;
+    } else {
+      escaped += text[index];
+    }
+  }
+
+  return Buffer.from(escaped, "utf8");
+}
+
 function normalizeConfiguredSecret(value: string): string {
   const trimmed = value.trim();
   if (
@@ -51,8 +78,19 @@ export function verifyMetaWebhookSignature(
   if (!secret || !providedDigest) return false;
 
   const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, "utf8");
-  const expectedDigest = createHmac("sha256", secret).update(body).digest("hex");
-  return safeEqualHex(expectedDigest, providedDigest);
+
+  const rawDigest = computeMetaDigest(body, secret);
+  if (safeEqualHex(rawDigest, providedDigest)) return true;
+
+  // Meta's documented escaped-Unicode signing representation is needed for
+  // payloads containing non-ASCII characters. This is a fallback only; the
+  // HMAC is still calculated with the same server-side App Secret.
+  if (/[\u0080-\uFFFF]/.test(body.toString("utf8"))) {
+    const escapedDigest = computeMetaDigest(escapeUnicodeForMetaSignature(body), secret);
+    if (safeEqualHex(escapedDigest, providedDigest)) return true;
+  }
+
+  return false;
 }
 
 /** Capture exact bytes before JSON parsing. */

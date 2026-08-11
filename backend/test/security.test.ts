@@ -144,6 +144,21 @@ test("Valid X-Hub-Signature-256 is accepted by webhook middleware", async () => 
   assert(nextCalled && res.statusCode === 200, "valid Meta signature was rejected");
 });
 
+test("Meta escaped-Unicode signature is accepted for Unicode payloads", async () => {
+  const { escapeUnicodeForMetaSignature, requireMetaWebhookSignature } = await getWebhookSecurity();
+  const body = Buffer.from('{"entry":[{"changes":[{"value":{"text":"Hello 🙌 äöå"}}]}]}', "utf8");
+  const escapedBody = escapeUnicodeForMetaSignature(body);
+  const { createHmac } = await import("node:crypto");
+  const signature = `sha256=${createHmac("sha256", "test-app-secret").update(escapedBody).digest("hex")}`;
+  const req = {
+    method: "POST",
+    rawBody: body,
+    get: (name: string) => name.toLowerCase() === "x-hub-signature-256" ? signature : undefined,
+  } as unknown as Request;
+  const { res, nextCalled } = await invokeMiddleware(requireMetaWebhookSignature, req);
+  assert(nextCalled && res.statusCode === 200, "Meta escaped-Unicode signature was rejected");
+});
+
 test("Invalid X-Hub-Signature-256 returns 401", async () => {
   const body = Buffer.from('{"entry":[]}');
   const { requireMetaWebhookSignature } = await getWebhookSecurity();
