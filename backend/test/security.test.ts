@@ -1,6 +1,6 @@
 import express from "express";
 import { createServer } from "node:http";
-import type { NextFunction, Request, Response } from "express";
+import type { NextFunction, Request, Response as ExpressResponse } from "express";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { createCorsMiddleware } from "../src/middleware/cors.js";
 import { createFirebaseAuthMiddleware } from "../src/middleware/firebase-auth.js";
@@ -55,24 +55,38 @@ function token(email: string, extra: Record<string, unknown> = {}): DecodedIdTok
   } as DecodedIdToken;
 }
 
-function mockResponse() {
-  const response = {
+type TestResponse = {
+  statusCode: number;
+  body: unknown;
+  status: (code: number) => TestResponse;
+  json: (value: unknown) => TestResponse;
+};
+
+function mockResponse(): TestResponse {
+  const response: TestResponse = {
     statusCode: 200,
-    body: null as unknown,
-    status(code: number) { this.statusCode = code; return this; },
-    json(value: unknown) { this.body = value; return this; },
-  } as unknown as Response & { statusCode: number; body: unknown };
+    body: null,
+    status(code: number): TestResponse {
+      response.statusCode = code;
+      return response;
+    },
+    json(value: unknown): TestResponse {
+      response.body = value;
+      return response;
+    },
+  };
   return response;
 }
 
 function invokeMiddleware(
-  middleware: (req: Request, res: Response, next: NextFunction) => void | Promise<void>,
+  middleware: (req: Request, res: ExpressResponse, next: NextFunction) => void | Promise<void>,
   req: Request,
-) {
+): Promise<{ res: TestResponse; nextCalled: boolean }> {
   const res = mockResponse();
   let nextCalled = false;
   const next = (() => { nextCalled = true; }) as NextFunction;
-  return Promise.resolve(middleware(req, res, next)).then(() => ({ res, nextCalled }));
+  return Promise.resolve(middleware(req, res as unknown as ExpressResponse, next))
+    .then(() => ({ res, nextCalled }));
 }
 
 test("Missing Authorization header returns 401", async () => {
@@ -98,22 +112,22 @@ test("Valid Firebase ID token authenticates the request", async () => {
   const req = { get: (name: string) => name.toLowerCase() === "authorization" ? "Bearer signed-token" : undefined } as unknown as Request;
   const { res, nextCalled } = await invokeMiddleware(middleware, req);
   assert(res.statusCode === 200 && nextCalled, "valid token was not accepted");
-  assert(req.authUser?.email === "user@example.com", "decoded user was not attached");
+  assert((req as Request & { authUser?: DecodedIdToken }).authUser?.email === "user@example.com", "decoded user was not attached");
 });
 
 test("Authenticated non-admin receives 403", () => {
-  const req = { authUser: token("user@example.com") } as unknown as Request;
+  const req = { authUser: token("user@example.com") } as unknown as Request & { authUser?: DecodedIdToken };
   const res = mockResponse();
   let nextCalled = false;
-  requireAdmin(req, res, (() => { nextCalled = true; }) as NextFunction);
+  requireAdmin(req, res as unknown as ExpressResponse, (() => { nextCalled = true; }) as NextFunction);
   assert(res.statusCode === 403 && !nextCalled, "non-admin was not denied");
 });
 
 test("Admin user is allowed", () => {
-  const req = { authUser: token("admin@example.com", { admin: true }) } as unknown as Request;
+  const req = { authUser: token("admin@example.com", { admin: true }) } as unknown as Request & { authUser?: DecodedIdToken };
   const res = mockResponse();
   let nextCalled = false;
-  requireAdmin(req, res, (() => { nextCalled = true; }) as NextFunction);
+  requireAdmin(req, res as unknown as ExpressResponse, (() => { nextCalled = true; }) as NextFunction);
   assert(nextCalled, "admin was not allowed");
 });
 
@@ -154,6 +168,66 @@ test("Missing X-Hub-Signature-256 returns 401", async () => {
   assert(res.statusCode === 401 && !nextCalled, "missing Meta signature was not rejected");
 });
 
+test("Webhook raw-body integration accepts exact signed bytes and reaches the existing parser", async () => {
+  const { captureRawBody, requireMetaWebhookSignature, computeMetaSignature } = await getWebhookSecurity();
+  const app = express();
+  let parserReceived = false;
+
+  app.use(
+    "/webhooks/instagram",
+    express.raw({
+      type: "application/json",
+      limit: "1mb",
+      verify: captureRawBody,
+    }),
+  );
+  app.use("/webhooks/instagram", requireMetaWebhookSignature);
+  app.post("/webhooks/instagram", (req, res) => {
+    parserReceived = !!req.body?.entry;
+    res.status(200).json({ received: parserReceived });
+  });
+
+  const server = createServer(app);
+  await new Promise<void>((resolveListen) => server.listen(0, resolveListen));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("test server did not bind");
+
+  try {
+    const rawBody = Buffer.from(' {"entry":[{"id":"meta-test"}]}\n');
+    const signature = computeMetaSignature(rawBody, "test-app-secret");
+
+    let response = await fetch(`http://127.0.0.1:${address.port}/webhooks/instagram`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signature,
+      },
+      body: rawBody,
+    });
+    assert(response.status === 200, `valid webhook signature returned ${response.status}`);
+    assert(parserReceived, "existing webhook parser did not receive the verified body");
+
+    response = await fetch(`http://127.0.0.1:${address.port}/webhooks/instagram`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": "sha256=invalid",
+      },
+      body: rawBody,
+    });
+    assert(response.status === 401, `invalid webhook signature returned ${response.status}`);
+
+    response = await fetch(`http://127.0.0.1:${address.port}/webhooks/instagram`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: rawBody,
+    });
+    assert(response.status === 401, `missing webhook signature returned ${response.status}`);
+  } finally {
+    await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
+  }
+});
+
 test("CORS allows configured frontend origin", async () => {
   const app = express();
   app.use(createCorsMiddleware(["http://localhost:5173"]));
@@ -175,7 +249,7 @@ test("CORS rejects unknown browser origin", async () => {
   const app = express();
   app.use(createCorsMiddleware(["http://localhost:5173"]));
   app.get("/cors", (_req, res) => res.status(200).json({ ok: true }));
-  app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((error: unknown, _req: Request, res: ExpressResponse, _next: NextFunction) => {
     res.status(error instanceof Error && error.message === "cors_origin_not_allowed" ? 403 : 500).json({ error: "blocked" });
   });
   const server = createServer(app);

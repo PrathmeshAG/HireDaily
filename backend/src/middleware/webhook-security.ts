@@ -31,14 +31,29 @@ export function requireMetaWebhookSignature(req: Request, res: Response, next: N
   }
 
   const rawBody = req.rawBody;
+  const signatureHeader = req.get("x-hub-signature-256") ?? undefined;
+
   if (!rawBody) {
     res.status(401).json({ error: "webhook_signature_unavailable" });
     return;
   }
 
-  if (!verifyMetaWebhookSignature(rawBody, req.get("x-hub-signature-256") ?? undefined, env.meta.appSecret)) {
+  if (!verifyMetaWebhookSignature(rawBody, signatureHeader, env.meta.appSecret)) {
     res.status(401).json({ error: "invalid_webhook_signature" });
     return;
+  }
+
+  // The webhook route uses express.raw so signature verification always sees
+  // the exact signed bytes. Restore the parsed JSON body only after the HMAC
+  // has been accepted; the existing webhook parser and automation remain
+  // unchanged.
+  if (Buffer.isBuffer(req.body)) {
+    try {
+      req.body = JSON.parse(req.body.toString("utf8"));
+    } catch {
+      res.status(400).json({ error: "invalid_webhook_json" });
+      return;
+    }
   }
 
   next();

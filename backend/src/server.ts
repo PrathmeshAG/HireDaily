@@ -198,6 +198,28 @@ async function isOwnInstagramComment(event: {
 }
 
 app.use(requestContext);
+app.use(corsMiddleware);
+
+// Capture the exact bytes for Meta webhooks before any JSON parsing. This is
+// intentionally route-scoped so the webhook HMAC is calculated from the raw
+// request body Meta signed, including any whitespace/encoding details.
+app.use(
+  "/webhook",
+  express.raw({
+    type: "application/json",
+    limit: "1mb",
+    verify: captureRawBody,
+  }),
+);
+app.use(
+  "/webhooks/instagram",
+  express.raw({
+    type: "application/json",
+    limit: "1mb",
+    verify: captureRawBody,
+  }),
+);
+
 app.use(
   express.json({
     limit: "1mb",
@@ -211,10 +233,6 @@ app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 // may legitimately redeliver events during transient failures.
 app.use("/webhook", requireMetaWebhookSignature);
 app.use("/webhooks/instagram", requireMetaWebhookSignature);
-
-// CORS is a browser concern and must not run on Meta webhook requests.
-// Scope it to the frontend API so Meta can POST directly to /webhooks/instagram.
-app.use("/api", corsMiddleware);
 
 // All automation management endpoints are admin-only. Firebase ID tokens are
 // verified server-side; the browser's email/UI gate is never trusted here.
