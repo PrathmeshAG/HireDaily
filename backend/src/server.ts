@@ -203,26 +203,15 @@ app.use(corsMiddleware);
 // Capture the exact bytes for Meta webhooks before any JSON parsing. This is
 // intentionally route-scoped so the webhook HMAC is calculated from the raw
 // request body Meta signed, including any whitespace/encoding details.
+// Keep the existing Express JSON pipeline. The `verify` hook receives the
+// exact bytes before Express parses them, which lets the webhook security
+// middleware verify Meta's signature without replacing req.body with a Buffer.
 app.use(
-  "/webhook",
-  express.raw({
-    type: "application/json",
+  express.json({
     limit: "1mb",
     verify: captureRawBody,
   }),
 );
-app.use(
-  "/webhooks/instagram",
-  express.raw({
-    type: "application/json",
-    limit: "1mb",
-    verify: captureRawBody,
-  }),
-);
-
-app.use(express.json({
-  limit: "1mb",
-}));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 // Meta webhook traffic is authenticated by X-Hub-Signature-256 rather than

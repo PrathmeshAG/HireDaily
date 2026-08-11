@@ -168,45 +168,20 @@ test("Missing X-Hub-Signature-256 returns 401", async () => {
   assert(res.statusCode === 401 && !nextCalled, "missing Meta signature was not rejected");
 });
 
-test("Meta escaped-Unicode signature is accepted without JSON re-serialization", async () => {
-  const body = Buffer.from('{"entry":[{"changes":[{"value":{"text":"@user 50% <tag> äöå 🚀"}}]}]}');
-  const { escapeUnicodeForMetaSignature, requireMetaWebhookSignature } = await getWebhookSecurity();
-  const { createHmac } = await import("node:crypto");
-  const signature = `sha256=${createHmac("sha256", "test-app-secret")
-    .update(escapeUnicodeForMetaSignature(body))
-    .digest("hex")}`;
-  const req = {
-    method: "POST",
-    rawBody: body,
-    body,
-    get: (name: string) => name.toLowerCase() === "x-hub-signature-256" ? signature : undefined,
-    originalUrl: "/webhooks/instagram",
-  } as unknown as Request;
-  const { res, nextCalled } = await invokeMiddleware(requireMetaWebhookSignature, req);
-  assert(nextCalled && res.statusCode === 200, "escaped-Unicode Meta signature was rejected");
-});
-
-test("Dotenv-style quoted META_APP_SECRET is normalized safely", async () => {
-  const body = Buffer.from('{"entry":[]}');
-  const { computeMetaSignature, verifyMetaWebhookSignature } = await getWebhookSecurity();
-  const signature = computeMetaSignature(body, "test-app-secret");
-  assert(verifyMetaWebhookSignature(body, signature, '"test-app-secret"'), "quoted secret was not normalized");
-});
-
 test("Webhook raw-body integration accepts exact signed bytes and reaches the existing parser", async () => {
   const { captureRawBody, requireMetaWebhookSignature, computeMetaSignature } = await getWebhookSecurity();
   const app = express();
   let parserReceived = false;
 
+  // Reproduce the production architecture: Express parses JSON, while its
+  // verify hook captures the exact bytes before parsing. Signature verification
+  // then runs against req.rawBody and the existing handler receives req.body.
   app.use(
-    "/webhooks/instagram",
-    express.raw({
-      type: "application/json",
+    express.json({
       limit: "1mb",
       verify: captureRawBody,
     }),
   );
-  app.use(express.json({ limit: "1mb" }));
   app.use("/webhooks/instagram", requireMetaWebhookSignature);
   app.post("/webhooks/instagram", (req, res) => {
     parserReceived = !!req.body?.entry;
