@@ -5,51 +5,12 @@ import { logger } from "../utils/logger.js";
 
 const META_SIGNATURE_RE = /^sha256=([0-9a-f]{64})$/i;
 
-/**
- * Meta signs the exact webhook payload. Keep this function byte-oriented:
- * callers must pass the bytes received from the HTTP request, not a parsed
- * object or JSON.stringify(req.body).
- */
 export function computeMetaSignature(rawBody: Buffer | string, appSecret: string): string {
   return `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
 }
 
-function computeMetaDigest(rawBody: Buffer, appSecret: string): string {
-  return createHmac("sha256", appSecret).update(rawBody).digest("hex");
-}
-
-/**
- * Meta documents that its webhook signature is generated from an escaped
- * Unicode representation of the payload. This transformation deliberately
- * does NOT parse/re-serialize JSON: whitespace, key order, and punctuation
- * remain untouched. Only actual non-ASCII UTF-16 code units are escaped.
- */
-export function escapeUnicodeForMetaSignature(rawBody: Buffer): Buffer {
-  const text = rawBody.toString("utf8");
-  let escaped = "";
-
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-
-    // Meta documents escaped-Unicode signing. Its older webhook signature
-    // documentation also specifies escaping <, % and @ while leaving / as-is.
-    if (code > 0x7f || code === 0x3c || code === 0x25 || code === 0x40) {
-      escaped += `\\u${code.toString(16).padStart(4, "0")}`;
-    } else {
-      escaped += text[index];
-    }
-  }
-
-  return Buffer.from(escaped, "utf8");
-}
-
 function normalizeConfiguredSecret(value: string): string {
   const trimmed = value.trim();
-
-  // Vercel's environment-variable UI normally stores the value exactly as
-  // entered. If somebody accidentally pasted a dotenv-style quoted value,
-  // treating one matching outer quote pair as syntax avoids a false mismatch
-  // without weakening the secret itself.
   if (
     trimmed.length >= 2 &&
     ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
@@ -57,7 +18,6 @@ function normalizeConfiguredSecret(value: string): string {
   ) {
     return trimmed.slice(1, -1);
   }
-
   return trimmed;
 }
 
@@ -74,6 +34,13 @@ function safeEqualHex(leftHex: string, rightHex: string): boolean {
   return timingSafeEqual(left, right);
 }
 
+function diagnosticFingerprint(value: Buffer | string): string {
+  return createHmac("sha256", "hire-daily-diagnostic")
+    .update(value)
+    .digest("hex")
+    .slice(0, 12);
+}
+
 export function verifyMetaWebhookSignature(
   rawBody: Buffer | string,
   signatureHeader: string | undefined,
@@ -81,25 +48,14 @@ export function verifyMetaWebhookSignature(
 ): boolean {
   const secret = normalizeConfiguredSecret(appSecret);
   const providedDigest = extractProvidedDigest(signatureHeader);
-
   if (!secret || !providedDigest) return false;
 
   const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, "utf8");
-
-  const rawDigest = computeMetaDigest(body, secret);
-  if (safeEqualHex(rawDigest, providedDigest)) return true;
-
-  // Meta's documented escaped-Unicode signing representation is only a
-  // fallback for payloads that actually contain non-ASCII characters. For
-  // ordinary ASCII payloads this performs no second interpretation.
-  if (/[\u0080-\uFFFF]/.test(body.toString("utf8"))) {
-    const escapedDigest = computeMetaDigest(escapeUnicodeForMetaSignature(body), secret);
-    if (safeEqualHex(escapedDigest, providedDigest)) return true;
-  }
-
-  return false;
+  const expectedDigest = createHmac("sha256", secret).update(body).digest("hex");
+  return safeEqualHex(expectedDigest, providedDigest);
 }
 
+/** Capture exact bytes before JSON parsing. */
 export function captureRawBody(req: Request, _res: Response, buffer: Buffer): void {
   req.rawBody = Buffer.from(buffer);
 }
@@ -114,7 +70,7 @@ function bodyKind(body: unknown): string {
 
 function emitDiagnostics(
   req: Request,
-  verificationResult: "valid_raw" | "valid_escaped_unicode" | "invalid" | "missing_raw_body",
+  verificationResult: "valid" | "invalid" | "missing_raw_body",
   rawBody: Buffer | undefined,
   signatureHeader: string | undefined,
 ): void {
@@ -124,32 +80,7 @@ function emitDiagnostics(
   const secret = normalizeConfiguredSecret(env.meta.appSecret);
 
   const rawExpectedDigest =
-    rawBody && secret
-      ? computeMetaDigest(rawBody, secret)
-      : null;
-
-  const escapedExpectedDigest =
-    rawBody && secret
-      ? computeMetaDigest(
-          escapeUnicodeForMetaSignature(rawBody),
-          secret,
-        )
-      : null;
-
-  const diagnosticKey = "hire-daily-diagnostic";
-  const secretFingerprint = secret
-    ? createHmac("sha256", diagnosticKey)
-        .update(secret)
-        .digest("hex")
-        .slice(0, 12)
-    : null;
-
-  const bodyFingerprint = rawBody
-    ? createHmac("sha256", diagnosticKey)
-        .update(rawBody)
-        .digest("hex")
-        .slice(0, 12)
-    : null;
+    rawBody && secret ? createHmac("sha256", secret).update(rawBody).digest("hex") : null;
 
   logger.info("Instagram webhook signature diagnostics", {
     requestId: req.requestId,
@@ -160,20 +91,31 @@ function emitDiagnostics(
     signaturePresent: !!signatureHeader,
     signatureAlgorithm: providedDigest ? "sha256" : signatureHeader ? "invalid" : null,
     metaAppSecretPresent: secret ? "<redacted>" : false,
-    secretFingerprint,
-    bodyFingerprint,
-    providedSignaturePrefix: providedDigest ? providedDigest.slice(0, 12) : null,
-    rawExpectedSignaturePrefix: rawExpectedDigest ? rawExpectedDigest.slice(0, 12) : null,
-    escapedExpectedSignaturePrefix: escapedExpectedDigest ? escapedExpectedDigest.slice(0, 12) : null,
+    secretFingerprint: secret ? diagnosticFingerprint(secret) : null,
+    metaAppIdPresent: !!env.meta.appId,
+    metaAppIdPrefix: env.meta.appId ? env.meta.appId.slice(0, 8) : null,
+    accessTokenPresent: !!env.meta.accessToken,
+    accessTokenFingerprint: env.meta.accessToken ? diagnosticFingerprint(env.meta.accessToken) : null,
+    instagramBusinessIdPrefix: env.meta.instagramBusinessId
+      ? env.meta.instagramBusinessId.slice(0, 8)
+      : null,
+    appSecretLength: secret.length,
     bodyKind: bodyKind(req.body),
     rawBodyPresent: !!rawBody,
     rawBodyLength: rawBody?.length ?? 0,
+    bodyFingerprint: rawBody ? diagnosticFingerprint(rawBody) : null,
+    providedSignaturePrefix: providedDigest ? providedDigest.slice(0, 12) : null,
+    rawExpectedSignaturePrefix: rawExpectedDigest ? rawExpectedDigest.slice(0, 12) : null,
     parsedBodyType: bodyKind(req.body),
     verificationResult,
   });
 }
 
-export function requireMetaWebhookSignature(req: Request, res: Response, next: NextFunction): void {
+export function requireMetaWebhookSignature(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   if (req.method === "GET") {
     next();
     return;
@@ -188,43 +130,12 @@ export function requireMetaWebhookSignature(req: Request, res: Response, next: N
     return;
   }
 
-  const secret = normalizeConfiguredSecret(env.meta.appSecret);
-  const providedDigest = extractProvidedDigest(signatureHeader);
-
-  if (!secret || !providedDigest) {
+  if (!verifyMetaWebhookSignature(rawBody, signatureHeader, env.meta.appSecret)) {
     emitDiagnostics(req, "invalid", rawBody, signatureHeader);
     res.status(401).json({ error: "invalid_webhook_signature" });
     return;
   }
 
-  const rawDigest = computeMetaDigest(rawBody, secret);
-  if (safeEqualHex(rawDigest, providedDigest)) {
-    emitDiagnostics(req, "valid_raw", rawBody, signatureHeader);
-  } else if (/[\u0080-\uFFFF]/.test(rawBody.toString("utf8"))) {
-    const escapedDigest = computeMetaDigest(escapeUnicodeForMetaSignature(rawBody), secret);
-    if (safeEqualHex(escapedDigest, providedDigest)) {
-      emitDiagnostics(req, "valid_escaped_unicode", rawBody, signatureHeader);
-    } else {
-      emitDiagnostics(req, "invalid", rawBody, signatureHeader);
-      res.status(401).json({ error: "invalid_webhook_signature" });
-      return;
-    }
-  } else {
-    emitDiagnostics(req, "invalid", rawBody, signatureHeader);
-    res.status(401).json({ error: "invalid_webhook_signature" });
-    return;
-  }
-
-  // Parse only after signature verification. Downstream webhook business
-  // logic receives the same JSON object it received before this security fix.
-  if (Buffer.isBuffer(req.body)) {
-    try {
-      req.body = JSON.parse(req.body.toString("utf8"));
-    } catch {
-      res.status(400).json({ error: "invalid_webhook_json" });
-      return;
-    }
-  }
-
+  emitDiagnostics(req, "valid", rawBody, signatureHeader);
   next();
 }

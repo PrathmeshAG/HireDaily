@@ -200,18 +200,27 @@ async function isOwnInstagramComment(event: {
 app.use(requestContext);
 app.use(corsMiddleware);
 
-// Capture the exact bytes for Meta webhooks before any JSON parsing. This is
-// intentionally route-scoped so the webhook HMAC is calculated from the raw
-// request body Meta signed, including any whitespace/encoding details.
-// Keep the existing Express JSON pipeline. The `verify` hook receives the
-// exact bytes before Express parses them, which lets the webhook security
-// middleware verify Meta's signature without replacing req.body with a Buffer.
+// IMPORTANT: Meta signs the exact request bytes. Use route-scoped raw parsers
+// for webhook endpoints so req.body is the original Buffer until signature
+// verification has completed. Normal application APIs keep express.json().
 app.use(
-  express.json({
+  "/webhook",
+  express.raw({
+    type: "application/json",
     limit: "1mb",
     verify: captureRawBody,
   }),
 );
+app.use(
+  "/webhooks/instagram",
+  express.raw({
+    type: "application/json",
+    limit: "1mb",
+    verify: captureRawBody,
+  }),
+);
+
+app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 // Meta webhook traffic is authenticated by X-Hub-Signature-256 rather than
@@ -627,6 +636,23 @@ console.log(
 
 /** Meta event ingestion handler — shared by /webhook and /webhooks/instagram. */
 async function ingestWebhook(req: express.Request, res: express.Response): Promise<void> {
+  // Webhook routes use express.raw() so signature verification receives the
+  // exact bytes Meta signed. Only after the security middleware has called
+  // next() do we parse the Buffer into the JSON object expected by the
+  // existing webhook parser.
+  if (Buffer.isBuffer(req.body)) {
+    try {
+      req.body = JSON.parse(req.body.toString("utf8"));
+    } catch (error) {
+      logger.error("Failed to parse verified Instagram webhook JSON", {
+        error: error instanceof Error ? error.message : "unknown_error",
+        requestId: req.requestId,
+      });
+      res.status(400).json({ error: "invalid_webhook_json" });
+      return;
+    }
+  }
+
   const events = parseWebhookEvents(req.body);
   for (const event of events) {
     try {
