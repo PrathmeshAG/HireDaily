@@ -8,6 +8,7 @@
 // The backend is the only layer that touches Firebase Admin. No secrets are
 // ever sent to or returned from the browser. Jobs remain read-only.
 
+import { auth } from "../../../lib/firebase";
 import type {
   AutomationAnalytics,
   AutomationRule,
@@ -26,9 +27,16 @@ AutomationUser,
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = path.startsWith("/api/automation/") && auth.currentUser
+    ? await auth.currentUser.getIdToken()
+    : null;
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers,
   });
   if (!res.ok) {
     let message = `Request failed (${res.status})`;

@@ -1,3 +1,4 @@
+import { isTransientHttpStatus, retryTransient } from "../utils/retry.js";
 export interface InstagramMediaRecord {
   id: string;
   permalink: string | null;
@@ -67,11 +68,18 @@ function normalizeMedia(payload: MetaMediaResponse | null, syncedAt: number): In
     }));
 }
 
-async function getJson(url: string): Promise<{ response: Response; payload: MetaMediaResponse | null }> {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
+async function getJson(url: string, accessToken: string): Promise<{ response: Response; payload: MetaMediaResponse | null }> {
+  const response = await retryTransient(
+    () => fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
+    }),
+    {
+      retries: 2,
+      shouldRetry: () => true,
+      shouldRetryResult: (result) => isTransientHttpStatus(result.status),
+    },
+  );
 
   let payload: MetaMediaResponse | null = null;
   try {
@@ -100,10 +108,8 @@ export async function fetchInstagramMedia(limit = 50): Promise<InstagramMediaRec
     const url = new URL(`https://graph.facebook.com/${version}/${encodeURIComponent(accountId)}/media`);
     url.searchParams.set("fields", MEDIA_FIELDS);
     url.searchParams.set("limit", String(safeLimit));
-    url.searchParams.set("access_token", accessToken);
-
     try {
-      const { response, payload } = await getJson(url.toString());
+      const { response, payload } = await getJson(url.toString(), accessToken);
       if (response.ok) return normalizeMedia(payload, syncedAt);
       errors.push(`facebook/${version}: ${payload?.error?.message ?? `HTTP ${response.status}`}`);
     } catch (error) {
@@ -117,10 +123,8 @@ export async function fetchInstagramMedia(limit = 50): Promise<InstagramMediaRec
     const url = new URL(`https://graph.instagram.com/${version}/me/media`);
     url.searchParams.set("fields", MEDIA_FIELDS);
     url.searchParams.set("limit", String(safeLimit));
-    url.searchParams.set("access_token", accessToken);
-
     try {
-      const { response, payload } = await getJson(url.toString());
+      const { response, payload } = await getJson(url.toString(), accessToken);
       if (response.ok) return normalizeMedia(payload, syncedAt);
       errors.push(`instagram/${version}: ${payload?.error?.message ?? `HTTP ${response.status}`}`);
     } catch (error) {

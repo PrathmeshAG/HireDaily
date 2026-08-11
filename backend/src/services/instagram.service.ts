@@ -24,6 +24,7 @@
 //     (a real META_ACCESS_TOKEN and META_DRY_RUN != "true").
 
 import { env } from "../config/env.js";
+import { isTransientHttpStatus, retryTransient } from "../utils/retry.js";
 import { logger } from "../utils/logger.js";
 import type { RuleEngineRule } from "../types/rule-engine.js";
 import type { PostJobResolution } from "./post-mapping.service.js";
@@ -105,7 +106,12 @@ async function fetchJson(
   url: string,
   init: RequestInit,
 ): Promise<{ ok: boolean; status: number; json: unknown }> {
-  const res = await fetchImpl(url, init);
+  const method = (init.method ?? "GET").toUpperCase();
+  const res = await retryTransient(() => fetchImpl(url, init), {
+    retries: method === "GET" ? 2 : 0,
+    shouldRetry: () => method === "GET",
+    shouldRetryResult: (response) => method === "GET" && isTransientHttpStatus(response.status),
+  });
   let json: unknown = null;
   try {
     json = await res.json();
@@ -118,7 +124,7 @@ async function fetchJson(
 /**
  * Sends a public reply to an Instagram comment via the Meta Graph API:
  *   POST https://graph.facebook.com/{version}/{comment_id}/replies
- *     ?message=...&access_token=...
+ *     Authorization: Bearer <token>
  *
  * The Meta network call is injected so tests substitute a mock and never hit
  * the real API. When `dryRun` is true no network call happens at all.

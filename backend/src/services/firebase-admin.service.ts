@@ -8,6 +8,7 @@
 import { initializeApp, getApp as getAdminApp, getApps, cert } from "firebase-admin/app";
 import type { App } from "firebase-admin/app";
 import { getDatabase as getRTDB } from "firebase-admin/database";
+import { getAuth } from "firebase-admin/auth";
 import { env } from "../config/env.js";
 import { logger } from "../utils/logger.js";
 import type { NormalizedWebhookEvent } from "../types/instagram.js";
@@ -65,7 +66,7 @@ function getApp(): App {
         databaseURL,
       });
 
-  logger.info("Firebase Admin initialized", { projectId, databaseURL });
+  logger.info("Firebase Admin initialized", { projectId });
   return app;
 }
 
@@ -83,6 +84,11 @@ function db() {
  * idempotent (the module-level `app` guard + `admin.apps.length` check),
  * calling this repeatedly will never double-initialize.
  */
+export async function verifyFirebaseIdToken(token: string) {
+  if (!token?.trim()) throw new Error("Firebase ID token is missing");
+  return getAuth(getApp()).verifyIdToken(token.trim());
+}
+
 export function isFirebaseAdminConfigured(): boolean {
   try {
     getApp();

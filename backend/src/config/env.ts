@@ -40,23 +40,95 @@ function readFirebaseEnv(): FirebaseEnv {
   };
 }
 
-export const env = {
-  firebase: readFirebaseEnv(),
-  // Public base URL used to build the Hire Daily job detail URL:
-  //   `${publicAppUrl}/jobs/{jobId}`
-  // Prefer PUBLIC_APP_URL (e.g. https://hire-daily.vercel.app). For local dev
-  // we fall back to the Vite dev server default if not configured.
-  publicAppUrl: process.env.PUBLIC_APP_URL?.trim() || "https://hire-daily.vercel.app",
-  // Instagram / Meta config for Phase 5 Checkpoint 3 (public comment replies).
+export interface AppEnv {
+  firebase: FirebaseEnv;
+  publicAppUrl: string;
   meta: {
-    // Never log or expose this token. It is only used to build the Meta
-    // Graph API request URL.
+    accessToken: string;
+    appSecret: string;
+    instagramBusinessId: string;
+    dryRun: boolean;
+  };
+  auth: {
+    adminEmail: string;
+  };
+  cors: {
+    origins: string[];
+  };
+  rateLimit: {
+    windowMs: number;
+    max: number;
+  };
+  port: number;
+}
+
+function csv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function positiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+export const env: AppEnv = {
+  firebase: readFirebaseEnv(),
+  publicAppUrl: process.env.PUBLIC_APP_URL?.trim() || "https://hire-daily.vercel.app",
+  meta: {
     accessToken: process.env.META_ACCESS_TOKEN?.trim() || "",
+    appSecret: process.env.META_APP_SECRET?.trim() || "",
     instagramBusinessId: process.env.INSTAGRAM_BUSINESS_ID?.trim() || "",
-    // When "true", the comment-reply service builds + validates the request
-    // but NEVER calls the real Meta API and returns a simulated success.
-    // Production must explicitly set this to "true" to enable dry-run;
-    // it is never enabled implicitly.
     dryRun: process.env.META_DRY_RUN?.trim().toLowerCase() === "true",
   },
+  auth: {
+    adminEmail: process.env.ADMIN_EMAIL?.trim().toLowerCase() || "",
+  },
+  cors: {
+    origins: csv(process.env.CORS_ORIGINS || "https://hire-daily.vercel.app,http://localhost:5173"),
+  },
+  rateLimit: {
+    windowMs: positiveInt(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+    max: positiveInt(process.env.API_RATE_LIMIT_MAX, 120),
+  },
+  port: positiveInt(process.env.PORT, 8787),
 };
+
+export interface EnvironmentValidationOptions {
+  production?: boolean;
+  values?: NodeJS.ProcessEnv;
+}
+
+export function validateEnvironment(options: EnvironmentValidationOptions = {}): void {
+  const production = options.production ?? process.env.NODE_ENV === "production";
+  const values = options.values ?? process.env;
+  if (!production) return;
+
+  const required = [
+    "FIREBASE_DATABASE_URL",
+    "FIREBASE_PROJECT_ID",
+    "FIREBASE_CLIENT_EMAIL",
+    "FIREBASE_PRIVATE_KEY",
+    "META_APP_SECRET",
+    "ADMIN_EMAIL",
+    "CORS_ORIGINS",
+    "PUBLIC_APP_URL",
+  ];
+
+  const missing: string[] = required.filter((name) => !values[name]?.trim());
+  if (!values.WEBHOOK_VERIFY_TOKEN?.trim() && !values.META_VERIFY_TOKEN?.trim()) {
+    missing.push("WEBHOOK_VERIFY_TOKEN (or META_VERIFY_TOKEN)");
+  }
+
+  for (const name of ["META_ACCESS_TOKEN", "INSTAGRAM_BUSINESS_ID"]) {
+    if (values.META_DRY_RUN?.trim().toLowerCase() !== "true" && !values[name]?.trim()) {
+      missing.push(name);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Production configuration missing required environment variable(s): ${missing.join(", ")}`);
+  }
+}
