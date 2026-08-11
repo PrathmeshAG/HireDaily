@@ -747,6 +747,8 @@ export type FollowApiStatus = "verified" | "not_verified" | "unsupported" | "unk
 export interface FollowApiResult {
   status: FollowApiStatus;
   reason: string | null;
+  /** Username returned by Meta for the same IGSID/profile request, when available. */
+  username: string | null;
 }
 
 /**
@@ -762,12 +764,17 @@ export async function checkInstagramUserFollow(
   const accessToken = opts.accessToken?.trim() || env.meta.accessToken;
   const fetchImpl = opts.fetchImpl ?? fetch;
 
-  if (!userId) return { status: "unknown", reason: "instagram_user_id_missing" };
-  if (!accessToken) return { status: "unknown", reason: "meta_access_token_missing" };
+  if (!userId) return { status: "unknown", reason: "instagram_user_id_missing", username: null };
+  if (!accessToken) return { status: "unknown", reason: "meta_access_token_missing", username: null };
 
+  // The same profile request used for the follow relationship also returns
+  // username after the user has interacted with the professional account.
+  // This is important for the existing Job DM template, which may contain
+  // {{username}}. Do not make the caller depend on a username being present
+  // in the messaging webhook itself.
   const url =
     `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(userId)}` +
-    `?fields=is_user_follow_business`;
+    `?fields=is_user_follow_business,username`;
 
   try {
     const result = await fetchJson(fetchImpl, url, {
@@ -779,17 +786,26 @@ export async function checkInstagramUserFollow(
       const reason = safeMetaError(result.json, accessToken, `meta_http_${result.status}`);
       // Permission/consent/capability errors are intentionally not treated as
       // either following or not following.
-      return { status: "unknown", reason };
+      return { status: "unknown", reason, username: null };
     }
 
-    const value = (result.json as { is_user_follow_business?: unknown }).is_user_follow_business;
-    if (value === true) return { status: "verified", reason: null };
-    if (value === false) return { status: "not_verified", reason: null };
-    return { status: "unknown", reason: "follow_field_missing" };
+    const profile = result.json as {
+      is_user_follow_business?: unknown;
+      username?: unknown;
+    };
+    const username =
+      typeof profile.username === "string" && profile.username.trim()
+        ? profile.username.trim().replace(/^@/, "")
+        : null;
+    const value = profile.is_user_follow_business;
+    if (value === true) return { status: "verified", reason: null, username };
+    if (value === false) return { status: "not_verified", reason: null, username };
+    return { status: "unknown", reason: "follow_field_missing", username };
   } catch (error) {
     return {
       status: "unknown",
       reason: error instanceof Error ? error.message.slice(0, 200) : "follow_check_network_error",
+      username: null,
     };
   }
 }

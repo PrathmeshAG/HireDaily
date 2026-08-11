@@ -1,7 +1,6 @@
 import { env } from "../config/env.js";
 import {
   claimInstagramActionOnce,
-  releaseInstagramActionClaim,
   readAllRules,
   readUserRecord,
   updateInstagramUserFollowState,
@@ -85,9 +84,20 @@ export async function processCommentWithFollowGate(
       if (!claimed) {
         return { dm: baseDm(input, "skipped", "duplicate_suppressed"), followStatus };
       }
-      const dm = await processExistingJobDm(input);
+      const dmUsername = resolveJobDmUsername(check.username, user.username, input.username);
+      const dm = await processExistingJobDm(input, dmUsername);
       await writeDmLog(dm);
-      await updateInstagramUserFollowState(input.userId, { pendingFollowGate: null });
+      if (dm.dmStatus === "success") {
+        await updateInstagramUserFollowState(input.userId, {
+          pendingFollowGate: null,
+          username: check.username ?? user.username ?? input.username ?? null,
+        });
+      } else {
+        logger.error("Verified returning user could not receive existing Job DM", {
+          userId: input.userId,
+          error: dm.error,
+        });
+      }
       return { dm, followStatus };
     }
   } else {
@@ -149,13 +159,16 @@ export async function processCommentWithFollowGate(
   return { dm, followStatus };
 }
 
-async function processExistingJobDm(input: FollowGateCommentInput): Promise<DmLogData> {
+async function processExistingJobDm(
+  input: FollowGateCommentInput,
+  usernameOverride?: string | null,
+): Promise<DmLogData> {
   const resolution = await resolvePostJob(input.mediaId);
   const recipientId = input.userId;
   return processDirectMessageProduction({
     recipientId,
     userId: input.userId,
-    username: input.username,
+    username: usernameOverride ?? input.username,
     mediaId: input.mediaId,
     commentId: input.commentId,
     rule: input.rule,
@@ -163,6 +176,25 @@ async function processExistingJobDm(input: FollowGateCommentInput): Promise<DmLo
     resolution,
     commentStatus: input.commentStatus,
   });
+}
+
+/**
+ * Resolve the username for the existing Job DM without changing the shared
+ * DM implementation. Messaging webhooks provide an IGSID but do not
+ * reliably include username; the follow verification profile call now
+ * returns username from the same Meta request.
+ */
+function resolveJobDmUsername(
+  metaUsername: string | null,
+  storedUsername: string | null,
+  interactionUsername: string | null,
+): string {
+  return (
+    metaUsername?.trim() ||
+    storedUsername?.trim() ||
+    interactionUsername?.trim() ||
+    "there"
+  );
 }
 
 /**
@@ -187,8 +219,14 @@ export async function handleFollowGateInteraction(input: {
   const check = await checkInstagramUserFollow(input.userId);
   const now = Date.now();
 
+  const resolvedUsername = resolveJobDmUsername(
+    check.username,
+    user?.username ?? null,
+    input.username,
+  );
+
   await updateInstagramUserFollowState(input.userId, {
-    username: input.username,
+    username: check.username ?? user?.username ?? input.username ?? null,
     lastInteractionAt: now,
     followCheckRequested: true,
     followConfirmed: check.status === "verified",
@@ -199,11 +237,10 @@ export async function handleFollowGateInteraction(input: {
   const pending = user?.pendingFollowGate ?? null;
 
   if (!pending) {
-    // There is no job context left to unlock. In particular, do not resend
-    // the Follow Gate for stale/repeated clicks after a successful unlock.
-    logger.info("Ignoring Follow Gate interaction with no pending job", {
-      userId: input.userId,
-      followStatus: check.status,
+    // Safe response for a stale/manual interaction with no pending job.
+    await sendFollowGateMessage(input.userId, env.meta.accessToken, {
+      dryRun: env.meta.dryRun,
+      instagramBusinessId: env.meta.instagramBusinessId,
     });
     return true;
   }
@@ -229,78 +266,56 @@ export async function handleFollowGateInteraction(input: {
   const resolution = await resolvePostJob(pending.mediaId);
   const jobClaimed = await claimInstagramActionOnce(pending.commentId, "job_dm");
   if (!jobClaimed) {
-    logger.info("Ignoring duplicate/pending Job DM interaction", {
-      userId: input.userId,
-      commentId: pending.commentId,
-    });
+    // Another delivery is already processing this job DM. Do not clear the
+    // pending gate here; the winning delivery owns the final state transition.
     return true;
   }
 
-  let dm: DmLogData;
-  try {
-    dm = await processDirectMessageProduction({
-      recipientId: input.userId,
-      userId: input.userId,
-      username: input.username ?? user?.username ?? null,
-      mediaId: pending.mediaId,
-      // Important: the user has now responded, so use the normal messaging
-      // window and the existing View Job & Apply button implementation.
-      commentId: null,
-      rule,
-      matchedKeyword: pending.matchedKeyword,
-      resolution,
-      commentStatus: pending.commentStatus,
-    });
-  } catch (error) {
-    await releaseInstagramActionClaim(pending.commentId, "job_dm").catch((releaseError) =>
-      logger.error("Failed to release Job DM claim after exception", {
-        userId: input.userId,
-        commentId: pending.commentId,
-        error: releaseError,
-      }),
-    );
-    logger.error("Verified Follow Gate Job DM threw an error", {
-      userId: input.userId,
-      commentId: pending.commentId,
-      error,
-    });
-    return true;
-  }
+  const dm = await processDirectMessageProduction({
+    recipientId: input.userId,
+    userId: input.userId,
+    // Existing production DM templates may contain {{username}}. Resolve it
+    // before calling the existing DM implementation; never pass null when a
+    // username token is required. The fallback is deliberately generic and
+    // does not claim a username that Meta did not provide.
+    username: resolvedUsername,
+    mediaId: pending.mediaId,
+    // Important: the user has now responded, so use the normal messaging
+    // window and the existing View Job & Apply button implementation.
+    commentId: null,
+    rule,
+    matchedKeyword: pending.matchedKeyword,
+    resolution,
+    commentStatus: pending.commentStatus,
+  });
 
   await writeDmLog(dm);
 
+  // Only consume the pending job after the EXISTING Job DM actually succeeds.
+  // If Meta rejects the DM (for example because of a template/window issue),
+  // keep the pending job so a later genuine interaction can retry instead of
+  // leaving the user in a silent/dead state.
   if (dm.dmStatus === "success") {
-    // Only clear the pending job after the EXISTING Job DM + CTA was actually
-    // accepted by Meta. A failed send must remain retryable.
     await updateInstagramUserFollowState(input.userId, {
       pendingFollowGate: null,
+      username: check.username ?? user?.username ?? input.username ?? null,
       followConfirmed: true,
       followStatus: "verified",
       lastFollowCheckAt: now,
     });
-    return true;
-  }
-
-  // The user is verified, but the existing Job DM did not send. Keep the
-  // pending job and release the claim so a later interaction can retry it.
-  await releaseInstagramActionClaim(pending.commentId, "job_dm").catch((releaseError) =>
-    logger.error("Failed to release Job DM claim after failed send", {
+  } else {
+    await updateInstagramUserFollowState(input.userId, {
+      username: check.username ?? user?.username ?? input.username ?? null,
+      followConfirmed: true,
+      followStatus: "verified",
+      lastFollowCheckAt: now,
+    });
+    logger.error("Verified Follow Gate user could not receive existing Job DM; pending job preserved", {
       userId: input.userId,
-      commentId: pending.commentId,
-      error: releaseError,
-    }),
-  );
-  await updateInstagramUserFollowState(input.userId, {
-    pendingFollowGate: pending,
-    followConfirmed: true,
-    followStatus: "verified",
-    lastFollowCheckAt: now,
-  });
-  logger.error("Verified user Job DM failed; pending job preserved for retry", {
-    userId: input.userId,
-    commentId: pending.commentId,
-    error: dm.error,
-  });
+      jobId: pending.jobId,
+      error: dm.error,
+    });
+  }
 
   return true;
 }
