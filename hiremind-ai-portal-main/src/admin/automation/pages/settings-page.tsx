@@ -184,14 +184,22 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
           </span>
           <div>
             <h2 className="font-semibold text-white">Follow Verification</h2>
-            <StatusBadge label="planned" tone="neutral" />
+            <StatusBadge label="active" tone="success" />
           </div>
         </div>
         <p className="mt-3 max-w-2xl text-sm text-white/50">
-          Automatically checking whether a commenter follows the account is planned for a future phase —
-          it needs additional Meta permissions beyond what standard comment/DM automation requires.
-          This card is a placeholder so the settings layout won't need to change when it ships.
+          Automatically verifies whether a user follows @hire_daily before unlocking the job application link.
         </p>
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-white/50">Status:</span>
+            <span className="text-emerald-300">Active</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-white/50">Verification:</span>
+            <span className="text-white/80">Meta User Profile API</span>
+          </div>
+        </div>
       </div>
     </div>
   );
