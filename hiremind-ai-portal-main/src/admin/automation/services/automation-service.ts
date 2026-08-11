@@ -272,8 +272,10 @@ export async function getUsers(): Promise<AutomationUser[]> {
       commentCount: number;
       dmCount: number;
       active: boolean;
-    }[];
+      followStatus?: "verified" | "not_verified" | "unsupported" | "unknown";
+    }[]
   }>("/api/automation/users");
+
   return users.map((u) => ({
     id: u.userId,
     channel: "instagram",
@@ -281,7 +283,12 @@ export async function getUsers(): Promise<AutomationUser[]> {
     avatarUrl: "",
     lastComment: null,
     lastDM: null,
-    followStatus: "unknown",
+    followStatus:
+      u.followStatus === "verified"
+        ? "follower"
+        : u.followStatus === "not_verified"
+          ? "not_follower"
+          : "unknown",
     commentCount: u.commentCount,
     dmCount: u.dmCount,
     lastSeen: u.lastActivityAt,

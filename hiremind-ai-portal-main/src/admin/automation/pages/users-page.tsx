@@ -85,7 +85,7 @@ export function UsersPage() {
       </div>
 
       <p className="mt-3 text-xs text-white/35">
-        Follow status is a placeholder for now — real verification depends on additional Meta permissions (planned for a future phase).
+        Follow status reflects the latest persisted Follow Verification result for each user.
       </p>
     </div>
   );

@@ -1063,12 +1063,39 @@ export async function readAllUsers(): Promise<
     commentCount: number;
     dmCount: number;
     active: boolean;
+    followStatus?: "verified" | "not_verified" | "unsupported" | "unknown";
   }[]
 > {
-  const snap = await db().ref("automation/users").get();
-  if (!snap.exists()) return [];
+  const [usersSnap, logsSnap] = await Promise.all([
+    db().ref("automation/users").get(),
+    db().ref("automation/logs").get(),
+  ]);
+  if (!usersSnap.exists()) return [];
 
-  const raw = snap.val() as Record<string, unknown>;
+  const raw = usersSnap.val() as Record<string, unknown>;
+  const loggedCommentCounts = new Map<string, number>();
+  const loggedDmCounts = new Map<string, number>();
+
+  // Older user records may have zero counters even though their persisted
+  // automation logs contain the actual comment/DM outcomes. Use those logs as
+  // a read-only repair source; never add them to already-populated counters.
+  if (logsSnap.exists()) {
+    const logs = logsSnap.val() as Record<string, unknown>;
+    for (const value of Object.values(logs)) {
+      if (!value || typeof value !== "object") continue;
+      const log = value as Record<string, unknown>;
+      const userId = typeof log.userId === "string" ? log.userId : "";
+      if (!userId) continue;
+
+      if (log.type === "comment_sent") {
+        loggedCommentCounts.set(userId, (loggedCommentCounts.get(userId) ?? 0) + 1);
+      }
+      if (log.type === "dm_sent" && log.dmStatus === "success") {
+        loggedDmCounts.set(userId, (loggedDmCounts.get(userId) ?? 0) + 1);
+      }
+    }
+  }
+
   const out: {
     userId: string;
     username: string | null;
@@ -1077,19 +1104,36 @@ export async function readAllUsers(): Promise<
     commentCount: number;
     dmCount: number;
     active: boolean;
+    followStatus?: "verified" | "not_verified" | "unsupported" | "unknown";
   }[] = [];
 
   for (const [id, value] of Object.entries(raw)) {
     if (!value || typeof value !== "object") continue;
     const u = value as Record<string, unknown>;
+    const userId = typeof u.userId === "string" ? u.userId : id;
+    const storedCommentCount = typeof u.commentCount === "number" ? u.commentCount : 0;
+    const storedDmCount = typeof u.dmCount === "number" ? u.dmCount : 0;
+    const followStatus =
+      u.followStatus === "verified" ||
+      u.followStatus === "not_verified" ||
+      u.followStatus === "unsupported" ||
+      u.followStatus === "unknown"
+        ? u.followStatus
+        : u.followConfirmed === true
+          ? "verified"
+          : u.followConfirmed === false && u.followCheckRequested === true
+            ? "not_verified"
+            : undefined;
+
     out.push({
-      userId: typeof u.userId === "string" ? u.userId : id,
+      userId,
       username: typeof u.username === "string" ? u.username : null,
       firstSeenAt: typeof u.firstSeenAt === "number" ? u.firstSeenAt : 0,
       lastActivityAt: typeof u.lastActivityAt === "number" ? u.lastActivityAt : 0,
-      commentCount: typeof u.commentCount === "number" ? u.commentCount : 0,
-      dmCount: typeof u.dmCount === "number" ? u.dmCount : 0,
+      commentCount: Math.max(storedCommentCount, loggedCommentCounts.get(userId) ?? 0),
+      dmCount: Math.max(storedDmCount, loggedDmCounts.get(userId) ?? 0),
       active: u.active !== false,
+      followStatus,
     });
   }
 
