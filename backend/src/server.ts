@@ -198,7 +198,6 @@ async function isOwnInstagramComment(event: {
 }
 
 app.use(requestContext);
-app.use(corsMiddleware);
 app.use(
   express.json({
     limit: "1mb",
@@ -212,6 +211,10 @@ app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 // may legitimately redeliver events during transient failures.
 app.use("/webhook", requireMetaWebhookSignature);
 app.use("/webhooks/instagram", requireMetaWebhookSignature);
+
+// CORS is a browser concern and must not run on Meta webhook requests.
+// Scope it to the frontend API so Meta can POST directly to /webhooks/instagram.
+app.use("/api", corsMiddleware);
 
 // All automation management endpoints are admin-only. Firebase ID tokens are
 // verified server-side; the browser's email/UI gate is never trusted here.
