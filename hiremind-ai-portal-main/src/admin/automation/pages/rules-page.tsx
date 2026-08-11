@@ -5,6 +5,7 @@ import {
   Plus, Pencil, Trash2, Loader2, Save, X, ListChecks, Clock, MessageSquare, Send as SendIcon,
 } from "lucide-react";
 import { getRules, getPostMappings, getTemplates, createRule, updateRule, deleteRule } from "../services/automation-service";
+import { fetchJobs } from "../../../lib/jobs";
 import type { AutomationRule, MatchType, ReplyMode, RuleMode } from "../types";
 import { TableToolbar } from "../components/table-toolbar";
 import { EmptyState } from "../components/empty-state";
@@ -21,6 +22,7 @@ export function RulesPage() {
   const qc = useQueryClient();
   const { data: rules, isLoading } = useQuery({ queryKey: ["automation", "rules"], queryFn: getRules });
   const { data: mappings } = useQuery({ queryKey: ["automation", "mappings"], queryFn: getPostMappings });
+  const { data: jobs } = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs });
   const { data: templates } = useQuery({ queryKey: ["automation", "templates"], queryFn: getTemplates });
 
   const [search, setSearch] = useState("");
@@ -151,7 +153,10 @@ export function RulesPage() {
       {editing && (
         <RuleDialog
           rule={editing === "new" ? null : editing}
-          mappings={mappings ?? []}
+          mappings={((mappings ?? []).map((m) => {
+            const job = jobs?.find((j) => j.id === m.jobId);
+            return { ...m, companyName: job?.companyName ?? m.companyName, jobTitle: job?.role ?? m.jobTitle };
+          }))}
           templates={templates ?? []}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); invalidate(); }}

@@ -18,6 +18,7 @@ import {
   writeTemplate,
   deleteTemplate as deleteTemplateRecord,
 readAllPostMappings,
+  readJob,
   readPostMapping,
   writePostMapping,
   deletePostMapping,
@@ -843,6 +844,27 @@ app.get("/api/automation/instagram/media", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/automation/instagram/media/sync — explicit admin refresh.
+ * Reuses the same live Meta fetch + Firebase cache behavior as the GET route.
+ */
+app.post("/api/automation/instagram/media/sync", async (req, res) => {
+  try {
+    const rawLimit = Array.isArray(req.body?.limit) ? req.body.limit[0] : req.body?.limit;
+    const parsed = typeof rawLimit === "number" ? rawLimit : Number.parseInt(String(rawLimit ?? "50"), 10);
+    const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 50;
+
+    const media = await fetchInstagramMedia(limit);
+    await writeInstagramMediaCache(
+      media.map((item) => ({ ...item, syncedAt: Date.now() })),
+    );
+    res.status(200).json({ media, source: "instagram" });
+  } catch (e) {
+    logger.error("Failed to sync Instagram media", { error: e });
+    res.status(502).json({ error: "failed_to_sync_instagram_media" });
+  }
+});
+
 /** GET /api/automation/post-mappings — list all post mappings. */
 app.get("/api/automation/post-mappings", async (_req, res) => {
   try {
@@ -1037,20 +1059,27 @@ app.get("/api/automation/analytics", async (_req, res) => {
 
     // Keyword counts from keyword_matched logs (ruleKeyword).
     const keywordCounts = new Map<string, number>();
-    // Post counts from comment_sent/dm_sent logs that carry a postLabel via
-    // the mapping label is not stored on logs; approximate post aggregates
-    // from the post-mapping count + matched logs by mediaId. To keep this
-    // dependency-free and read-only, we derive topPosts from distinct
-    // postLabel-associated logs is not available, so we source topPosts from
-    // the matched keyword logs' mediaId-labelled rules is not present either.
-    // Instead, we expose what the existing frontend supports using the data
-    // we DO have: keyword aggregates (from ruleKeyword on keyword_matched)
-    // and a stable, safe placeholder for posts (from the mapping count).
-    const postCounts = new Map<string, number>();
+    // Top-post counts come from matched-rule logs keyed by the real Instagram
+    // mediaId, then resolve the existing post mapping/job for a human label.
+    const postCounts = new Map<string, { mediaId: string; triggers: number; jobId: string }>();
 
     for (const log of logs) {
-      if (log.type === "keyword_matched" && log.ruleKeyword) {
+      if (log.type !== "keyword_matched") continue;
+
+      if (log.ruleKeyword) {
         keywordCounts.set(log.ruleKeyword, (keywordCounts.get(log.ruleKeyword) ?? 0) + 1);
+      }
+
+      if (log.mediaId) {
+        const mapping = await readPostMapping(log.mediaId);
+        if (mapping?.jobId) {
+          const current = postCounts.get(log.mediaId);
+          postCounts.set(log.mediaId, {
+            mediaId: log.mediaId,
+            triggers: (current?.triggers ?? 0) + 1,
+            jobId: mapping.jobId,
+          });
+        }
       }
     }
 
@@ -1059,9 +1088,22 @@ app.get("/api/automation/analytics", async (_req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    const topPosts = [...postCounts.entries()]
-      .map(([postLabel, triggers]) => ({ postLabel, triggers }))
+    const postEntries = [...postCounts.values()]
+      .sort((a, b) => b.triggers - a.triggers)
       .slice(0, 10);
+
+    const topPosts = (await Promise.all(
+      postEntries.map(async ({ mediaId, triggers, jobId }) => {
+        const job = await readJob(jobId);
+        const postLabel = [job?.jobTitle, job?.company].filter(Boolean).join(" — ") || `Instagram post ${mediaId}`;
+        return {
+          postLabel,
+          triggers,
+          mediaId,
+          postUrl: (await readPostMapping(mediaId))?.instagramPostUrl ?? null,
+        };
+      }),
+    ));
 
     const users = (await readAllUsers()).length;
 
@@ -1143,7 +1185,7 @@ app.get("/api/automation/settings", async (req, res) => {
     if (accessToken && instagramBusinessId) {
       try {
         const url =
-          `https://graph.facebook.com/v21.0/${encodeURIComponent(instagramBusinessId)}` +
+          `https://graph.facebook.com/v24.0/${encodeURIComponent(instagramBusinessId)}` +
           `?fields=id,username,account_type&access_token=${encodeURIComponent(accessToken)}`;
 
         const metaStartedAt = Date.now();
