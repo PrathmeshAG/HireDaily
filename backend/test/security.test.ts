@@ -144,6 +144,34 @@ test("Valid X-Hub-Signature-256 is accepted by webhook middleware", async () => 
   assert(nextCalled && res.statusCode === 200, "valid Meta signature was rejected");
 });
 
+test("Meta escaped-Unicode signature accepts real non-ASCII payloads", async () => {
+  const { verifyMetaWebhookSignatureDetailed, computeMetaSignature } = await getWebhookSecurity();
+  const body = Buffer.from('{"entry":[{"changes":[{"value":{"text":"Interested 🚀 äöå"}}]}]}', "utf8");
+
+  // Meta documents that its signature uses the escaped-Unicode representation
+  // for non-ASCII characters rather than the decoded UTF-8 bytes.
+  let escaped = "";
+  const text = body.toString("utf8");
+  for (let index = 0; index < text.length; index += 1) {
+    const codeUnit = text.charCodeAt(index);
+    escaped += codeUnit > 0x7f
+      ? `\\u${codeUnit.toString(16).padStart(4, "0")}`
+      : text[index];
+  }
+
+  const signature = computeMetaSignature(Buffer.from(escaped, "utf8"), "test-app-secret");
+  const result = verifyMetaWebhookSignatureDetailed(body, signature, "test-app-secret");
+  assert(result === "valid_meta_escaped_unicode", `escaped-Unicode signature result was ${result}`);
+});
+
+test("Malformed X-Hub-Signature-256 formats are rejected", async () => {
+  const { verifyMetaWebhookSignature } = await getWebhookSecurity();
+  const body = Buffer.from('{"entry":[]}');
+  assert(!verifyMetaWebhookSignature(body, "sha1=" + "a".repeat(64), "test-app-secret"), "sha1 signature was accepted");
+  assert(!verifyMetaWebhookSignature(body, "sha256=" + "a".repeat(63), "test-app-secret"), "short sha256 digest was accepted");
+  assert(!verifyMetaWebhookSignature(body, "sha256=" + "g".repeat(64), "test-app-secret"), "non-hex digest was accepted");
+});
+
 test("Invalid X-Hub-Signature-256 returns 401", async () => {
   const body = Buffer.from('{"entry":[]}');
   const { requireMetaWebhookSignature } = await getWebhookSecurity();
@@ -168,7 +196,7 @@ test("Missing X-Hub-Signature-256 returns 401", async () => {
   assert(res.statusCode === 401 && !nextCalled, "missing Meta signature was not rejected");
 });
 
-test("Webhook raw-body integration accepts exact signed bytes and reaches the existing parser", async () => {
+test("Webhook integration accepts Meta escaped-Unicode signatures and reaches the existing parser", async () => {
   const { captureRawBody, requireMetaWebhookSignature, computeMetaSignature } = await getWebhookSecurity();
   const app = express();
   let parserReceived = false;
@@ -193,8 +221,16 @@ test("Webhook raw-body integration accepts exact signed bytes and reaches the ex
   if (!address || typeof address === "string") throw new Error("test server did not bind");
 
   try {
-    const rawBody = Buffer.from(' {"entry":[{"id":"meta-test"}]}\n');
-    const signature = computeMetaSignature(rawBody, "test-app-secret");
+    const rawBody = Buffer.from(' {"entry":[{"id":"meta-test","text":"Interested 🚀 äöå"}]}\n', "utf8");
+    const rawText = rawBody.toString("utf8");
+    let metaSignedText = "";
+    for (let index = 0; index < rawText.length; index += 1) {
+      const codeUnit = rawText.charCodeAt(index);
+      metaSignedText += codeUnit > 0x7f
+        ? `\\u${codeUnit.toString(16).padStart(4, "0")}`
+        : rawText[index];
+    }
+    const signature = computeMetaSignature(Buffer.from(metaSignedText, "utf8"), "test-app-secret");
 
     let response = await fetch(`http://127.0.0.1:${address.port}/webhooks/instagram`, {
       method: "POST",
