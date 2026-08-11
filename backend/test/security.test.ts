@@ -169,7 +169,7 @@ test("Missing X-Hub-Signature-256 returns 401", async () => {
 });
 
 test("Meta escaped-Unicode signature is accepted without JSON re-serialization", async () => {
-  const body = Buffer.from('{"entry":[{"changes":[{"value":{"text":"äöå 🚀"}}]}]}');
+  const body = Buffer.from('{"entry":[{"changes":[{"value":{"text":"@user 50% <tag> äöå 🚀"}}]}]}');
   const { escapeUnicodeForMetaSignature, requireMetaWebhookSignature } = await getWebhookSecurity();
   const { createHmac } = await import("node:crypto");
   const signature = `sha256=${createHmac("sha256", "test-app-secret")

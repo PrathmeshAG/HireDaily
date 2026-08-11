@@ -30,10 +30,13 @@ export function escapeUnicodeForMetaSignature(rawBody: Buffer): Buffer {
 
   for (let index = 0; index < text.length; index += 1) {
     const code = text.charCodeAt(index);
-    if (code <= 0x7f) {
-      escaped += text[index];
-    } else {
+
+    // Meta documents escaped-Unicode signing. Its older webhook signature
+    // documentation also specifies escaping <, % and @ while leaving / as-is.
+    if (code > 0x7f || code === 0x3c || code === 0x25 || code === 0x40) {
       escaped += `\\u${code.toString(16).padStart(4, "0")}`;
+    } else {
+      escaped += text[index];
     }
   }
 
