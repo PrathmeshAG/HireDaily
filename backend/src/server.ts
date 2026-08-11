@@ -220,12 +220,9 @@ app.use(
   }),
 );
 
-app.use(
-  express.json({
-    limit: "1mb",
-    verify: captureRawBody,
-  }),
-);
+app.use(express.json({
+  limit: "1mb",
+}));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 // Meta webhook traffic is authenticated by X-Hub-Signature-256 rather than
