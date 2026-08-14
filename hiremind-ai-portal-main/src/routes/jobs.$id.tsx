@@ -1,5 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import {
   ArrowLeft,
@@ -21,6 +20,39 @@ import { JobCard } from "../components/job-card";
 const JobAd = lazy(() => import("../components/job-ad").then((m) => ({ default: m.JobAd })));
 
 export const Route = createFileRoute("/jobs/$id")({
+  loader: async ({ params }) => {
+    const job = await fetchJob(params.id);
+    if (!job) throw notFound();
+    const allJobs = await fetchJobs();
+    return { job, allJobs };
+  },
+  head: ({ loaderData, params }) => {
+    const job = loaderData?.job;
+    const canonical = `https://hire-daily.vercel.app/jobs/${encodeURIComponent(params.id)}`;
+    if (!job) {
+      return {
+        meta: [
+          { title: "Job Not Found — Hire Daily" },
+          { name: "robots", content: "noindex, nofollow" },
+        ],
+      };
+    }
+    const title = `${job.role} at ${job.companyName} — Hire Daily`;
+    const description = (job.description || `${job.role} at ${job.companyName} in ${job.location || "India"}.`)
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 160);
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:url", content: canonical },
+      ],
+      links: [{ rel: "canonical", href: canonical }],
+    };
+  },
   component: JobDetail,
 });
 
@@ -33,31 +65,7 @@ function daysLeft(lastDate?: string) {
 }
 
 function JobDetail() {
-  const { id } = Route.useParams();
-  const { data: job, isLoading } = useQuery({ queryKey: ["job", id], queryFn: () => fetchJob(id) });
-  const { data: allJobs } = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs });
-
-  if (isLoading) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-          <div className="glass h-96 shimmer-loading rounded-3xl lg:col-span-2" />
-          <div className="glass h-64 shimmer-loading rounded-3xl" />
-        </div>
-      </div>
-    );
-  }
-  if (!job) {
-    return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center">
-        <h1 className="text-3xl font-bold text-white">Job not found</h1>
-        <p className="mt-2 text-white/60">This posting may have been removed.</p>
-        <Link to="/jobs" className="btn-glow mt-6 inline-flex rounded-xl px-6 py-3 text-sm">
-          Browse Jobs
-        </Link>
-      </div>
-    );
-  }
+  const { job, allJobs } = Route.useLoaderData();
 
   const link = typeof window !== "undefined" ? window.location.href : "";
   const share = async () => {
@@ -77,6 +85,29 @@ function JobDetail() {
   const skills = (job.skills || "").split(",").map((s) => s.trim()).filter(Boolean);
   const remaining = daysLeft(job.lastDate);
   const urgent = remaining !== null && remaining >= 0 && remaining <= 3;
+  const expired = remaining !== null && remaining < 0;
+  const postedDate = job.createdAt ? new Date(job.createdAt).toISOString() : undefined;
+  const applicationDeadline = job.lastDate ? new Date(job.lastDate).toISOString() : undefined;
+  const jobPosting = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.role,
+    description: job.description,
+    ...(postedDate ? { datePosted: postedDate } : {}),
+    ...(applicationDeadline ? { validThrough: applicationDeadline } : {}),
+    ...(job.jobType ? { employmentType: job.jobType } : {}),
+    hiringOrganization: {
+      "@type": "Organization",
+      name: job.companyName,
+      ...(job.companyLogo ? { logo: job.companyLogo } : {}),
+    },
+    ...(job.location ? { jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressLocality: job.location } } } : {}),
+    ...(job.salary ? { baseSalary: { "@type": "MonetaryAmount", currency: "INR", value: { "@type": "QuantitativeValue", value: job.salary } } } : {}),
+    ...(job.experience ? { experienceRequirements: job.experience } : {}),
+    ...(job.skills ? { skills: job.skills } : {}),
+    directApply: Boolean(job.applyLink) && !expired,
+    url: `https://hire-daily.vercel.app/jobs/${encodeURIComponent(job.id)}`,
+  };
 
   const overview = [
     { icon: MapPin, label: "Location", text: job.location || "Remote" },
@@ -87,6 +118,7 @@ function JobDetail() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 pb-28 lg:pb-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPosting) }} />
       <Link to="/jobs" className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-[#00e5ff]">
         <ArrowLeft className="h-4 w-4" /> Back to jobs
       </Link>
@@ -186,14 +218,20 @@ function JobDetail() {
 
               {/* Actions — desktop only; mobile uses the sticky bar below */}
               <div className="mt-6 hidden flex-col gap-2 lg:flex">
-                <a
-                  href={job.applyLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-glow flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm"
-                >
-                  Apply Now <ExternalLink className="h-4 w-4" />
-                </a>
+                {expired ? (
+                  <span className="flex items-center justify-center rounded-xl px-6 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
+                    Applications closed
+                  </span>
+                ) : (
+                  <a
+                    href={job.applyLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-glow flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm"
+                  >
+                    Apply Now <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
                 <div className="flex gap-2">
                   <button
                     onClick={share}
@@ -233,14 +271,20 @@ function JobDetail() {
         style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
       >
         <div className="mx-auto flex max-w-6xl items-center gap-2">
-          <a
-            href={job.applyLink}
-            target="_blank"
-            rel="noreferrer"
-            className="btn-glow flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-sm"
-          >
-            Apply Now <ExternalLink className="h-3.5 w-3.5" />
-          </a>
+          {expired ? (
+            <span className="flex flex-1 items-center justify-center rounded-xl px-4 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
+              Applications closed
+            </span>
+          ) : (
+            <a
+              href={job.applyLink}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-glow flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-sm"
+            >
+              Apply Now <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
           <button
             onClick={share}
             className="btn-ghost-glow flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
