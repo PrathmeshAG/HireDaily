@@ -5,7 +5,10 @@ import { getJobDateState } from "../lib/job-dates";
 
 export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
   const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
-  const fresh = dateState.relativePosted !== null && dateState.postedAt !== null && Date.now() - dateState.postedAt < 24 * 60 * 60 * 1000;
+  const fresh =
+    dateState.relativePosted !== null &&
+    dateState.postedAt !== null &&
+    Date.now() - dateState.postedAt < 24 * 60 * 60 * 1000;
 
   return (
     <div
@@ -29,11 +32,13 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
             </span>
           )}
         </div>
+
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <p className="truncate text-sm font-medium text-white/70">{job.companyName}</p>
             <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#00e5ff]" />
           </div>
+
           <Link
             to="/jobs/$id"
             params={{ id: job.id }}
@@ -42,6 +47,7 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
             {job.role}
           </Link>
         </div>
+
         {fresh && (
           <span className="animate-glow rounded-full bg-gradient-to-r from-[#00e5ff] to-[#7c3aed] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#050816]">
             New
@@ -67,26 +73,37 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
           <MapPin className="h-3.5 w-3.5 text-[#22d3ee]" />
           <span className="truncate">{job.location || "Remote"}</span>
         </div>
+
         <div className="flex items-center gap-1.5">
-          
           <IndianRupee className="h-3.5 w-3.5 text-[#22d3ee]" />
           <h6>Expected : </h6>
           <span className="truncate">{job.salary || "Not disclosed"}</span>
         </div>
+
         <div className="flex items-center gap-1.5">
           <Briefcase className="h-3.5 w-3.5 text-[#22d3ee]" />
           <span className="truncate">{job.experience || "Any"}</span>
         </div>
+
         <div className="flex items-center gap-1.5">
           <Clock className="h-3.5 w-3.5 text-[#22d3ee]" />
-          <span className="truncate">{dateState.relativePosted ?? "Date not specified"}</span>
+          <span className="truncate">
+            {dateState.relativePosted
+              ? `Posted: ${dateState.relativePosted}`
+              : "Posted: Date not specified"}
+          </span>
         </div>
       </div>
 
       {job.lastDate && (
         <div className="mt-3 text-xs text-white/50">
-          Apply by : <span className={dateState.expired ? "text-rose-300" : "text-white/80"}>{job.lastDate}</span>
-          {dateState.expired && <span className="ml-2 text-rose-300">Applications closed</span>}
+          Apply by :{" "}
+          <span className={dateState.expired ? "text-rose-300" : "text-white/80"}>
+            {job.lastDate}
+          </span>
+          {dateState.expired && (
+            <span className="ml-2 text-rose-300">Applications closed</span>
+          )}
         </div>
       )}
 
@@ -120,8 +137,4 @@ export function JobCardSkeleton() {
       <div className="mt-5 shimmer-loading h-10 rounded-xl" />
     </div>
   );
-
-
-
-  
 }
