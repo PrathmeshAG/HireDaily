@@ -270,7 +270,14 @@ function JobDetail() {
             />
             <JobEligibility role={job.role} location={job.location} experience={job.experience} skills={skills} />
             <ApplicationGuidance applyLink={job.applyLink} />
-            <SourceVerification applyLink={job.applyLink} />
+            <SourceVerification
+              sourceName={job.sourceName}
+              sourceUrl={job.sourceUrl}
+              sourceType={job.sourceType}
+              verificationStatus={job.verificationStatus}
+              verifiedAt={job.verifiedAt}
+              applyLink={job.applyLink}
+            />
           </div>
         </div>
 

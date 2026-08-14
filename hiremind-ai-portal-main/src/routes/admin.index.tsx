@@ -206,6 +206,7 @@ function DashboardTab() {
 const EMPTY: Omit<Job, "id" | "createdAt" | "updatedAt"> = {
   companyName: "", companyLogo: "", role: "", salary: "",category:"", location: "",
   experience: "", skills: "", jobType: "Full-time", description: "", applyLink: "", lastDate: "",
+  sourceName: "", sourceUrl: "", sourceType: "", verificationStatus: "not_specified", verifiedAt: "",
 };
 
 function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing?: Job; onCancel?: () => void }) {
@@ -224,6 +225,15 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
     e.preventDefault();
     setBusy(true);
     try {
+      if (form.verificationStatus === "verified") {
+        if (!form.sourceName?.trim() || !form.sourceUrl?.trim() || !form.verifiedAt?.trim()) {
+          throw new Error("Verified jobs require source name, source URL, and last verified date");
+        }
+        const verifiedTime = new Date(`${form.verifiedAt}T23:59:59.999`).getTime();
+        if (!Number.isFinite(verifiedTime) || verifiedTime > Date.now()) {
+          throw new Error("Last verified date cannot be in the future");
+        }
+      }
       let logoUrl = form.companyLogo;
       if (file) logoUrl = await uploadLogo(file);
       const payload = { ...form, companyLogo: logoUrl };
@@ -350,10 +360,11 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
   <option value="" className="bg-[#111827]">Select Experience</option>
 
   <option value="Fresher" className="bg-[#111827]">Fresher</option>
-  <option value="0-1 Years" className="bg-[#111827]">0-1 Years</option>
+  <option value="Entry Level" className="bg-[#111827]">Entry Level</option>
+  <option value="Experienced" className="bg-[#111827]">Experienced</option>
+  <option value="Internship / Student" className="bg-[#111827]">Internship / Student</option>
   <option value="1-2 Years" className="bg-[#111827]">1-2 Years</option>
-  <option value="2-3 Years" className="bg-[#111827]">2-3 Years</option>
-  <option value="3-5 Years" className="bg-[#111827]">3-5 Years</option>
+  <option value="2-5 Years" className="bg-[#111827]">2-5 Years</option>
   <option value="5+ Years" className="bg-[#111827]">5+ Years</option>
 </select>
           <select value={form.jobType} onChange={(e) => set("jobType", e.target.value)} className={input}>
@@ -376,6 +387,52 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
             <p className="mt-1 text-[11px] text-white/40">
               Every new job must have an application deadline. Existing expired jobs can be edited without changing their stored date.
             </p>
+          </div>
+          <div className="md:col-span-2 rounded-xl border border-white/10 p-4">
+            <label className="mb-3 block text-xs text-white/45">Source & Verification</label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                placeholder="Source / Company Name"
+                value={form.sourceName ?? ""}
+                onChange={(e) => set("sourceName", e.target.value)}
+                className={input}
+              />
+              <input
+                type="url"
+                placeholder="Source URL (https://…)"
+                value={form.sourceUrl ?? ""}
+                onChange={(e) => set("sourceUrl", e.target.value)}
+                className={input}
+              />
+              <select
+                value={form.sourceType ?? ""}
+                onChange={(e) => set("sourceType", e.target.value)}
+                className={input}
+              >
+                <option value="" className="bg-[#111827]">Source Type — Not specified</option>
+                <option value="Official company careers page" className="bg-[#111827]">Official company careers page</option>
+                <option value="Verified recruitment source" className="bg-[#111827]">Verified recruitment source</option>
+                <option value="Other" className="bg-[#111827]">Other</option>
+              </select>
+              <select
+                value={form.verificationStatus ?? "not_specified"}
+                onChange={(e) => set("verificationStatus", e.target.value as "verified" | "not_specified")}
+                className={input}
+              >
+                <option value="not_specified" className="bg-[#111827]">Not specified</option>
+                <option value="verified" className="bg-[#111827]">Verified — I checked the source</option>
+              </select>
+              <div>
+                <label className="mb-1.5 block text-xs text-white/45">Last verified</label>
+                <input
+                  type="date"
+                  max={new Date().toISOString().slice(0, 10)}
+                  value={form.verifiedAt ?? ""}
+                  onChange={(e) => set("verifiedAt", e.target.value)}
+                  className={input}
+                />
+              </div>
+            </div>
           </div>
         </div>
         <textarea required placeholder="Job description…" value={form.description} onChange={(e) => set("description", e.target.value)} rows={6} className={input} />
