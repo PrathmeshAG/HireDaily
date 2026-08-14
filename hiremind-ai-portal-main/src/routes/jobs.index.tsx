@@ -1,14 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, lazy, Suspense, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Search, X, SlidersHorizontal } from "lucide-react";
 import { fetchJobs } from "../lib/jobs";
-import { JobCard, JobCardSkeleton } from "../components/job-card";
+import { JobCard } from "../components/job-card";
 
 // Lazy-loaded so the ad never blocks the initial job listings render.
 const JobAd = lazy(() => import("../components/job-ad").then((m) => ({ default: m.JobAd })));
 
 export const Route = createFileRoute("/jobs/")({
+  loader: async () => ({ jobs: await fetchJobs() }),
   component: JobsPage,
   head: () => ({
     meta: [
@@ -26,7 +26,7 @@ const SORTS = ["Newest", "Oldest", "Deadline", "A → Z"] as const;
 type Sort = typeof SORTS[number];
 
 function JobsPage() {
-  const { data, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs });
+  const { jobs } = Route.useLoaderData();
   const [q, setQ] = useState("");
  const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
@@ -35,7 +35,6 @@ function JobsPage() {
   const [sort, setSort] = useState<Sort>("Newest");
   const [showFilters, setShowFilters] = useState(false);
 
-  const jobs = data ?? [];
 
   const normalize = (value?: string) =>
   value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
@@ -187,11 +186,7 @@ const options = useMemo(() => {
 
       {/* Results */}
       <div className="mt-8">
-        {isLoading ? (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => <JobCardSkeleton key={i} />)}
-          </div>
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="glass rounded-3xl p-16 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#00e5ff]/20 to-[#7c3aed]/20 ring-1 ring-white/10">
               <Search className="h-7 w-7 text-[#00e5ff]" />
