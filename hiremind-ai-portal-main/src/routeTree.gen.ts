@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AboutRouteImport } from './routes/about'
@@ -37,11 +36,6 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const JobsRoute = JobsRouteImport.update({
-  id: '/jobs',
-  path: '/jobs',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
@@ -63,9 +57,9 @@ const IndexRoute = IndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const JobsIndexRoute = JobsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => JobsRoute,
+  id: '/jobs/',
+  path: '/jobs/',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
@@ -73,9 +67,9 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   getParentRoute: () => AdminRoute,
 } as any)
 const JobsIdRoute = JobsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => JobsRoute,
+  id: '/jobs/$id',
+  path: '/jobs/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAutomationRoute = AdminAutomationRouteImport.update({
   id: '/automation',
@@ -88,7 +82,6 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/contact': typeof ContactRoute
-  '/jobs': typeof JobsRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
@@ -115,7 +108,6 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/contact': typeof ContactRoute
-  '/jobs': typeof JobsRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
@@ -131,7 +123,6 @@ export interface FileRouteTypes {
     | '/about'
     | '/admin'
     | '/contact'
-    | '/jobs'
     | '/privacy'
     | '/sitemap.xml'
     | '/terms'
@@ -157,7 +148,6 @@ export interface FileRouteTypes {
     | '/about'
     | '/admin'
     | '/contact'
-    | '/jobs'
     | '/privacy'
     | '/sitemap.xml'
     | '/terms'
@@ -172,10 +162,11 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   AdminRoute: typeof AdminRouteWithChildren
   ContactRoute: typeof ContactRoute
-  JobsRoute: typeof JobsRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  JobsIdRoute: typeof JobsIdRoute
+  JobsIndexRoute: typeof JobsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -199,13 +190,6 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/jobs': {
-      id: '/jobs'
-      path: '/jobs'
-      fullPath: '/jobs'
-      preLoaderRoute: typeof JobsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -238,10 +222,10 @@ declare module '@tanstack/react-router' {
     }
     '/jobs/': {
       id: '/jobs/'
-      path: '/'
+      path: '/jobs'
       fullPath: '/jobs/'
       preLoaderRoute: typeof JobsIndexRouteImport
-      parentRoute: typeof JobsRoute
+      parentRoute: typeof rootRouteImport
     }
     '/admin/': {
       id: '/admin/'
@@ -252,10 +236,10 @@ declare module '@tanstack/react-router' {
     }
     '/jobs/$id': {
       id: '/jobs/$id'
-      path: '/$id'
+      path: '/jobs/$id'
       fullPath: '/jobs/$id'
       preLoaderRoute: typeof JobsIdRouteImport
-      parentRoute: typeof JobsRoute
+      parentRoute: typeof rootRouteImport
     }
     '/admin/automation': {
       id: '/admin/automation'
@@ -279,27 +263,16 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
-interface JobsRouteChildren {
-  JobsIdRoute: typeof JobsIdRoute
-  JobsIndexRoute: typeof JobsIndexRoute
-}
-
-const JobsRouteChildren: JobsRouteChildren = {
-  JobsIdRoute: JobsIdRoute,
-  JobsIndexRoute: JobsIndexRoute,
-}
-
-const JobsRouteWithChildren = JobsRoute._addFileChildren(JobsRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   AdminRoute: AdminRouteWithChildren,
   ContactRoute: ContactRoute,
-  JobsRoute: JobsRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  JobsIdRoute: JobsIdRoute,
+  JobsIndexRoute: JobsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

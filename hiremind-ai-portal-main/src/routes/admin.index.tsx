@@ -204,9 +204,8 @@ function DashboardTab() {
 }
 
 const EMPTY: Omit<Job, "id" | "createdAt" | "updatedAt"> = {
-  companyName: "", companyLogo: "", role: "", salary: "", category: "", location: "",
+  companyName: "", companyLogo: "", role: "", salary: "",category:"", location: "",
   experience: "", skills: "", jobType: "Full-time", description: "", applyLink: "", lastDate: "",
-  sourceName: "", sourceUrl: "", sourceType: "", verificationStatus: "not_specified", verifiedAt: "",
 };
 
 function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing?: Job; onCancel?: () => void }) {
@@ -223,19 +222,6 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-
-    if (form.verificationStatus === "verified") {
-      if (!form.sourceName?.trim() || !form.sourceUrl?.trim() || !form.verifiedAt?.trim()) {
-        toast.error("Verified jobs require source name, source URL, and last verified date");
-        return;
-      }
-      const verifiedAt = new Date(`${form.verifiedAt}T23:59:59.999`).getTime();
-      if (!Number.isFinite(verifiedAt) || verifiedAt > Date.now()) {
-        toast.error("Last verified date cannot be in the future");
-        return;
-      }
-    }
-
     setBusy(true);
     try {
       let logoUrl = form.companyLogo;
@@ -357,23 +343,18 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
    <option value="PAN India" className="bg-[#111827]">PAN India</option>
 </select>
 <select
-  required
   value={form.experience}
   onChange={(e) => set("experience", e.target.value)}
   className={input}
 >
   <option value="" className="bg-[#111827]">Select Experience</option>
-  {[
-    "Fresher",
-    "Entry Level",
-    "Experienced",
-    "Internship / Student",
-    "1–2 Years",
-    "2–5 Years",
-    "5+ Years",
-  ].map((option) => (
-    <option key={option} value={option} className="bg-[#111827]">{option}</option>
-  ))}
+
+  <option value="Fresher" className="bg-[#111827]">Fresher</option>
+  <option value="0-1 Years" className="bg-[#111827]">0-1 Years</option>
+  <option value="1-2 Years" className="bg-[#111827]">1-2 Years</option>
+  <option value="2-3 Years" className="bg-[#111827]">2-3 Years</option>
+  <option value="3-5 Years" className="bg-[#111827]">3-5 Years</option>
+  <option value="5+ Years" className="bg-[#111827]">5+ Years</option>
 </select>
           <select value={form.jobType} onChange={(e) => set("jobType", e.target.value)} className={input}>
             {["Full-time", "Part-time", "Internship", "Contract", "Remote","Hybrid"].map((t) => (
@@ -382,33 +363,21 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
           </select>
           <input placeholder="Skills (comma-separated)" value={form.skills} onChange={(e) => set("skills", e.target.value)} className={`${input} md:col-span-2`} />
           <input required type="url" placeholder="Apply Link (https://…)" value={form.applyLink} onChange={(e) => set("applyLink", e.target.value)} className={input} />
-          <input type="date" placeholder="Last Date" value={form.lastDate} onChange={(e) => set("lastDate", e.target.value)} className={input} />
-        </div>
-        <div className="md:col-span-2 rounded-2xl bg-white/[0.02] p-4 ring-1 ring-white/10">
-          <div className="mb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-white/60">Source & Verification</h2>
-            <p className="mt-1 text-xs text-white/40">Only mark a job verified after you have checked the source yourself.</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <input placeholder="Source / Company Name" value={form.sourceName ?? ""} onChange={(e) => set("sourceName", e.target.value)} className={input} />
-            <select value={form.sourceType ?? ""} onChange={(e) => set("sourceType", e.target.value)} className={input}>
-              <option value="" className="bg-[#111827]">Source Type</option>
-              <option value="Official company careers page" className="bg-[#111827]">Official company careers page</option>
-              <option value="Verified recruitment source" className="bg-[#111827]">Verified recruitment source</option>
-              <option value="Other source" className="bg-[#111827]">Other source</option>
-            </select>
-            <input type="url" placeholder="Source URL (https://…)" value={form.sourceUrl ?? ""} onChange={(e) => set("sourceUrl", e.target.value)} className={input} />
-            <select required value={form.verificationStatus ?? "not_specified"} onChange={(e) => set("verificationStatus", e.target.value as "verified" | "not_specified")} className={input}>
-              <option value="not_specified" className="bg-[#111827]">Not specified</option>
-              <option value="verified" className="bg-[#111827]">Verified — I checked the source</option>
-            </select>
-            <div>
-              <label className="mb-1.5 block text-xs text-white/45">Last verified</label>
-              <input type="date" max={new Date().toISOString().slice(0, 10)} value={form.verifiedAt ?? ""} onChange={(e) => set("verifiedAt", e.target.value)} className={input} />
-            </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-white/45">Application deadline *</label>
+            <input
+              required
+              type="date"
+              min={!editing ? new Date().toISOString().slice(0, 10) : undefined}
+              value={form.lastDate}
+              onChange={(e) => set("lastDate", e.target.value)}
+              className={input}
+            />
+            <p className="mt-1 text-[11px] text-white/40">
+              Every new job must have an application deadline. Existing expired jobs can be edited without changing their stored date.
+            </p>
           </div>
         </div>
-
         <textarea required placeholder="Job description…" value={form.description} onChange={(e) => set("description", e.target.value)} rows={6} className={input} />
 
         <div>
@@ -541,4 +510,4 @@ function ManageJobsTab() {
 }
 
 // keep TS from complaining about unused import
-void ADMIN_EMAIL;
+void ADMIN_EMAIL; 
