@@ -120,4 +120,8 @@ export function JobCardSkeleton() {
       <div className="mt-5 shimmer-loading h-10 rounded-xl" />
     </div>
   );
+
+
+
+  
 }
