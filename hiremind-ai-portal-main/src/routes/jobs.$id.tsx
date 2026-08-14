@@ -165,12 +165,12 @@ function JobDetail() {
         <ArrowLeft className="h-4 w-4" /> Back to jobs
       </Link>
 
-      {/* Sponsored — full-width so it always renders cleanly on mobile & desktop */}
+      {/* Sponsored — full-width so it always renders cleanly on mobile & desktop
       <div className="mt-8">
         <Suspense fallback={null}>
           <JobAd />
         </Suspense>
-      </div>
+      </div> */}
 
       <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
         {/* Main content */}
