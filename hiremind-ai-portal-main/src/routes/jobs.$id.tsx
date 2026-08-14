@@ -20,7 +20,9 @@ import { JobCard } from "../components/job-card";
 const JobAd = lazy(() => import("../components/job-ad").then((m) => ({ default: m.JobAd })));
 
 export const Route = createFileRoute("/jobs/$id")({
-  loader: async ({ params }) => {
+  ssr: true,
+
+ loader: async ({ params }) => {
     const job = await fetchJob(params.id);
     if (!job) throw notFound();
     const allJobs = await fetchJobs();
