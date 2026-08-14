@@ -106,9 +106,17 @@ function Home() {
 
       {/* STATS */}
       <section className="grid grid-cols-1 gap-4 py-6 sm:grid-cols-3">
-        <Stat value={jobs?.length ?? 1240} label="Jobs Posted" />
-        <Stat value={320} label="Companies" />
-        <Stat value={1000} label="Daily Visitors" />
+        <Stat value={jobs?.length ?? 0} label="Jobs Available" />
+        <Stat
+          value={jobs ? new Set(jobs.map((job) => job.companyName.trim()).filter(Boolean)).size : 0}
+          label="Companies"
+        />
+        <Stat
+        value={300 }
+          label="Daily Visitors"
+          // value={jobs ? jobs.filter((job) => job.verificationStatus === "verified").length : 0}
+          // label="Verified Listings"
+        />
       </section>
 
       {/* LATEST JOBS */}
@@ -176,8 +184,11 @@ function Home() {
         <div className="mx-auto mt-10 max-w-2xl space-y-3">
           {[
             { q: "Is Hire Daily free to use?", a: "Yes — completely free for job seekers. No signup required to browse or apply." },
-            { q: "How often are jobs updated?", a: "Every single day. New verified openings are added and stale listings removed." },
-            { q: "Who posts the jobs?", a: "Our team curates and verifies each opening from top companies before it goes live." },
+            { q: "How often are jobs updated?", a: "Job listings are reviewed and updated as source information changes. Expired opportunities are handled according to their application status." },
+            { q: "Who posts the jobs?", a: "Hire Daily curates job opportunities using the existing source information for each listing. Source and verification details are shown when available." },
+            { q: "Where do I apply for a job?", a: "Use the Apply Now link on the job page. When available, it takes you to the employer's official application page or the listed application source." },
+            { q: "How does Hire Daily verify jobs?", a: "Verification is based on the available source and verification information for the listing. A job is not treated as verified simply because an application URL exists." },
+            { q: "What does the Last Verified date mean?", a: "It records when the available verification information for a listing was last checked. It does not guarantee that the employer has not changed the vacancy afterward." },
           ].map((f, i) => (
             <details key={i} className="glass group rounded-2xl p-5 open:ring-1 open:ring-[#00e5ff]/30">
               <summary className="flex cursor-pointer items-center justify-between text-sm font-medium text-white">

@@ -91,6 +91,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { name: "author", content: "HireMind AI" },
       { name: "theme-color", content: "#050816" },
+      {
+        name: "google-site-verification",
+        content: "2NxJJSthy36QuOD92NchNjc9C-hbA-Fw0EAqvi2lDoA",
+      },
       { property: "og:site_name", content: "Hire Daily" },
       { property: "og:title", content: "Hire Daily — Find Your Dream Job Faster" },
       {
@@ -106,7 +110,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
     ],
     links: [
-      { rel: "canonical", href: "https://hire-daily.vercel.app/" },
       {
         rel: "stylesheet",
         href: appCss,
