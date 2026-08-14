@@ -38,4 +38,9 @@ export type Job = {
   lastDate: string;
   createdAt: number;
   updatedAt: number;
+  sourceName?: string;
+  sourceUrl?: string;
+  sourceType?: string;
+  verificationStatus?: "verified" | "not_specified";
+  verifiedAt?: string;
 };
