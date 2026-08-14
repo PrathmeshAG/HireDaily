@@ -58,6 +58,30 @@ export const Route = createFileRoute("/jobs/$id")({
   component: JobDetail,
 });
 
+function cleanText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || /^n\/?a$/i.test(text)) return null;
+  return text;
+}
+
+function splitList(value: unknown): string[] {
+  const text = cleanText(value);
+  if (!text) return [];
+  return text
+    .split(/[,\\n;•]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function firstAvailable(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text) return text;
+  }
+  return null;
+}
+
 function daysLeft(lastDate?: string) {
   if (!lastDate) return null;
   const d = new Date(lastDate);
@@ -84,7 +108,28 @@ function JobDetail() {
   };
 
   const related = (allJobs ?? []).filter((j) => j.id !== job.id && j.role === job.role).slice(0, 3);
-  const skills = (job.skills || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const skills = splitList(job.skills);
+  const description = cleanText(job.description);
+  const quickSummary = firstAvailable(description, `${job.role} at ${job.companyName}`);
+  const responsibilities = splitList((job as { responsibilities?: string }).responsibilities);
+  const eligibility = splitList(
+    (job as { eligibility?: string; qualifications?: string; requirements?: string }).eligibility
+      ?? (job as { qualifications?: string }).qualifications
+      ?? (job as { requirements?: string }).requirements,
+  );
+  const howToApply = firstAvailable(
+    (job as { howToApply?: string }).howToApply,
+    job.applyLink ? "Apply through the official application link." : null,
+  );
+  const source = firstAvailable(
+    (job as { source?: string; sourceName?: string; sourceUrl?: string }).source,
+    (job as { sourceName?: string }).sourceName,
+  );
+  const verification = firstAvailable(
+    (job as { verification?: string; verifiedAt?: string; lastChecked?: string }).verification,
+    (job as { lastChecked?: string }).lastChecked,
+    (job as { verifiedAt?: string }).verifiedAt,
+  );
   const remaining = daysLeft(job.lastDate);
   const urgent = remaining !== null && remaining >= 0 && remaining <= 3;
   const expired = remaining !== null && remaining < 0;
@@ -94,7 +139,7 @@ function JobDetail() {
     "@context": "https://schema.org",
     "@type": "JobPosting",
     title: job.role,
-    description: job.description,
+    description: description ?? `${job.role} at ${job.companyName}`,
     ...(postedDate ? { datePosted: postedDate } : {}),
     ...(applicationDeadline ? { validThrough: applicationDeadline } : {}),
     ...(job.jobType ? { employmentType: job.jobType } : {}),
@@ -112,11 +157,16 @@ function JobDetail() {
   };
 
   const overview = [
-    { icon: MapPin, label: "Location", text: job.location || "Remote" },
-    { icon: IndianRupee, label: "Salary", text: job.salary || "Not disclosed" },
-    { icon: Briefcase, label: "Experience", text: job.experience || "Any" },
-    { icon: Clock, label: "Job type", text: job.jobType },
-  ].filter((x) => x.text);
+    { icon: MapPin, label: "Location", text: job.location || "Not specified" },
+    { icon: IndianRupee, label: "Salary", text: job.salary || "Not specified" },
+    { icon: Briefcase, label: "Experience", text: job.experience || "Not specified" },
+    { icon: Clock, label: "Job type", text: job.jobType || "Not specified" },
+  ];
+
+  const dates = [
+    job.createdAt ? { label: "Posted", value: new Date(job.createdAt).toLocaleDateString("en-IN") } : null,
+    job.lastDate ? { label: "Apply by", value: job.lastDate } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 pb-28 lg:pb-8">
@@ -181,10 +231,51 @@ function JobDetail() {
               </div>
             )}
 
-            <div className="relative mt-8">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Description</h2>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">{job.description}</p>
-            </div>
+            {quickSummary && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Quick Summary</h2>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">{quickSummary}</p>
+              </div>
+            )}
+
+            {description && description !== quickSummary && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Description</h2>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">{description}</p>
+              </div>
+            )}
+
+            {responsibilities.length > 0 && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Key Responsibilities</h2>
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
+                  {responsibilities.map((item, i) => <li key={i} className="flex gap-2"><span className="text-[#22d3ee]">•</span><span>{item}</span></li>)}
+                </ul>
+              </div>
+            )}
+
+            {eligibility.length > 0 && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Eligibility / Qualifications</h2>
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
+                  {eligibility.map((item, i) => <li key={i} className="flex gap-2"><span className="text-[#22d3ee]">•</span><span>{item}</span></li>)}
+                </ul>
+              </div>
+            )}
+
+            {howToApply && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">How to Apply</h2>
+                <p className="mt-3 text-sm leading-relaxed text-white/80">{howToApply}</p>
+              </div>
+            )}
+
+            {(source || verification) && (
+              <div className="relative mt-8 grid gap-3 text-sm text-white/70 sm:grid-cols-2">
+                {source && <div><span className="block text-[11px] uppercase tracking-wide text-white/40">Official Source</span><span className="mt-1 block">{source}</span></div>}
+                {verification && <div><span className="block text-[11px] uppercase tracking-wide text-white/40">Verification / Last Checked</span><span className="mt-1 block">{verification}</span></div>}
+              </div>
+            )}
           </div>
         </div>
 
@@ -205,17 +296,18 @@ function JobDetail() {
                     </span>
                   </div>
                 ))}
-                {job.lastDate && (
-                  <div className="flex items-center gap-2.5 text-sm text-white/80">
+                {dates.map((d) => (
+                  <div key={d.label} className="flex items-center gap-2.5 text-sm text-white/80">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
                       <CalendarClock className="h-3.5 w-3.5 text-[#22d3ee]" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[11px] uppercase tracking-wide text-white/40">Apply by</span>
-                      <span className={urgent ? "font-semibold text-rose-300" : "truncate"}>{job.lastDate}</span>
+                      <span className="block text-[11px] uppercase tracking-wide text-white/40">{d.label}</span>
+                      <span className="truncate">{d.value}</span>
                     </span>
                   </div>
-                )}
+                ))}
+
               </div>
 
               {/* Actions — desktop only; mobile uses the sticky bar below */}
