@@ -43,8 +43,8 @@ export function Footer() {
               </Link>
             </li>
             <li>
-              <Link to="/" hash="companies" className="hover:text-[#00e5ff]">
-                Companies
+              <Link to="/how-we-verify-jobs"  className="hover:text-[#00e5ff]">
+                How we verify jobs
               </Link>
             </li>
             <li>
