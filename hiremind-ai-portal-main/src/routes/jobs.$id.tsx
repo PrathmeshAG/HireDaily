@@ -228,12 +228,7 @@ function JobDetail() {
               </div>
             )}
 
-            {description && description !== quickSummary && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Description</h2>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">{description}</p>
-              </div>
-            )}
+            
 
             {responsibilities.length > 0 && (
               <div className="relative mt-8">
@@ -260,16 +255,16 @@ function JobDetail() {
               </div>
             )}
 
-            <JobValue
+            {/* <JobValue
               role={job.role}
               company={job.companyName}
               location={job.location}
               experience={job.experience}
               skills={skills}
               description={description}
-            />
-            <JobEligibility role={job.role} location={job.location} experience={job.experience} skills={skills} />
-            <ApplicationGuidance applyLink={job.applyLink} />
+            /> */}
+            {/* <JobEligibility role={job.role} location={job.location} experience={job.experience} skills={skills} />
+            <ApplicationGuidance applyLink={job.applyLink} /> */}
             <SourceVerification
               sourceName={job.sourceName}
               sourceUrl={job.sourceUrl}

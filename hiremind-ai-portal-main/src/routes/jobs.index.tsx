@@ -183,12 +183,12 @@ const options = useMemo(() => {
         )}
       </div>
 
-            {/* Sponsored Ad */}
+            {/* Sponsored Ad
       <div className="mt-6 mb-8">
         <Suspense fallback={null}>
           <JobAd />
         </Suspense>
-      </div>
+      </div> */}
 
       
 
