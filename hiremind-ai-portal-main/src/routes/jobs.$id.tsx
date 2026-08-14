@@ -15,6 +15,11 @@ import {
 import { toast } from "sonner";
 import { fetchJob, fetchJobs } from "../lib/jobs";
 import { JobCard } from "../components/job-card";
+import { JobValue } from "../components/job-value";
+import { JobEligibility } from "../components/job-eligibility";
+import { ApplicationGuidance } from "../components/application-guidance";
+import { SourceVerification } from "../components/source-verification";
+import { formatJobDate, getJobDateState } from "../lib/job-dates";
 
 // Lazy-loaded so the ad never blocks the detail page's initial render.
 const JobAd = lazy(() => import("../components/job-ad").then((m) => ({ default: m.JobAd })));
@@ -82,14 +87,6 @@ function firstAvailable(...values: unknown[]): string | null {
   return null;
 }
 
-function daysLeft(lastDate?: string) {
-  if (!lastDate) return null;
-  const d = new Date(lastDate);
-  if (isNaN(d.getTime())) return null;
-  const diff = Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  return diff;
-}
-
 function JobDetail() {
   const { job, allJobs } = Route.useLoaderData();
 
@@ -121,18 +118,10 @@ function JobDetail() {
     (job as { howToApply?: string }).howToApply,
     job.applyLink ? "Apply through the official application link." : null,
   );
-  const source = firstAvailable(
-    (job as { source?: string; sourceName?: string; sourceUrl?: string }).source,
-    (job as { sourceName?: string }).sourceName,
-  );
-  const verification = firstAvailable(
-    (job as { verification?: string; verifiedAt?: string; lastChecked?: string }).verification,
-    (job as { lastChecked?: string }).lastChecked,
-    (job as { verifiedAt?: string }).verifiedAt,
-  );
-  const remaining = daysLeft(job.lastDate);
-  const urgent = remaining !== null && remaining >= 0 && remaining <= 3;
-  const expired = remaining !== null && remaining < 0;
+  const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
+  const remaining = dateState.applyByTime === null ? null : Math.ceil((dateState.applyByTime - Date.now()) / (1000 * 60 * 60 * 24));
+  const urgent = !dateState.expired && remaining !== null && remaining >= 0 && remaining <= 3;
+  const expired = dateState.expired;
   const postedDate = job.createdAt ? new Date(job.createdAt).toISOString() : undefined;
   const applicationDeadline = job.lastDate ? new Date(job.lastDate).toISOString() : undefined;
   const jobPosting = {
@@ -164,8 +153,9 @@ function JobDetail() {
   ];
 
   const dates = [
-    job.createdAt ? { label: "Posted", value: new Date(job.createdAt).toLocaleDateString("en-IN") } : null,
-    job.lastDate ? { label: "Apply by", value: job.lastDate } : null,
+    formatJobDate(dateState.postedAt) ? { label: "Posted", value: formatJobDate(dateState.postedAt)! } : null,
+    formatJobDate(dateState.updatedAt) ? { label: "Updated", value: formatJobDate(dateState.updatedAt)! } : null,
+    dateState.applyBy ? { label: "Apply by", value: formatJobDate(dateState.applyBy) ?? dateState.applyBy } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (
@@ -270,12 +260,17 @@ function JobDetail() {
               </div>
             )}
 
-            {(source || verification) && (
-              <div className="relative mt-8 grid gap-3 text-sm text-white/70 sm:grid-cols-2">
-                {source && <div><span className="block text-[11px] uppercase tracking-wide text-white/40">Official Source</span><span className="mt-1 block">{source}</span></div>}
-                {verification && <div><span className="block text-[11px] uppercase tracking-wide text-white/40">Verification / Last Checked</span><span className="mt-1 block">{verification}</span></div>}
-              </div>
-            )}
+            <JobValue
+              role={job.role}
+              company={job.companyName}
+              location={job.location}
+              experience={job.experience}
+              skills={skills}
+              description={description}
+            />
+            <JobEligibility role={job.role} location={job.location} experience={job.experience} skills={skills} />
+            <ApplicationGuidance applyLink={job.applyLink} />
+            <SourceVerification applyLink={job.applyLink} />
           </div>
         </div>
 

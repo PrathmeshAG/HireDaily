@@ -1,24 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { MapPin, Briefcase, IndianRupee, Clock, ArrowRight, BadgeCheck } from "lucide-react";
 import type { Job } from "../lib/firebase";
-
-function isNew(createdAt: number) {
-  return Date.now() - createdAt < 24 * 60 * 60 * 1000;
-}
-
-function timeAgo(ts: number) {
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return "just now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
-}
+import { getJobDateState } from "../lib/job-dates";
 
 export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
-  const fresh = isNew(job.createdAt);
+  const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
+  const fresh = dateState.relativePosted !== null && dateState.postedAt !== null && Date.now() - dateState.postedAt < 24 * 60 * 60 * 1000;
 
   return (
     <div
@@ -92,13 +79,14 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
         </div>
         <div className="flex items-center gap-1.5">
           <Clock className="h-3.5 w-3.5 text-[#22d3ee]" />
-          <span className="truncate">{timeAgo(job.createdAt)}</span>
+          <span className="truncate">{dateState.relativePosted ?? "Date not specified"}</span>
         </div>
       </div>
 
       {job.lastDate && (
         <div className="mt-3 text-xs text-white/50">
-          Posted no : <span className="text-white/80">{job.lastDate}</span>
+          Apply by : <span className={dateState.expired ? "text-rose-300" : "text-white/80"}>{job.lastDate}</span>
+          {dateState.expired && <span className="ml-2 text-rose-300">Applications closed</span>}
         </div>
       )}
 

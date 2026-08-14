@@ -2,12 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, lazy, Suspense, useMemo, useState } from "react";
 import { Search, X, SlidersHorizontal } from "lucide-react";
 import { fetchJobs } from "../lib/jobs";
-import { JobCard } from "../components/job-card";
+import { getJobDateState } from "../lib/job-dates";
+import { JobCard, JobCardSkeleton } from "../components/job-card";
 
 // Lazy-loaded so the ad never blocks the initial job listings render.
 const JobAd = lazy(() => import("../components/job-ad").then((m) => ({ default: m.JobAd })));
 
 export const Route = createFileRoute("/jobs/")({
+  ssr: true,
   loader: async () => ({ jobs: await fetchJobs() }),
   component: JobsPage,
   head: () => ({
@@ -27,6 +29,7 @@ type Sort = typeof SORTS[number];
 
 function JobsPage() {
   const { jobs } = Route.useLoaderData();
+  const isLoading = false;
   const [q, setQ] = useState("");
  const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
@@ -34,7 +37,6 @@ function JobsPage() {
   const [experience, setExperience] = useState("");
   const [sort, setSort] = useState<Sort>("Newest");
   const [showFilters, setShowFilters] = useState(false);
-
 
   const normalize = (value?: string) =>
   value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
@@ -85,8 +87,8 @@ const options = useMemo(() => {
   return false;
       return true;
     });
-    if (sort === "Newest") list = list.sort((a, b) => b.createdAt - a.createdAt);
-    else if (sort === "Oldest") list = list.sort((a, b) => a.createdAt - b.createdAt);
+    if (sort === "Newest") list = list.sort((a, b) => (getJobDateState(b.createdAt, b.updatedAt, b.lastDate).postedAt ?? 0) - (getJobDateState(a.createdAt, a.updatedAt, a.lastDate).postedAt ?? 0));
+    else if (sort === "Oldest") list = list.sort((a, b) => (getJobDateState(a.createdAt, a.updatedAt, a.lastDate).postedAt ?? 0) - (getJobDateState(b.createdAt, b.updatedAt, b.lastDate).postedAt ?? 0));
     else if (sort === "A → Z") list = list.sort((a, b) => a.role.localeCompare(b.role));
     else if (sort === "Deadline")
       list = list.sort((a, b) => (a.lastDate ?? "").localeCompare(b.lastDate ?? ""));
@@ -113,6 +115,12 @@ const options = useMemo(() => {
           Browse <span className="text-gradient">Jobs</span>
         </h1>
         <p className="mt-2 text-white/60">{filtered.length} opportunities available</p>
+        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/65">
+          Find verified fresher and entry-level jobs across India.
+        </p>
+        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/45">
+          Hire Daily reviews job information from company career sources and helps you compare role, location, experience, salary information and application details.
+        </p>
       </div>
 
       {/* Search */}
@@ -186,7 +194,11 @@ const options = useMemo(() => {
 
       {/* Results */}
       <div className="mt-8">
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => <JobCardSkeleton key={i} />)}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="glass rounded-3xl p-16 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#00e5ff]/20 to-[#7c3aed]/20 ring-1 ring-white/10">
               <Search className="h-7 w-7 text-[#00e5ff]" />

@@ -363,7 +363,20 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
           </select>
           <input placeholder="Skills (comma-separated)" value={form.skills} onChange={(e) => set("skills", e.target.value)} className={`${input} md:col-span-2`} />
           <input required type="url" placeholder="Apply Link (https://…)" value={form.applyLink} onChange={(e) => set("applyLink", e.target.value)} className={input} />
-          <input type="date" placeholder="Last Date" value={form.lastDate} onChange={(e) => set("lastDate", e.target.value)} className={input} />
+          <div>
+            <label className="mb-1.5 block text-xs text-white/45">Application deadline *</label>
+            <input
+              required
+              type="date"
+              min={!editing ? new Date().toISOString().slice(0, 10) : undefined}
+              value={form.lastDate}
+              onChange={(e) => set("lastDate", e.target.value)}
+              className={input}
+            />
+            <p className="mt-1 text-[11px] text-white/40">
+              Every new job must have an application deadline. Existing expired jobs can be edited without changing their stored date.
+            </p>
+          </div>
         </div>
         <textarea required placeholder="Job description…" value={form.description} onChange={(e) => set("description", e.target.value)} rows={6} className={input} />
 
