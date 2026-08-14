@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/privacy")({
+  head: () => ({
+    meta: [
+      { title: "Privacy Policy — Hire Daily" },
+      { name: "description", content: "Read the Hire Daily privacy policy and learn how information is handled." },
+      { property: "og:title", content: "Privacy Policy — Hire Daily" },
+      { property: "og:description", content: "Read the Hire Daily privacy policy and learn how information is handled." },
+      { property: "og:url", content: "https://hire-daily.vercel.app/privacy" },
+    ],
+    links: [{ rel: "canonical", href: "https://hire-daily.vercel.app/privacy" }],
+  }),
   component: PrivacyPage,
 });
 

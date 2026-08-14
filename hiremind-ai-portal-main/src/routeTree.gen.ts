@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as HowWeVerifyJobsRouteImport } from './routes/how-we-verify-jobs'
 import { Route as ContactRouteImport } from './routes/contact'
@@ -30,6 +31,11 @@ const TermsRoute = TermsRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -90,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/how-we-verify-jobs'
     | '/privacy'
+    | '/robots.txt'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/how-we-verify-jobs'
     | '/privacy'
+    | '/robots.txt'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/how-we-verify-jobs'
     | '/privacy'
+    | '/robots.txt'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   HowWeVerifyJobsRoute: typeof HowWeVerifyJobsRoute
   PrivacyRoute: typeof PrivacyRoute
+  RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   JobsIdRoute: typeof JobsIdRoute
@@ -196,6 +209,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -290,6 +310,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   HowWeVerifyJobsRoute: HowWeVerifyJobsRoute,
   PrivacyRoute: PrivacyRoute,
+  RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   JobsIdRoute: JobsIdRoute,

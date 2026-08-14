@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/terms")({
+  head: () => ({
+    meta: [
+      { title: "Terms of Use — Hire Daily" },
+      { name: "description", content: "Read the Hire Daily terms of use." },
+      { property: "og:title", content: "Terms of Use — Hire Daily" },
+      { property: "og:description", content: "Read the Hire Daily terms of use." },
+      { property: "og:url", content: "https://hire-daily.vercel.app/terms" },
+    ],
+    links: [{ rel: "canonical", href: "https://hire-daily.vercel.app/terms" }],
+  }),
   component: TermsPage,
 });
 

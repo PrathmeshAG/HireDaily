@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/contact")({
+  head: () => ({
+    meta: [
+      { title: "Contact Hire Daily — Hire Daily" },
+      { name: "description", content: "Contact Hire Daily for questions, feedback, or support." },
+      { property: "og:title", content: "Contact Hire Daily — Hire Daily" },
+      { property: "og:description", content: "Contact Hire Daily for questions, feedback, or support." },
+      { property: "og:url", content: "https://hire-daily.vercel.app/contact" },
+    ],
+    links: [{ rel: "canonical", href: "https://hire-daily.vercel.app/contact" }],
+  }),
   component: ContactPage,
 });
 
