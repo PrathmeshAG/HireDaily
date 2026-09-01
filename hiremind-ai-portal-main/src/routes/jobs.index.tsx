@@ -151,20 +151,44 @@ function JobsPage() {
   const [sort, setSort] = useState<Sort>("Newest");
   const [showFilters, setShowFilters] = useState(false);
   const [activeBrowse, setActiveBrowse] = useState("Latest Jobs");
-  useEffect(() => {
-    const browse = new URLSearchParams(window.location.search).get("browse")?.trim();
-    const preset = browse && PRESETS.find((item) => normalizeOption(item.label) === normalizeOption(browse));
-    if (preset) {
-      setActiveBrowse(preset.label);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, []);
 
   const normalizeOption = (value?: string) =>
     value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
 
   const formatText = (value?: string) =>
     value?.trim().replace(/\s+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ?? "";
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const browse = params.get("browse")?.trim() ?? "";
+    const query = params.get("q")?.trim() ?? "";
+    const categoryParam = params.get("category")?.trim() ?? "";
+    const locationParam = params.get("location")?.trim() ?? "";
+    const typeParam = params.get("jobType")?.trim() ?? "";
+    const experienceParam = params.get("experience")?.trim() ?? "";
+
+    const preset = browse
+      ? PRESETS.find((item) => normalizeOption(item.label) === normalizeOption(browse))
+      : undefined;
+
+    if (query) setQ(query);
+    if (categoryParam) setCategory(categoryParam);
+    if (locationParam) setLocation(locationParam);
+    if (typeParam) setJobType(typeParam);
+    if (experienceParam) setExperience(experienceParam);
+
+    if (preset) {
+      setActiveBrowse(preset.label);
+    } else if (query || categoryParam || locationParam || typeParam || experienceParam) {
+      // A URL-driven search/filter is a real filter state, not Latest Jobs.
+      // Keep every preset button unselected while preserving the actual filter.
+      setActiveBrowse("");
+    }
+
+    if (preset || query || categoryParam || locationParam || typeParam || experienceParam) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
 
   const options = useMemo(() => {
     const unique = (values: (string | undefined)[]) =>
@@ -201,9 +225,9 @@ function JobsPage() {
       return true;
     });
 
-    if (activeBrowse !== "Latest Jobs") {
-      const preset = PRESETS.find((p) => p.label === activeBrowse);
-      if (preset) list = list.filter(preset.test);
+    const preset = PRESETS.find((p) => p.label === activeBrowse);
+    if (preset && activeBrowse !== "Latest Jobs") {
+      list = list.filter(preset.test);
     }
 
     if (sort === "Newest") {
@@ -309,7 +333,7 @@ function JobsPage() {
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
             <input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => { setQ(e.target.value); setActiveBrowse(""); }}
               placeholder="Search company, role, location, skills…"
               className="w-full rounded-xl bg-transparent py-3 pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none"
             />
@@ -336,7 +360,7 @@ function JobsPage() {
                 value={f.v}
                 onChange={(e) => {
                   f.set(e.target.value);
-                  setActiveBrowse("Latest Jobs");
+                  setActiveBrowse(e.target.value ? "" : "Latest Jobs");
                 }}
                 className="rounded-xl bg-white/5 px-3 py-2.5 text-sm text-white ring-1 ring-white/10 focus:outline-none focus:ring-[#00e5ff]/40"
               >
@@ -367,7 +391,7 @@ function JobsPage() {
       <div className="mt-8 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-white" style={{ fontFamily: "'Space Grotesk'" }}>
-            {activeBrowse}
+            {activeBrowse || "Filtered Results"}
           </h2>
           <p className="mt-1 text-xs text-white/45">
             {filtered.length} matching {filtered.length === 1 ? "opportunity" : "opportunities"}
