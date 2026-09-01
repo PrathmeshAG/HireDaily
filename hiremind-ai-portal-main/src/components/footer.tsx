@@ -13,14 +13,17 @@ export function Footer() {
             <div>
               <div className="text-base font-bold text-white">Hire Daily</div>
               <div className="text-[10px] uppercase tracking-widest text-white/50">
-                By HireMind AI
+                Job Discovery Platform
               </div>
             </div>
           </div>
+
           <p className="mt-4 max-w-sm text-sm text-white/60">
-            Fresh, verified opportunities updated every day. Find your dream job faster with
-            AI-powered matching.
+            Fresh job opportunities with structured role details, source information,
+            verification details, and application links to help candidates evaluate
+            opportunities before applying.
           </p>
+
           <div className="mt-6 flex gap-3">
             {[Twitter, Github, Linkedin].map((Icon, i) => (
               <a
@@ -34,6 +37,7 @@ export function Footer() {
             ))}
           </div>
         </div>
+
         <div>
           <h4 className="text-sm font-semibold text-white">Product</h4>
           <ul className="mt-4 space-y-2 text-sm text-white/60">
@@ -43,7 +47,7 @@ export function Footer() {
               </Link>
             </li>
             <li>
-              <Link to="/how-we-verify-jobs"  className="hover:text-[#00e5ff]">
+              <Link to="/how-we-verify-jobs" className="hover:text-[#00e5ff]">
                 How we verify jobs
               </Link>
             </li>
@@ -54,21 +58,36 @@ export function Footer() {
             </li>
           </ul>
         </div>
+
         <div>
           <h4 className="text-sm font-semibold text-white">Company</h4>
           <ul className="mt-4 space-y-2 text-sm text-white/60">
             <li>
-              <Link to="/contact"  className="hover:text-[#00e5ff]">
-            Contact
-            </Link> 
+              <Link to="/about" className="hover:text-[#00e5ff]">
+                About
+              </Link>
             </li>
-            <li><Link to="/privacy"  className="hover:text-[#00e5ff]" >Privacy Policy</Link></li>
-            <li><Link to="/terms"  className="hover:text-[#00e5ff]" >Terms & Conditions</Link></li>
+            <li>
+              <Link to="/contact" className="hover:text-[#00e5ff]">
+                Contact
+              </Link>
+            </li>
+            <li>
+              <Link to="/privacy" className="hover:text-[#00e5ff]">
+                Privacy Policy
+              </Link>
+            </li>
+            <li>
+              <Link to="/terms" className="hover:text-[#00e5ff]">
+                Terms & Conditions
+              </Link>
+            </li>
           </ul>
         </div>
       </div>
+
       <div className="border-t border-white/5 py-6 text-center text-xs text-white/40">
-        © {new Date().getFullYear()} HireMind AI — Hire Daily. Find Your Dream Job Faster.
+        © {new Date().getFullYear()} Hire Daily. Find Your Dream Job Faster.
       </div>
     </footer>
   );

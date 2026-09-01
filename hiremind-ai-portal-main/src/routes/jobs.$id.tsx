@@ -31,6 +31,7 @@ export const Route = createFileRoute("/jobs/$id")({
   head: ({ loaderData, params }) => {
     const job = loaderData?.job;
     const canonical = `https://hire-daily.vercel.app/jobs/${encodeURIComponent(params.id)}`;
+
     if (!job) {
       return {
         meta: [
@@ -39,11 +40,13 @@ export const Route = createFileRoute("/jobs/$id")({
         ],
       };
     }
+
     const title = `${job.role} at ${job.companyName} — Hire Daily`;
     const description = (job.description || `${job.role} at ${job.companyName} in ${job.location || "India"}.`)
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 160);
+
     return {
       meta: [
         { title },
@@ -68,6 +71,7 @@ function cleanText(value: unknown): string | null {
 function splitList(value: unknown): string[] {
   const text = cleanText(value);
   if (!text) return [];
+
   return text
     .split(/[,\\n;•]+/)
     .map((item) => item.trim())
@@ -88,7 +92,12 @@ function JobDetail() {
 
   const share = async () => {
     if (navigator.share) {
-      try { await navigator.share({ title: `${job.role} at ${job.companyName}`, url: link }); } catch {}
+      try {
+        await navigator.share({
+          title: `${job.role} at ${job.companyName}`,
+          url: link,
+        });
+      } catch {}
     } else {
       await navigator.clipboard.writeText(link);
       toast.success("Link copied");
@@ -102,24 +111,44 @@ function JobDetail() {
 
   const skills = splitList(job.skills);
   const description = cleanText(job.description);
-  const quickSummary = firstAvailable(description, `${job.role} at ${job.companyName}`);
-  const responsibilities = splitList((job as { responsibilities?: string }).responsibilities);
-  const eligibility = splitList(
-    (job as { eligibility?: string; qualifications?: string; requirements?: string }).eligibility
-      ?? (job as { qualifications?: string }).qualifications
-      ?? (job as { requirements?: string }).requirements,
+
+  const responsibilities = splitList(
+    (job as { responsibilities?: string }).responsibilities,
   );
+
+  const eligibility = splitList(
+    (job as {
+      eligibility?: string;
+      qualifications?: string;
+      requirements?: string;
+    }).eligibility ??
+      (job as { qualifications?: string }).qualifications ??
+      (job as { requirements?: string }).requirements,
+  );
+
   const howToApply = firstAvailable(
     (job as { howToApply?: string }).howToApply,
     job.applyLink ? "Apply through the official application link." : null,
   );
 
   const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
-  const remaining = dateState.applyByTime === null ? null : Math.ceil((dateState.applyByTime - Date.now()) / (1000 * 60 * 60 * 24));
-  const urgent = !dateState.expired && remaining !== null && remaining >= 0 && remaining <= 3;
+  const remaining =
+    dateState.applyByTime === null
+      ? null
+      : Math.ceil((dateState.applyByTime - Date.now()) / (1000 * 60 * 60 * 24));
+  const urgent =
+    !dateState.expired &&
+    remaining !== null &&
+    remaining >= 0 &&
+    remaining <= 3;
   const expired = dateState.expired;
-  const postedDate = job.createdAt ? new Date(job.createdAt).toISOString() : undefined;
-  const applicationDeadline = job.lastDate ? new Date(job.lastDate).toISOString() : undefined;
+
+  const postedDate = job.createdAt
+    ? new Date(job.createdAt).toISOString()
+    : undefined;
+  const applicationDeadline = job.lastDate
+    ? new Date(job.lastDate).toISOString()
+    : undefined;
 
   const jobPosting = {
     "@context": "https://schema.org",
@@ -134,9 +163,32 @@ function JobDetail() {
       name: job.companyName,
       ...(job.companyLogo ? { logo: job.companyLogo } : {}),
     },
-    ...(job.location ? { jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressLocality: job.location } } } : {}),
-    ...(job.salary ? { baseSalary: { "@type": "MonetaryAmount", currency: "INR", value: { "@type": "QuantitativeValue", value: job.salary } } } : {}),
-    ...(job.experience ? { experienceRequirements: job.experience } : {}),
+    ...(job.location
+      ? {
+          jobLocation: {
+            "@type": "Place",
+            address: {
+              "@type": "PostalAddress",
+              addressLocality: job.location,
+            },
+          },
+        }
+      : {}),
+    ...(job.salary
+      ? {
+          baseSalary: {
+            "@type": "MonetaryAmount",
+            currency: "INR",
+            value: {
+              "@type": "QuantitativeValue",
+              value: job.salary,
+            },
+          },
+        }
+      : {}),
+    ...(job.experience
+      ? { experienceRequirements: job.experience }
+      : {}),
     ...(job.skills ? { skills: job.skills } : {}),
     directApply: Boolean(job.applyLink) && !expired,
     url: `https://hire-daily.vercel.app/jobs/${encodeURIComponent(job.id)}`,
@@ -150,34 +202,38 @@ function JobDetail() {
   ];
 
   const dates = [
-    formatJobDate(dateState.postedAt) ? { label: "Posted", value: formatJobDate(dateState.postedAt)! } : null,
-    formatJobDate(dateState.updatedAt) ? { label: "Updated", value: formatJobDate(dateState.updatedAt)! } : null,
-    dateState.applyBy ? { label: "Apply by", value: formatJobDate(dateState.applyBy) ?? dateState.applyBy } : null,
+    formatJobDate(dateState.postedAt)
+      ? { label: "Posted", value: formatJobDate(dateState.postedAt)! }
+      : null,
+    formatJobDate(dateState.updatedAt)
+      ? { label: "Updated", value: formatJobDate(dateState.updatedAt)! }
+      : null,
+    dateState.applyBy
+      ? {
+          label: "Apply by",
+          value: formatJobDate(dateState.applyBy) ?? dateState.applyBy,
+        }
+      : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
-  const activeJobs = (allJobs ?? []).filter((candidate) => {
-    if (candidate.id === job.id) return false;
-    return !getJobDateState(candidate.createdAt, candidate.updatedAt, candidate.lastDate).expired;
-  });
-
-  const currentRole = job.role?.trim().toLowerCase() ?? "";
-  const currentCompany = job.companyName?.trim().toLowerCase() ?? "";
-  const currentLocation = job.location?.trim().toLowerCase() ?? "";
-  const currentSkills = new Set(skills.map((skill) => skill.toLowerCase()));
-
-  const related = activeJobs
+  const related = (allJobs ?? [])
+    .filter((j) => j.id !== job.id && !getJobDateState(j.createdAt, j.updatedAt, j.lastDate).expired)
     .map((candidate) => {
-      const candidateSkills = splitList(candidate.skills).map((skill) => skill.toLowerCase());
-      const sharedSkills = candidateSkills.filter((skill) => currentSkills.has(skill)).length;
-      const sameRole = candidate.role?.trim().toLowerCase() === currentRole;
-      const sameCompany = candidate.companyName?.trim().toLowerCase() === currentCompany;
-      const sameLocation = Boolean(currentLocation) && candidate.location?.trim().toLowerCase() === currentLocation;
+      const role = (candidate.role || "").toLowerCase();
+      const company = (candidate.companyName || "").toLowerCase();
+      const location = (candidate.location || "").toLowerCase();
+      const candidateSkills = splitList(candidate.skills).map((s) => s.toLowerCase());
+      const currentSkills = skills.map((s) => s.toLowerCase());
+
+      const sharedSkills = candidateSkills.filter((skill) =>
+        currentSkills.includes(skill),
+      ).length;
 
       let score = 0;
-      if (sameRole) score += 10;
-      if (sameCompany) score += 6;
-      if (sameLocation) score += 4;
-      score += Math.min(sharedSkills, 4) * 2;
+      if (role === (job.role || "").toLowerCase()) score += 100;
+      if (company === (job.companyName || "").toLowerCase()) score += 30;
+      if (location && location === (job.location || "").toLowerCase()) score += 20;
+      score += sharedSkills * 10;
 
       return { candidate, score };
     })
@@ -187,18 +243,17 @@ function JobDetail() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 pb-28 lg:pb-8">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPosting) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPosting) }}
+      />
 
-      <Link to="/jobs" className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-[#00e5ff]">
+      <Link
+        to="/jobs"
+        className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-[#00e5ff]"
+      >
         <ArrowLeft className="h-4 w-4" /> Back to jobs
       </Link>
-
-      {/* Sponsored — intentionally kept disabled until content quality and AdSense review are complete.
-      <div className="mt-8">
-        <Suspense fallback={null}>
-          <JobAd />
-        </Suspense>
-      </div> */}
 
       <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
         <div className="space-y-6 lg:col-span-2">
@@ -208,9 +263,15 @@ function JobDetail() {
             <div className="relative flex flex-col gap-6 md:flex-row md:items-start">
               <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 to-white/[0.02] ring-1 ring-white/10">
                 {job.companyLogo ? (
-                  <img src={job.companyLogo} alt={job.companyName} className="h-full w-full object-cover" />
+                  <img
+                    src={job.companyLogo}
+                    alt={job.companyName}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
-                  <span className="text-3xl font-bold text-white/80">{job.companyName?.[0]}</span>
+                  <span className="text-3xl font-bold text-white/80">
+                    {job.companyName?.[0]}
+                  </span>
                 )}
               </div>
 
@@ -224,6 +285,7 @@ function JobDetail() {
                     </span>
                   )}
                 </div>
+
                 <h1
                   className="mt-1 text-3xl font-bold text-white md:text-4xl"
                   style={{ fontFamily: "'Space Grotesk'" }}
@@ -235,7 +297,9 @@ function JobDetail() {
 
             {skills.length > 0 && (
               <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Required Skills</h2>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Required Skills
+                </h2>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {skills.map((s, i) => (
                     <span
@@ -249,35 +313,14 @@ function JobDetail() {
               </div>
             )}
 
-            {quickSummary && (
+            {description && (
               <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Quick Summary</h2>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">{quickSummary}</p>
-              </div>
-            )}
-
-            {responsibilities.length > 0 && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Key Responsibilities</h2>
-                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
-                  {responsibilities.map((item, i) => <li key={i} className="flex gap-2"><span className="text-[#22d3ee]">•</span><span>{item}</span></li>)}
-                </ul>
-              </div>
-            )}
-
-            {eligibility.length > 0 && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Eligibility / Qualifications</h2>
-                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
-                  {eligibility.map((item, i) => <li key={i} className="flex gap-2"><span className="text-[#22d3ee]">•</span><span>{item}</span></li>)}
-                </ul>
-              </div>
-            )}
-
-            {howToApply && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">How to Apply</h2>
-                <p className="mt-3 text-sm leading-relaxed text-white/80">{howToApply}</p>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Job Description
+                </h2>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">
+                  {description}
+                </p>
               </div>
             )}
 
@@ -290,6 +333,38 @@ function JobDetail() {
               description={description}
             />
 
+            {responsibilities.length > 0 && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Key Responsibilities
+                </h2>
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
+                  {responsibilities.map((item, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-[#22d3ee]">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {eligibility.length > 0 && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Eligibility / Qualifications
+                </h2>
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
+                  {eligibility.map((item, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-[#22d3ee]">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <JobEligibility
               role={job.role}
               location={job.location}
@@ -297,17 +372,18 @@ function JobDetail() {
               skills={skills}
             />
 
-            <ApplicationGuidance applyLink={job.applyLink} />
-
-            {expired && (
-              <section className="relative mt-8 rounded-2xl bg-rose-400/5 p-4 ring-1 ring-rose-400/20">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-rose-200/80">This opportunity is no longer active</h2>
-                <p className="mt-3 text-sm leading-relaxed text-white/70">
-                  The application window for this listing has closed according to the available job dates.
-                  You can use the active opportunities below to continue your search.
+            {howToApply && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  How to Apply
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-white/80">
+                  {howToApply}
                 </p>
-              </section>
+              </div>
             )}
+
+            <ApplicationGuidance applyLink={job.applyLink} />
 
             <SourceVerification
               sourceName={job.sourceName}
@@ -322,8 +398,14 @@ function JobDetail() {
 
         <aside className="lg:col-span-1">
           <div className="space-y-6 lg:sticky lg:top-24">
-            <div className="glass card-glow rounded-3xl p-6 animate-fade-up" style={{ animationDelay: "80ms" }}>
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Job Overview</h2>
+            <div
+              className="glass card-glow rounded-3xl p-6 animate-fade-up"
+              style={{ animationDelay: "80ms" }}
+            >
+              <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                Job Overview
+              </h2>
+
               <div className="mt-4 space-y-3">
                 {overview.map((o, i) => (
                   <div key={i} className="flex items-center gap-2.5 text-sm text-white/80">
@@ -331,19 +413,24 @@ function JobDetail() {
                       <o.icon className="h-3.5 w-3.5 text-[#22d3ee]" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[11px] uppercase tracking-wide text-white/40">{o.label}</span>
-                      <span className="truncate">{o.text}</span>
+                      <span className="block text-[11px] uppercase tracking-wide text-white/40">
+                        {o.label}
+                      </span>
+                      <span>{o.text}</span>
                     </span>
                   </div>
                 ))}
+
                 {dates.map((d) => (
                   <div key={d.label} className="flex items-center gap-2.5 text-sm text-white/80">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
                       <CalendarClock className="h-3.5 w-3.5 text-[#22d3ee]" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[11px] uppercase tracking-wide text-white/40">{d.label}</span>
-                      <span className="truncate">{d.value}</span>
+                      <span className="block text-[11px] uppercase tracking-wide text-white/40">
+                        {d.label}
+                      </span>
+                      <span>{d.value}</span>
                     </span>
                   </div>
                 ))}
@@ -351,9 +438,15 @@ function JobDetail() {
 
               <div className="mt-6 hidden flex-col gap-2 lg:flex">
                 {expired ? (
-                  <span className="flex items-center justify-center rounded-xl px-6 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
-                    Applications closed
-                  </span>
+                  <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
+                    <div className="text-sm font-medium text-rose-300">
+                      Applications closed
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-white/50">
+                      This opportunity is no longer accepting applications. Explore the
+                      active related jobs below for other opportunities.
+                    </p>
+                  </div>
                 ) : job.applyLink ? (
                   <a
                     href={job.applyLink}
@@ -364,7 +457,7 @@ function JobDetail() {
                     Apply Now <ExternalLink className="h-4 w-4" />
                   </a>
                 ) : (
-                  <span className="flex items-center justify-center rounded-xl px-6 py-3 text-sm text-white/50 ring-1 ring-white/10">
+                  <span className="rounded-xl px-6 py-3 text-center text-sm text-white/50 ring-1 ring-white/10">
                     Application link unavailable
                   </span>
                 )}
@@ -391,14 +484,19 @@ function JobDetail() {
 
       {related.length > 0 && (
         <section className="mt-16">
-          <h2 className="text-2xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>
+          <h2
+            className="text-2xl font-bold text-white"
+            style={{ fontFamily: "'Space Grotesk'" }}
+          >
             Related Active Jobs
           </h2>
-          <p className="mt-2 text-sm text-white/60">
-            Similar active opportunities based on role, company, location and listed skills.
+          <p className="mt-2 text-sm text-white/50">
+            Similar current opportunities you may want to review.
           </p>
           <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {related.map((j, i) => <JobCard key={j.id} job={j} index={i} />)}
+            {related.map((j, i) => (
+              <JobCard key={j.id} job={j} index={i} />
+            ))}
           </div>
         </section>
       )}
@@ -426,6 +524,7 @@ function JobDetail() {
               Application unavailable
             </span>
           )}
+
           <button
             onClick={share}
             className="btn-ghost-glow flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
@@ -433,6 +532,7 @@ function JobDetail() {
           >
             <Share2 className="h-4 w-4" />
           </button>
+
           <button
             onClick={copy}
             className="btn-ghost-glow flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"

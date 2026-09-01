@@ -43,8 +43,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
 
-  useEffect(() => {
-  }, [error]);
+  useEffect(() => {}, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -86,7 +85,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Hire Daily helps job seekers discover current job opportunities, review role and eligibility information, check source and verification details, and continue to the relevant application page.",
+          "Hire Daily helps job seekers discover fresh opportunities with structured job details, source information, verification details, and direct application links.",
       },
       { name: "author", content: "Hire Daily" },
       { name: "theme-color", content: "#050816" },
@@ -98,21 +97,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "Hire Daily — Find Your Dream Job Faster" },
       {
         property: "og:description",
-        content: "Discover current job opportunities with role, eligibility, source and verification information.",
+        content:
+          "Discover fresh job opportunities with structured details, source information, verification details, and application links.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Hire Daily — Find Your Dream Job Faster" },
       {
         name: "twitter:description",
-        content: "Discover current job opportunities with role, eligibility, source and verification information.",
+        content:
+          "Discover fresh job opportunities with structured details, source information, verification details, and application links.",
       },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
       { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
