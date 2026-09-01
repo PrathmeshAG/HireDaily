@@ -1,294 +1,573 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
   BadgeCheck,
-  BriefcaseBusiness,
-  CalendarDays,
-  Clock3,
+  Briefcase,
+  CalendarClock,
+  Clock,
   ExternalLink,
-  GraduationCap,
   IndianRupee,
   MapPin,
-  Search,
+  Share2,
+  Copy,
 } from "lucide-react";
-import { fetchJob } from "../lib/jobs";
-import { getJobDateState } from "../lib/job-dates";
+import { toast } from "sonner";
+import { fetchJob, fetchJobs } from "../lib/jobs";
+import { JobCard } from "../components/job-card";
+import { JobValue } from "../components/job-value";
+import { JobEligibility } from "../components/job-eligibility";
+import { ApplicationGuidance } from "../components/application-guidance";
+import { SourceVerification } from "../components/source-verification";
+import { formatJobDate, getJobDateState } from "../lib/job-dates";
+
+const JobAd = lazy(() =>
+  import("../components/job-ad").then((m) => ({ default: m.JobAd })),
+);
 
 export const Route = createFileRoute("/jobs/$id")({
   ssr: true,
-  loader: async ({ params }) => ({
-    job: await fetchJob(params.id),
-  }),
-  component: JobDetailPage,
-  head: ({ loaderData }) => {
+  loader: async ({ params }) => {
+    const job = await fetchJob(params.id);
+    if (!job) throw notFound();
+    const allJobs = await fetchJobs();
+    return { job, allJobs };
+  },
+  head: ({ loaderData, params }) => {
     const job = loaderData?.job;
+    const canonical = `https://hire-daily.vercel.app/jobs/${encodeURIComponent(params.id)}`;
+
+    if (!job) {
+      return {
+        meta: [
+          { title: "Job Not Found — Hire Daily" },
+          { name: "robots", content: "noindex, nofollow" },
+        ],
+      };
+    }
+
+    const title = `${job.role} at ${job.companyName} — Hire Daily`;
+    const description = (
+      job.description ||
+      `${job.role} at ${job.companyName} in ${job.location || "India"}.`
+    )
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 160);
+
     return {
       meta: [
-        {
-          title: job ? `${job.role} at ${job.companyName} — Hire Daily` : "Job Not Found — Hire Daily",
-        },
-        {
-          name: "description",
-          content: job
-            ? `${job.role} at ${job.companyName}. View location, experience, skills, salary information and application details on Hire Daily.`
-            : "The requested job listing could not be found on Hire Daily.",
-        },
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:url", content: canonical },
       ],
+      links: [{ rel: "canonical", href: canonical }],
     };
   },
+  component: JobDetail,
 });
 
-function InfoItem({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof MapPin;
-  label: string;
-  value?: string;
-}) {
-  if (!value) return null;
-
-  return (
-    <div className="flex items-start gap-3 rounded-2xl bg-white/[0.035] p-4 ring-1 ring-white/[0.06]">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#00e5ff]/10">
-        <Icon className="h-4 w-4 text-[#00e5ff]" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-white/35">
-          {label}
-        </p>
-        <p className="mt-1 break-words text-sm font-medium text-white/85">
-          {value}
-        </p>
-      </div>
-    </div>
-  );
+function cleanText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || /^n\/?a$/i.test(text)) return null;
+  return text;
 }
 
-function JobDetailPage() {
-  const { job } = Route.useLoaderData();
+function splitList(value: unknown): string[] {
+  const text = cleanText(value);
+  if (!text) return [];
+  return text
+    .split(/[,\\n;•]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
-  if (!job) {
-    return (
-      <main className="mx-auto max-w-3xl px-4 py-20">
-        <div className="glass-strong rounded-3xl p-10 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5">
-            <Search className="h-6 w-6 text-[#00e5ff]" />
-          </div>
-          <h1
-            className="mt-6 text-3xl font-bold text-white"
-            style={{ fontFamily: "'Space Grotesk'" }}
-          >
-            Job listing not found
-          </h1>
-          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-white/55">
-            This listing may have been removed, closed, or the link may no longer
-            be valid.
-          </p>
-          <Link
-            to="/jobs"
-            className="btn-glow mt-7 inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Browse all jobs
-          </Link>
-        </div>
-      </main>
-    );
+function firstAvailable(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text) return text;
   }
+  return null;
+}
 
-  const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
-  const isExpired = dateState.expired;
+function JobDetail() {
+  const { job, allJobs } = Route.useLoaderData();
+
+  const link = typeof window !== "undefined" ? window.location.href : "";
+
+  const share = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${job.role} at ${job.companyName}`,
+          url: link,
+        });
+      } catch {}
+    } else {
+      await navigator.clipboard.writeText(link);
+      toast.success("Link copied");
+    }
+  };
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(link);
+    toast.success("Link copied");
+  };
+
+  const related = (allJobs ?? [])
+    .filter((j) => j.id !== job.id && j.role === job.role)
+    .slice(0, 3);
+
+  const skills = splitList(job.skills);
+  const description = cleanText(job.description);
+  const quickSummary = firstAvailable(
+    description,
+    `${job.role} at ${job.companyName}`,
+  );
+
+  const responsibilities = splitList(
+    (job as { responsibilities?: string }).responsibilities,
+  );
+
+  const eligibility = splitList(
+    (job as {
+      eligibility?: string;
+      qualifications?: string;
+      requirements?: string;
+    }).eligibility ??
+      (job as { qualifications?: string }).qualifications ??
+      (job as { requirements?: string }).requirements,
+  );
+
+  const howToApply = firstAvailable(
+    (job as { howToApply?: string }).howToApply,
+    job.applyLink ? "Apply through the official application link." : null,
+  );
+
+  const dateState = getJobDateState(
+    job.createdAt,
+    job.updatedAt,
+    job.lastDate,
+  );
+
+  const remaining =
+    dateState.applyByTime === null
+      ? null
+      : Math.ceil(
+          (dateState.applyByTime - Date.now()) / (1000 * 60 * 60 * 24),
+        );
+
+  const urgent =
+    !dateState.expired &&
+    remaining !== null &&
+    remaining >= 0 &&
+    remaining <= 3;
+
+  const expired = dateState.expired;
+
+  const postedDate = job.createdAt
+    ? new Date(job.createdAt).toISOString()
+    : undefined;
+
+  const applicationDeadline = job.lastDate
+    ? new Date(job.lastDate).toISOString()
+    : undefined;
+
+  const jobPosting = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.role,
+    description: description ?? `${job.role} at ${job.companyName}`,
+    ...(postedDate ? { datePosted: postedDate } : {}),
+    ...(applicationDeadline ? { validThrough: applicationDeadline } : {}),
+    ...(job.jobType ? { employmentType: job.jobType } : {}),
+    hiringOrganization: {
+      "@type": "Organization",
+      name: job.companyName,
+      ...(job.companyLogo ? { logo: job.companyLogo } : {}),
+    },
+    ...(job.location
+      ? {
+          jobLocation: {
+            "@type": "Place",
+            address: {
+              "@type": "PostalAddress",
+              addressLocality: job.location,
+            },
+          },
+        }
+      : {}),
+    ...(job.salary
+      ? {
+          baseSalary: {
+            "@type": "MonetaryAmount",
+            currency: "INR",
+            value: {
+              "@type": "QuantitativeValue",
+              value: job.salary,
+            },
+          },
+        }
+      : {}),
+    ...(job.experience
+      ? { experienceRequirements: job.experience }
+      : {}),
+    ...(job.skills ? { skills: job.skills } : {}),
+    directApply: Boolean(job.applyLink) && !expired,
+    url: `https://hire-daily.vercel.app/jobs/${encodeURIComponent(job.id)}`,
+  };
+
+  const overview = [
+    { icon: MapPin, label: "Location", text: job.location || "Not specified" },
+    {
+      icon: IndianRupee,
+      label: "Salary",
+      text: job.salary || "Not specified",
+    },
+    {
+      icon: Briefcase,
+      label: "Experience",
+      text: job.experience || "Not specified",
+    },
+    { icon: Clock, label: "Job type", text: job.jobType || "Not specified" },
+  ];
+
+  const dates = [
+    formatJobDate(dateState.postedAt)
+      ? {
+          label: "Posted",
+          value: formatJobDate(dateState.postedAt)!,
+        }
+      : null,
+    formatJobDate(dateState.updatedAt)
+      ? {
+          label: "Updated",
+          value: formatJobDate(dateState.updatedAt)!,
+        }
+      : null,
+    dateState.applyBy
+      ? {
+          label: "Apply by",
+          value:
+            formatJobDate(dateState.applyBy) ?? dateState.applyBy,
+        }
+      : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (
-    <main className="relative mx-auto max-w-6xl px-4 py-8 pb-20">
-      <div className="pointer-events-none absolute left-1/4 top-20 -z-10 h-72 w-72 rounded-full bg-[#00e5ff]/8 blur-3xl" />
-      <div className="pointer-events-none absolute right-10 top-80 -z-10 h-80 w-80 rounded-full bg-[#7c3aed]/8 blur-3xl" />
+    <div className="mx-auto max-w-6xl px-4 py-8 pb-28 lg:pb-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPosting) }}
+      />
 
       <Link
         to="/jobs"
-        className="mb-6 inline-flex items-center gap-2 text-sm text-white/50 transition-colors hover:text-[#00e5ff]"
+        className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-[#00e5ff]"
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Browse Jobs
+        <ArrowLeft className="h-4 w-4" /> Back to jobs
       </Link>
 
-      <section className="glass-strong relative overflow-hidden rounded-3xl p-6 md:p-9">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#00e5ff]/[0.07] via-transparent to-[#7c3aed]/[0.08]" />
+      {/* <div className="mt-8">
+        <Suspense fallback={null}>
+          <JobAd />
+        </Suspense>
+      </div> */}
 
-        <div className="relative flex flex-col gap-6 md:flex-row md:items-start">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 to-white/[0.02] ring-1 ring-white/10">
-            {job.companyLogo ? (
-              <img
-                src={job.companyLogo}
-                alt={`${job.companyName} logo`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-3xl font-bold text-white/80">
-                {job.companyName?.[0]?.toUpperCase() ?? "?"}
-              </span>
+      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+        <div className="space-y-6 lg:col-span-2">
+          <div className="glass card-glow relative overflow-hidden rounded-3xl p-6 animate-fade-up md:p-10">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#7c3aed]/10 blur-3xl" />
+
+            <div className="relative flex flex-col gap-6 md:flex-row md:items-start">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 to-white/[0.02] ring-1 ring-white/10">
+                {job.companyLogo ? (
+                  <img
+                    src={job.companyLogo}
+                    alt={job.companyName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-3xl font-bold text-white/80">
+                    {job.companyName?.[0]}
+                  </span>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="text-sm text-white/70">{job.companyName}</p>
+                  <BadgeCheck className="h-4 w-4 shrink-0 text-[#00e5ff]" />
+
+                  {urgent && (
+                    <span className="ml-1 rounded-full bg-rose-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-300 ring-1 ring-rose-500/30">
+                      {remaining === 0
+                        ? "Closes today"
+                        : `${remaining}d left`}
+                    </span>
+                  )}
+                </div>
+
+                <h1
+                  className="mt-1 text-3xl font-bold text-white md:text-4xl"
+                  style={{ fontFamily: "'Space Grotesk'" }}
+                >
+                  {job.role}
+                </h1>
+              </div>
+            </div>
+
+            {skills.length > 0 && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Required Skills
+                </h2>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {skills.map((s, i) => (
+                    <span
+                      key={i}
+                      className="rounded-lg bg-gradient-to-br from-[#00e5ff]/10 to-[#7c3aed]/10 px-3 py-1.5 text-xs text-white ring-1 ring-white/10"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-white/60">
-                {job.companyName}
-              </span>
-              {job.verificationStatus === "verified" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#00e5ff]/10 px-2.5 py-1 text-[11px] font-semibold text-[#00e5ff]">
-                  <BadgeCheck className="h-3.5 w-3.5" />
-                  Verified
-                </span>
-              )}
-            </div>
-
-            <h1
-              className="mt-2 text-3xl font-bold leading-tight text-white md:text-5xl"
-              style={{ fontFamily: "'Space Grotesk'" }}
-            >
-              {job.role}
-            </h1>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              {job.jobType && (
-                <span className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/70 ring-1 ring-white/10">
-                  {job.jobType}
-                </span>
-              )}
-              {job.experience && (
-                <span className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/70 ring-1 ring-white/10">
-                  {job.experience}
-                </span>
-              )}
-              {job.category && (
-                <span className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/70 ring-1 ring-white/10">
-                  {job.category}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="w-full md:w-auto md:min-w-[210px]">
-            {isExpired ? (
-              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/5 px-5 py-4 text-center">
-                <p className="text-sm font-semibold text-rose-200">
-                  Applications closed
-                </p>
-                <p className="mt-1 text-xs text-white/45">
-                  The listed deadline has passed.
+            {quickSummary && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Quick Summary
+                </h2>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">
+                  {quickSummary}
                 </p>
               </div>
-            ) : (
-              <a
-                href={job.applyLink}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="btn-glow flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-4 text-sm font-bold"
-              >
-                Apply Now
-                <ExternalLink className="h-4 w-4" />
-              </a>
             )}
+
+            {description && description !== quickSummary && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Description
+                </h2>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">
+                  {description}
+                </p>
+              </div>
+            )}
+
+            {responsibilities.length > 0 && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Key Responsibilities
+                </h2>
+
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
+                  {responsibilities.map((item, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-[#22d3ee]">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {eligibility.length > 0 && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  Eligibility / Qualifications
+                </h2>
+
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
+                  {eligibility.map((item, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-[#22d3ee]">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {howToApply && (
+              <div className="relative mt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                  How to Apply
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-white/80">
+                  {howToApply}
+                </p>
+              </div>
+            )}
+
+            <JobValue
+              role={job.role}
+              company={job.companyName}
+              location={job.location}
+              experience={job.experience}
+              skills={skills}
+              description={description}
+            />
+
+            <JobEligibility
+              role={job.role}
+              location={job.location}
+              experience={job.experience}
+              skills={skills}
+            />
+
+            <ApplicationGuidance applyLink={job.applyLink} />
+            <SourceVerification applyLink={job.applyLink} />
           </div>
         </div>
-      </section>
 
-      <section className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <InfoItem icon={MapPin} label="Location" value={job.location || "Remote"} />
-        <InfoItem icon={IndianRupee} label="Expected salary" value={job.salary || "Not disclosed"} />
-        <InfoItem icon={GraduationCap} label="Experience" value={job.experience || "Not specified"} />
-        <InfoItem
-          icon={Clock3}
-          label="Posted"
-          value={dateState.relativePosted ? `Posted ${dateState.relativePosted}` : "Date not specified"}
-        />
-      </section>
+        <aside className="lg:col-span-1">
+          <div className="space-y-6 lg:sticky lg:top-24">
+            <div
+              className="glass card-glow rounded-3xl p-6 animate-fade-up"
+              style={{ animationDelay: "80ms" }}
+            >
+              <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
+                Job Overview
+              </h2>
 
-      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        <article className="glass rounded-3xl p-6 md:p-8">
+              <div className="mt-4 space-y-3">
+                {overview.map((o, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2.5 text-sm text-white/80"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
+                      <o.icon className="h-3.5 w-3.5 text-[#22d3ee]" />
+                    </span>
+
+                    <span className="min-w-0">
+                      <span className="block text-[11px] uppercase tracking-wide text-white/40">
+                        {o.label}
+                      </span>
+                      <span className="truncate">{o.text}</span>
+                    </span>
+                  </div>
+                ))}
+
+                {dates.map((d) => (
+                  <div
+                    key={d.label}
+                    className="flex items-center gap-2.5 text-sm text-white/80"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
+                      <CalendarClock className="h-3.5 w-3.5 text-[#22d3ee]" />
+                    </span>
+
+                    <span className="min-w-0">
+                      <span className="block text-[11px] uppercase tracking-wide text-white/40">
+                        {d.label}
+                      </span>
+                      <span className="truncate">{d.value}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 hidden flex-col gap-2 lg:flex">
+                {expired ? (
+                  <span className="flex items-center justify-center rounded-xl px-6 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
+                    Applications closed
+                  </span>
+                ) : (
+                  <a
+                    href={job.applyLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-glow flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm"
+                  >
+                    Apply Now <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={share}
+                    className="btn-ghost-glow flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm"
+                  >
+                    <Share2 className="h-4 w-4" /> Share
+                  </button>
+
+                  <button
+                    onClick={copy}
+                    className="btn-ghost-glow flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm"
+                  >
+                    <Copy className="h-4 w-4" /> Copy link
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {related.length > 0 && (
+        <section className="mt-16">
           <h2
             className="text-2xl font-bold text-white"
             style={{ fontFamily: "'Space Grotesk'" }}
           >
-            Job Description
+            Related Jobs
           </h2>
 
-          <div className="mt-5 whitespace-pre-line text-sm leading-7 text-white/65">
-            {job.description || "The employer has not provided a detailed description for this listing."}
+          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {related.map((j, i) => (
+              <JobCard key={j.id} job={j} index={i} />
+            ))}
           </div>
+        </section>
+      )}
 
-          {job.skills && (
-            <section className="mt-9 border-t border-white/[0.07] pt-7">
-              <h2
-                className="text-xl font-bold text-white"
-                style={{ fontFamily: "'Space Grotesk'" }}
-              >
-                Skills & Requirements
-              </h2>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {job.skills
-                  .split(/[,|•\n]+/)
-                  .map((skill) => skill.trim())
-                  .filter(Boolean)
-                  .map((skill) => (
-                    <span
-                      key={skill}
-                      className="rounded-xl bg-white/5 px-3 py-2 text-xs text-white/70 ring-1 ring-white/10"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-              </div>
-            </section>
-          )}
-        </article>
-
-        <aside className="space-y-4">
-          <div className="glass rounded-3xl p-6">
-            <h2
-              className="text-lg font-bold text-white"
-              style={{ fontFamily: "'Space Grotesk'" }}
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#050816]/95 p-3 backdrop-blur-lg lg:hidden"
+        style={{
+          paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+        }}
+      >
+        <div className="mx-auto flex max-w-6xl items-center gap-2">
+          {expired ? (
+            <span className="flex flex-1 items-center justify-center rounded-xl px-4 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
+              Applications closed
+            </span>
+          ) : (
+            <a
+              href={job.applyLink}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-glow flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-sm"
             >
-              Application Details
-            </h2>
+              Apply Now <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
 
-            <div className="mt-5 space-y-3">
-              <InfoItem icon={CalendarDays} label="Apply by" value={job.lastDate || "Not specified"} />
-              <InfoItem icon={BriefcaseBusiness} label="Job type" value={job.jobType || "Not specified"} />
-              {job.sourceName && (
-                <InfoItem icon={ExternalLink} label="Source" value={job.sourceName} />
-              )}
-            </div>
+          <button
+            onClick={share}
+            className="btn-ghost-glow flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+            aria-label="Share"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
 
-            {!isExpired && (
-              <a
-                href={job.applyLink}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="btn-glow mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold"
-              >
-                Continue to application
-                <ArrowRight className="h-4 w-4" />
-              </a>
-            )}
-          </div>
-
-          <div className="glass rounded-3xl p-6">
-            <h2 className="text-sm font-semibold text-white">
-              Job information
-            </h2>
-            <p className="mt-2 text-xs leading-5 text-white/45">
-              Review the listing details carefully before applying. Application
-              requirements and availability are controlled by the employer or
-              original listing source.
-            </p>
-          </div>
-        </aside>
+          <button
+            onClick={copy}
+            className="btn-ghost-glow flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+            aria-label="Copy link"
+          >
+            <Copy className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
