@@ -1,5 +1,4 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { lazy, Suspense } from "react";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -21,13 +20,9 @@ import { ApplicationGuidance } from "../components/application-guidance";
 import { SourceVerification } from "../components/source-verification";
 import { formatJobDate, getJobDateState } from "../lib/job-dates";
 
-// Lazy-loaded so the ad never blocks the detail page's initial render.
-const JobAd = lazy(() => import("../components/job-ad").then((m) => ({ default: m.JobAd })));
-
 export const Route = createFileRoute("/jobs/$id")({
   ssr: true,
-
- loader: async ({ params }) => {
+  loader: async ({ params }) => {
     const job = await fetchJob(params.id);
     if (!job) throw notFound();
     const allJobs = await fetchJobs();
@@ -89,8 +84,8 @@ function firstAvailable(...values: unknown[]): string | null {
 
 function JobDetail() {
   const { job, allJobs } = Route.useLoaderData();
-
   const link = typeof window !== "undefined" ? window.location.href : "";
+
   const share = async () => {
     if (navigator.share) {
       try { await navigator.share({ title: `${job.role} at ${job.companyName}`, url: link }); } catch {}
@@ -99,12 +94,12 @@ function JobDetail() {
       toast.success("Link copied");
     }
   };
+
   const copy = async () => {
     await navigator.clipboard.writeText(link);
     toast.success("Link copied");
   };
 
-  const related = (allJobs ?? []).filter((j) => j.id !== job.id && j.role === job.role).slice(0, 3);
   const skills = splitList(job.skills);
   const description = cleanText(job.description);
   const quickSummary = firstAvailable(description, `${job.role} at ${job.companyName}`);
@@ -118,12 +113,14 @@ function JobDetail() {
     (job as { howToApply?: string }).howToApply,
     job.applyLink ? "Apply through the official application link." : null,
   );
+
   const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
   const remaining = dateState.applyByTime === null ? null : Math.ceil((dateState.applyByTime - Date.now()) / (1000 * 60 * 60 * 24));
   const urgent = !dateState.expired && remaining !== null && remaining >= 0 && remaining <= 3;
   const expired = dateState.expired;
   const postedDate = job.createdAt ? new Date(job.createdAt).toISOString() : undefined;
   const applicationDeadline = job.lastDate ? new Date(job.lastDate).toISOString() : undefined;
+
   const jobPosting = {
     "@context": "https://schema.org",
     "@type": "JobPosting",
@@ -158,14 +155,45 @@ function JobDetail() {
     dateState.applyBy ? { label: "Apply by", value: formatJobDate(dateState.applyBy) ?? dateState.applyBy } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
+  const activeJobs = (allJobs ?? []).filter((candidate) => {
+    if (candidate.id === job.id) return false;
+    return !getJobDateState(candidate.createdAt, candidate.updatedAt, candidate.lastDate).expired;
+  });
+
+  const currentRole = job.role?.trim().toLowerCase() ?? "";
+  const currentCompany = job.companyName?.trim().toLowerCase() ?? "";
+  const currentLocation = job.location?.trim().toLowerCase() ?? "";
+  const currentSkills = new Set(skills.map((skill) => skill.toLowerCase()));
+
+  const related = activeJobs
+    .map((candidate) => {
+      const candidateSkills = splitList(candidate.skills).map((skill) => skill.toLowerCase());
+      const sharedSkills = candidateSkills.filter((skill) => currentSkills.has(skill)).length;
+      const sameRole = candidate.role?.trim().toLowerCase() === currentRole;
+      const sameCompany = candidate.companyName?.trim().toLowerCase() === currentCompany;
+      const sameLocation = Boolean(currentLocation) && candidate.location?.trim().toLowerCase() === currentLocation;
+
+      let score = 0;
+      if (sameRole) score += 10;
+      if (sameCompany) score += 6;
+      if (sameLocation) score += 4;
+      score += Math.min(sharedSkills, 4) * 2;
+
+      return { candidate, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(({ candidate }) => candidate);
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 pb-28 lg:pb-8">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPosting) }} />
+
       <Link to="/jobs" className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-[#00e5ff]">
         <ArrowLeft className="h-4 w-4" /> Back to jobs
       </Link>
 
-      {/* Sponsored — full-width so it always renders cleanly on mobile & desktop
+      {/* Sponsored — intentionally kept disabled until content quality and AdSense review are complete.
       <div className="mt-8">
         <Suspense fallback={null}>
           <JobAd />
@@ -173,7 +201,6 @@ function JobDetail() {
       </div> */}
 
       <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-        {/* Main content */}
         <div className="space-y-6 lg:col-span-2">
           <div className="glass card-glow relative overflow-hidden rounded-3xl p-6 animate-fade-up md:p-10">
             <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#7c3aed]/10 blur-3xl" />
@@ -186,6 +213,7 @@ function JobDetail() {
                   <span className="text-3xl font-bold text-white/80">{job.companyName?.[0]}</span>
                 )}
               </div>
+
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="text-sm text-white/70">{job.companyName}</p>
@@ -228,8 +256,6 @@ function JobDetail() {
               </div>
             )}
 
-            
-
             {responsibilities.length > 0 && (
               <div className="relative mt-8">
                 <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Key Responsibilities</h2>
@@ -255,16 +281,34 @@ function JobDetail() {
               </div>
             )}
 
-            {/* <JobValue
+            <JobValue
               role={job.role}
               company={job.companyName}
               location={job.location}
               experience={job.experience}
               skills={skills}
               description={description}
-            /> */}
-            {/* <JobEligibility role={job.role} location={job.location} experience={job.experience} skills={skills} />
-            <ApplicationGuidance applyLink={job.applyLink} /> */}
+            />
+
+            <JobEligibility
+              role={job.role}
+              location={job.location}
+              experience={job.experience}
+              skills={skills}
+            />
+
+            <ApplicationGuidance applyLink={job.applyLink} />
+
+            {expired && (
+              <section className="relative mt-8 rounded-2xl bg-rose-400/5 p-4 ring-1 ring-rose-400/20">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-rose-200/80">This opportunity is no longer active</h2>
+                <p className="mt-3 text-sm leading-relaxed text-white/70">
+                  The application window for this listing has closed according to the available job dates.
+                  You can use the active opportunities below to continue your search.
+                </p>
+              </section>
+            )}
+
             <SourceVerification
               sourceName={job.sourceName}
               sourceUrl={job.sourceUrl}
@@ -276,7 +320,6 @@ function JobDetail() {
           </div>
         </div>
 
-        {/* Sidebar */}
         <aside className="lg:col-span-1">
           <div className="space-y-6 lg:sticky lg:top-24">
             <div className="glass card-glow rounded-3xl p-6 animate-fade-up" style={{ animationDelay: "80ms" }}>
@@ -304,16 +347,14 @@ function JobDetail() {
                     </span>
                   </div>
                 ))}
-
               </div>
 
-              {/* Actions — desktop only; mobile uses the sticky bar below */}
               <div className="mt-6 hidden flex-col gap-2 lg:flex">
                 {expired ? (
                   <span className="flex items-center justify-center rounded-xl px-6 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
                     Applications closed
                   </span>
-                ) : (
+                ) : job.applyLink ? (
                   <a
                     href={job.applyLink}
                     target="_blank"
@@ -322,7 +363,12 @@ function JobDetail() {
                   >
                     Apply Now <ExternalLink className="h-4 w-4" />
                   </a>
+                ) : (
+                  <span className="flex items-center justify-center rounded-xl px-6 py-3 text-sm text-white/50 ring-1 ring-white/10">
+                    Application link unavailable
+                  </span>
                 )}
+
                 <div className="flex gap-2">
                   <button
                     onClick={share}
@@ -343,20 +389,20 @@ function JobDetail() {
         </aside>
       </div>
 
-      
-
       {related.length > 0 && (
         <section className="mt-16">
           <h2 className="text-2xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>
-            Related Jobs
+            Related Active Jobs
           </h2>
+          <p className="mt-2 text-sm text-white/60">
+            Similar active opportunities based on role, company, location and listed skills.
+          </p>
           <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {related.map((j, i) => <JobCard key={j.id} job={j} index={i} />)}
           </div>
         </section>
       )}
 
-      {/* Mobile sticky apply bar */}
       <div
         className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#050816]/95 p-3 backdrop-blur-lg lg:hidden"
         style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
@@ -366,7 +412,7 @@ function JobDetail() {
             <span className="flex flex-1 items-center justify-center rounded-xl px-4 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
               Applications closed
             </span>
-          ) : (
+          ) : job.applyLink ? (
             <a
               href={job.applyLink}
               target="_blank"
@@ -375,6 +421,10 @@ function JobDetail() {
             >
               Apply Now <ExternalLink className="h-3.5 w-3.5" />
             </a>
+          ) : (
+            <span className="flex flex-1 items-center justify-center rounded-xl px-4 py-3 text-sm text-white/50 ring-1 ring-white/10">
+              Application unavailable
+            </span>
           )}
           <button
             onClick={share}

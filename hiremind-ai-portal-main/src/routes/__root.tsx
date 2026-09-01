@@ -11,7 +11,6 @@ import { useEffect, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 
 import appCss from "../styles.css?url";
-
 import { Toaster } from "sonner";
 import { AuroraBg } from "../components/aurora-bg";
 import { Navbar } from "../components/navbar";
@@ -43,8 +42,8 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+
   useEffect(() => {
-    
   }, [error]);
 
   return (
@@ -83,13 +82,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Hire Daily — Find Your Dream Job Faster | HireMind AI" },
+      { title: "Hire Daily — Find Your Dream Job Faster" },
       {
         name: "description",
         content:
-          "Hire Daily by HireMind AI — fresh, verified jobs updated every day. Search roles, companies, and locations. Find your dream job faster.",
+          "Hire Daily helps job seekers discover current job opportunities, review role and eligibility information, check source and verification details, and continue to the relevant application page.",
       },
-      { name: "author", content: "HireMind AI" },
+      { name: "author", content: "Hire Daily" },
       { name: "theme-color", content: "#050816" },
       {
         name: "google-site-verification",
@@ -99,14 +98,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "Hire Daily — Find Your Dream Job Faster" },
       {
         property: "og:description",
-        content: "Fresh, verified jobs updated every day. Powered by HireMind AI.",
+        content: "Discover current job opportunities with role, eligibility, source and verification information.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Hire Daily — Find Your Dream Job Faster" },
       {
         name: "twitter:description",
-        content: "Fresh, verified jobs updated every day. Powered by HireMind AI.",
+        content: "Discover current job opportunities with role, eligibility, source and verification information.",
       },
     ],
     links: [
@@ -135,10 +134,11 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
-
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8398369566821360"
-     crossOrigin="anonymous"></script>
-
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8398369566821360"
+          crossOrigin="anonymous"
+        ></script>
       </head>
       <body>
         {children}
