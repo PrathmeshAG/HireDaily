@@ -1,546 +1,398 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  BadgeCheck,
-  Briefcase,
-  CalendarClock,
-  Clock,
-  ExternalLink,
-  IndianRupee,
-  MapPin,
-  Share2,
-  Copy,
-} from "lucide-react";
-import { toast } from "sonner";
-import { fetchJob, fetchJobs } from "../lib/jobs";
-import { JobCard } from "../components/job-card";
-import { JobValue } from "../components/job-value";
-import { JobEligibility } from "../components/job-eligibility";
-import { ApplicationGuidance } from "../components/application-guidance";
-import { SourceVerification } from "../components/source-verification";
-import { formatJobDate, getJobDateState } from "../lib/job-dates";
+import { createFileRoute } from "@tanstack/react-router";
+import { Fragment, useMemo, useState } from "react";
+import { Search, X, SlidersHorizontal, ArrowRight, MapPin, BriefcaseBusiness, GraduationCap, Laptop, Clock3 } from "lucide-react";
+import { fetchJobs } from "../lib/jobs";
+import { getJobDateState } from "../lib/job-dates";
+import { JobCard, JobCardSkeleton } from "../components/job-card";
 
 export const Route = createFileRoute("/jobs/$id")({
   ssr: true,
-  loader: async ({ params }) => {
-    const job = await fetchJob(params.id);
-    if (!job) throw notFound();
-    const allJobs = await fetchJobs();
-    return { job, allJobs };
-  },
-  head: ({ loaderData, params }) => {
-    const job = loaderData?.job;
-    const canonical = `https://hire-daily.vercel.app/jobs/${encodeURIComponent(params.id)}`;
-
-    if (!job) {
-      return {
-        meta: [
-          { title: "Job Not Found — Hire Daily" },
-          { name: "robots", content: "noindex, nofollow" },
-        ],
-      };
-    }
-
-    const title = `${job.role} at ${job.companyName} — Hire Daily`;
-    const description = (job.description || `${job.role} at ${job.companyName} in ${job.location || "India"}.`)
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 160);
-
-    return {
-      meta: [
-        { title },
-        { name: "description", content: description },
-        { property: "og:title", content: title },
-        { property: "og:description", content: description },
-        { property: "og:url", content: canonical },
-      ],
-      links: [{ rel: "canonical", href: canonical }],
-    };
-  },
-  component: JobDetail,
+  loader: async () => ({ jobs: await fetchJobs() }),
+  component: JobsPage,
+  head: () => ({
+    meta: [
+      { title: "Browse Jobs — Hire Daily" },
+      {
+        name: "description",
+        content:
+          "Browse fresh job opportunities by role, location, experience and job type. Search Hire Daily listings and review source, verification and application details.",
+      },
+      { property: "og:title", content: "Browse Jobs — Hire Daily" },
+      {
+        property: "og:description",
+        content:
+          "Search fresh job opportunities by role, location, experience and job type.",
+      },
+    ],
+  }),
 });
 
-function cleanText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const text = value.trim();
-  if (!text || /^n\/?a$/i.test(text)) return null;
-  return text;
+const SORTS = ["Newest", "Oldest", "Deadline", "A → Z"] as const;
+type Sort = typeof SORTS[number];
+
+type BrowsePreset = {
+  label: string;
+  description: string;
+  icon: typeof Search;
+  test: (job: any) => boolean;
+};
+
+function normalize(value?: string | null) {
+  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
 }
 
-function splitList(value: unknown): string[] {
-  const text = cleanText(value);
-  if (!text) return [];
-
-  return text
-    .split(/[,\\n;•]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+function containsAny(value: string, words: string[]) {
+  return words.some((word) => value.includes(word));
 }
 
-function firstAvailable(...values: unknown[]): string | null {
-  for (const value of values) {
-    const text = cleanText(value);
-    if (text) return text;
-  }
-  return null;
+function isFresher(job: any) {
+  const text = `${job.experience ?? ""} ${job.category ?? ""} ${job.role ?? ""} ${job.description ?? ""}`.toLowerCase();
+  return containsAny(text, ["fresher", "freshers", "entry level", "entry-level", "0 year", "0-1", "0 – 1", "0–1", "graduate", "campus"]);
 }
 
-function JobDetail() {
-  const { job, allJobs } = Route.useLoaderData();
-  const link = typeof window !== "undefined" ? window.location.href : "";
+function isRemote(job: any) {
+  const text = `${job.location ?? ""} ${job.jobType ?? ""} ${job.description ?? ""}`.toLowerCase();
+  return containsAny(text, ["remote", "work from home", "wfh", "work-from-home"]);
+}
 
-  const share = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `${job.role} at ${job.companyName}`,
-          url: link,
-        });
-      } catch {}
-    } else {
-      await navigator.clipboard.writeText(link);
-      toast.success("Link copied");
+function isInternship(job: any) {
+  const text = `${job.jobType ?? ""} ${job.category ?? ""} ${job.role ?? ""}`.toLowerCase();
+  return containsAny(text, ["intern", "internship", "trainee"]);
+}
+
+const PRESETS: BrowsePreset[] = [
+  {
+    label: "Latest Jobs",
+    description: "Recently posted opportunities",
+    icon: Clock3,
+    test: () => true,
+  },
+  {
+    label: "Fresher Jobs",
+    description: "Entry-level and graduate roles",
+    icon: GraduationCap,
+    test: isFresher,
+  },
+  {
+    label: "Work From Home",
+    description: "Listings mentioning WFH or remote work",
+    icon: Laptop,
+    test: isRemote,
+  },
+  {
+    label: "Internship",
+    description: "Intern and trainee opportunities",
+    icon: GraduationCap,
+    test: isInternship,
+  },
+  {
+    label: "Remote",
+    description: "Remote-friendly listings",
+    icon: Laptop,
+    test: isRemote,
+  },
+  {
+    label: "Pune Jobs",
+    description: "Opportunities in Pune",
+    icon: MapPin,
+    test: (job) => normalize(job.location).includes("pune"),
+  },
+  {
+    label: "Mumbai Jobs",
+    description: "Opportunities in Mumbai",
+    icon: MapPin,
+    test: (job) => normalize(job.location).includes("mumbai"),
+  },
+  {
+    label: "Bangalore Jobs",
+    description: "Opportunities in Bangalore",
+    icon: MapPin,
+    test: (job) => containsAny(normalize(job.location), ["bangalore", "bengaluru"]),
+  },
+  {
+    label: "Data Analyst",
+    description: "Data and analytics roles",
+    icon: BriefcaseBusiness,
+    test: (job) =>
+      containsAny(
+        `${job.role ?? ""} ${job.category ?? ""} ${job.skills ?? ""}`.toLowerCase(),
+        ["data analyst", "data analytics", "business analyst", "power bi", "sql"],
+      ),
+  },
+  {
+    label: "Software Engineer",
+    description: "Software development roles",
+    icon: BriefcaseBusiness,
+    test: (job) =>
+      containsAny(
+        `${job.role ?? ""} ${job.category ?? ""} ${job.skills ?? ""}`.toLowerCase(),
+        ["software engineer", "software developer", "developer", "frontend", "backend", "full stack", "full-stack"],
+      ),
+  },
+  {
+    label: "Marketing",
+    description: "Marketing and growth roles",
+    icon: BriefcaseBusiness,
+    test: (job) =>
+      containsAny(
+        `${job.role ?? ""} ${job.category ?? ""} ${job.skills ?? ""}`.toLowerCase(),
+        ["marketing", "growth", "seo", "social media", "content marketing"],
+      ),
+  },
+];
+
+function JobsPage() {
+  const { jobs } = Route.useLoaderData();
+  const [q, setQ] = useState("");
+  const [category, setCategory] = useState("");
+  const [location, setLocation] = useState("");
+  const [jobType, setJobType] = useState("");
+  const [experience, setExperience] = useState("");
+  const [sort, setSort] = useState<Sort>("Newest");
+  const [showFilters, setShowFilters] = useState(false);
+  const [activeBrowse, setActiveBrowse] = useState("Latest Jobs");
+
+  const normalizeOption = (value?: string) =>
+    value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+
+  const formatText = (value?: string) =>
+    value?.trim().replace(/\s+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ?? "";
+
+  const options = useMemo(() => {
+    const unique = (values: (string | undefined)[]) =>
+      Array.from(
+        new Map(
+          values
+            .filter(Boolean)
+            .map((v) => [normalizeOption(v), formatText(v)]),
+        ).values(),
+      ).sort();
+
+    return {
+      categories: unique(jobs.map((j) => j.category)),
+      locations: unique(jobs.map((j) => j.location)),
+      types: unique(jobs.map((j) => j.jobType)),
+      exps: unique(jobs.map((j) => j.experience)),
+    };
+  }, [jobs]);
+
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase();
+
+    let list = jobs.filter((j) => {
+      if (query) {
+        const hay = `${j.role} ${j.companyName} ${j.location} ${j.skills} ${j.category} ${j.description}`.toLowerCase();
+        if (!hay.includes(query)) return false;
+      }
+
+      if (category && normalizeOption(j.category) !== normalizeOption(category)) return false;
+      if (location && normalizeOption(j.location) !== normalizeOption(location)) return false;
+      if (jobType && normalizeOption(j.jobType) !== normalizeOption(jobType)) return false;
+      if (experience && normalizeOption(j.experience) !== normalizeOption(experience)) return false;
+
+      return true;
+    });
+
+    if (activeBrowse !== "Latest Jobs") {
+      const preset = PRESETS.find((p) => p.label === activeBrowse);
+      if (preset) list = list.filter(preset.test);
     }
+
+    if (sort === "Newest") {
+      list = [...list].sort(
+        (a, b) =>
+          (getJobDateState(b.createdAt, b.updatedAt, b.lastDate).postedAt ?? 0) -
+          (getJobDateState(a.createdAt, a.updatedAt, a.lastDate).postedAt ?? 0),
+      );
+    } else if (sort === "Oldest") {
+      list = [...list].sort(
+        (a, b) =>
+          (getJobDateState(a.createdAt, a.updatedAt, a.lastDate).postedAt ?? 0) -
+          (getJobDateState(b.createdAt, b.updatedAt, b.lastDate).postedAt ?? 0),
+      );
+    } else if (sort === "A → Z") {
+      list = [...list].sort((a, b) => a.role.localeCompare(b.role));
+    } else {
+      list = [...list].sort((a, b) => (a.lastDate ?? "").localeCompare(b.lastDate ?? ""));
+    }
+
+    return list;
+  }, [jobs, q, category, location, jobType, experience, sort, activeBrowse]);
+
+  const anyFilter = Boolean(q || category || location || jobType || experience || activeBrowse !== "Latest Jobs");
+
+  const clear = () => {
+    setQ("");
+    setCategory("");
+    setLocation("");
+    setJobType("");
+    setExperience("");
+    setActiveBrowse("Latest Jobs");
   };
 
-  const copy = async () => {
-    await navigator.clipboard.writeText(link);
-    toast.success("Link copied");
+  const activatePreset = (label: string) => {
+    setActiveBrowse(label);
+    setQ("");
+    setCategory("");
+    setLocation("");
+    setJobType("");
+    setExperience("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  const skills = splitList(job.skills);
-  const description = cleanText(job.description);
-
-  const responsibilities = splitList(
-    (job as { responsibilities?: string }).responsibilities,
-  );
-
-  const eligibility = splitList(
-    (job as {
-      eligibility?: string;
-      qualifications?: string;
-      requirements?: string;
-    }).eligibility ??
-      (job as { qualifications?: string }).qualifications ??
-      (job as { requirements?: string }).requirements,
-  );
-
-  const howToApply = firstAvailable(
-    (job as { howToApply?: string }).howToApply,
-    job.applyLink ? "Apply through the official application link." : null,
-  );
-
-  const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
-  const remaining =
-    dateState.applyByTime === null
-      ? null
-      : Math.ceil((dateState.applyByTime - Date.now()) / (1000 * 60 * 60 * 24));
-  const urgent =
-    !dateState.expired &&
-    remaining !== null &&
-    remaining >= 0 &&
-    remaining <= 3;
-  const expired = dateState.expired;
-
-  const postedDate = job.createdAt
-    ? new Date(job.createdAt).toISOString()
-    : undefined;
-  const applicationDeadline = job.lastDate
-    ? new Date(job.lastDate).toISOString()
-    : undefined;
-
-  const jobPosting = {
-    "@context": "https://schema.org",
-    "@type": "JobPosting",
-    title: job.role,
-    description: description ?? `${job.role} at ${job.companyName}`,
-    ...(postedDate ? { datePosted: postedDate } : {}),
-    ...(applicationDeadline ? { validThrough: applicationDeadline } : {}),
-    ...(job.jobType ? { employmentType: job.jobType } : {}),
-    hiringOrganization: {
-      "@type": "Organization",
-      name: job.companyName,
-      ...(job.companyLogo ? { logo: job.companyLogo } : {}),
-    },
-    ...(job.location
-      ? {
-          jobLocation: {
-            "@type": "Place",
-            address: {
-              "@type": "PostalAddress",
-              addressLocality: job.location,
-            },
-          },
-        }
-      : {}),
-    ...(job.salary
-      ? {
-          baseSalary: {
-            "@type": "MonetaryAmount",
-            currency: "INR",
-            value: {
-              "@type": "QuantitativeValue",
-              value: job.salary,
-            },
-          },
-        }
-      : {}),
-    ...(job.experience
-      ? { experienceRequirements: job.experience }
-      : {}),
-    ...(job.skills ? { skills: job.skills } : {}),
-    directApply: Boolean(job.applyLink) && !expired,
-    url: `https://hire-daily.vercel.app/jobs/${encodeURIComponent(job.id)}`,
-  };
-
-  const overview = [
-    { icon: MapPin, label: "Location", text: job.location || "Not specified" },
-    { icon: IndianRupee, label: "Salary", text: job.salary || "Not specified" },
-    { icon: Briefcase, label: "Experience", text: job.experience || "Not specified" },
-    { icon: Clock, label: "Job type", text: job.jobType || "Not specified" },
-  ];
-
-  const dates = [
-    formatJobDate(dateState.postedAt)
-      ? { label: "Posted", value: formatJobDate(dateState.postedAt)! }
-      : null,
-    formatJobDate(dateState.updatedAt)
-      ? { label: "Updated", value: formatJobDate(dateState.updatedAt)! }
-      : null,
-    dateState.applyBy
-      ? {
-          label: "Apply by",
-          value: formatJobDate(dateState.applyBy) ?? dateState.applyBy,
-        }
-      : null,
-  ].filter(Boolean) as Array<{ label: string; value: string }>;
-
-  const related = (allJobs ?? [])
-    .filter((j) => j.id !== job.id && !getJobDateState(j.createdAt, j.updatedAt, j.lastDate).expired)
-    .map((candidate) => {
-      const role = (candidate.role || "").toLowerCase();
-      const company = (candidate.companyName || "").toLowerCase();
-      const location = (candidate.location || "").toLowerCase();
-      const candidateSkills = splitList(candidate.skills).map((s) => s.toLowerCase());
-      const currentSkills = skills.map((s) => s.toLowerCase());
-
-      const sharedSkills = candidateSkills.filter((skill) =>
-        currentSkills.includes(skill),
-      ).length;
-
-      let score = 0;
-      if (role === (job.role || "").toLowerCase()) score += 100;
-      if (company === (job.companyName || "").toLowerCase()) score += 30;
-      if (location && location === (job.location || "").toLowerCase()) score += 20;
-      score += sharedSkills * 10;
-
-      return { candidate, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-    .map(({ candidate }) => candidate);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 pb-28 lg:pb-8">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPosting) }}
-      />
+    <div className="mx-auto max-w-7xl px-4 py-8">
+      <header className="animate-fade-up">
+        <h1 className="text-4xl font-bold text-white md:text-5xl" style={{ fontFamily: "'Space Grotesk'" }}>
+          Browse <span className="text-gradient">Jobs</span>
+        </h1>
+        <p className="mt-2 text-white/60">{filtered.length} opportunities available</p>
+        <p className="mt-4 max-w-3xl text-sm leading-relaxed text-white/65">
+          Search Hire Daily's current job listings by role, location, experience and job type.
+          Each listing is organized so candidates can review available job information before applying.
+        </p>
+      </header>
 
-      <Link
-        to="/jobs"
-        className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-[#00e5ff]"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back to jobs
-      </Link>
-
-      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-        <div className="space-y-6 lg:col-span-2">
-          <div className="glass card-glow relative overflow-hidden rounded-3xl p-6 animate-fade-up md:p-10">
-            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#7c3aed]/10 blur-3xl" />
-
-            <div className="relative flex flex-col gap-6 md:flex-row md:items-start">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 to-white/[0.02] ring-1 ring-white/10">
-                {job.companyLogo ? (
-                  <img
-                    src={job.companyLogo}
-                    alt={job.companyName}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-3xl font-bold text-white/80">
-                    {job.companyName?.[0]}
-                  </span>
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <p className="text-sm text-white/70">{job.companyName}</p>
-                  <BadgeCheck className="h-4 w-4 shrink-0 text-[#00e5ff]" />
-                  {urgent && (
-                    <span className="ml-1 rounded-full bg-rose-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-300 ring-1 ring-rose-500/30">
-                      {remaining === 0 ? "Closes today" : `${remaining}d left`}
-                    </span>
-                  )}
-                </div>
-
-                <h1
-                  className="mt-1 text-3xl font-bold text-white md:text-4xl"
-                  style={{ fontFamily: "'Space Grotesk'" }}
-                >
-                  {job.role}
-                </h1>
-              </div>
-            </div>
-
-            {skills.length > 0 && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
-                  Required Skills
-                </h2>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {skills.map((s, i) => (
-                    <span
-                      key={i}
-                      className="rounded-lg bg-gradient-to-br from-[#00e5ff]/10 to-[#7c3aed]/10 px-3 py-1.5 text-xs text-white ring-1 ring-white/10"
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {description && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
-                  Job Description
-                </h2>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">
-                  {description}
-                </p>
-              </div>
-            )}
-
-            <JobValue
-              role={job.role}
-              company={job.companyName}
-              location={job.location}
-              experience={job.experience}
-              skills={skills}
-              description={description}
-            />
-
-            {responsibilities.length > 0 && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
-                  Key Responsibilities
-                </h2>
-                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
-                  {responsibilities.map((item, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-[#22d3ee]">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {eligibility.length > 0 && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
-                  Eligibility / Qualifications
-                </h2>
-                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/80">
-                  {eligibility.map((item, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-[#22d3ee]">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <JobEligibility
-              role={job.role}
-              location={job.location}
-              experience={job.experience}
-              skills={skills}
-            />
-
-            {howToApply && (
-              <div className="relative mt-8">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
-                  How to Apply
-                </h2>
-                <p className="mt-3 text-sm leading-relaxed text-white/80">
-                  {howToApply}
-                </p>
-              </div>
-            )}
-
-            <ApplicationGuidance applyLink={job.applyLink} />
-
-            <SourceVerification
-              sourceName={job.sourceName}
-              sourceUrl={job.sourceUrl}
-              sourceType={job.sourceType}
-              verificationStatus={job.verificationStatus}
-              verifiedAt={job.verifiedAt}
-              applyLink={job.applyLink}
-            />
-          </div>
+      <section className="mt-8">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-white" style={{ fontFamily: "'Space Grotesk'" }}>
+            Browse Jobs
+          </h2>
+          <p className="mt-1 text-sm text-white/50">
+            Start with a category or location, then refine the results with search and filters.
+          </p>
         </div>
 
-        <aside className="lg:col-span-1">
-          <div className="space-y-6 lg:sticky lg:top-24">
-            <div
-              className="glass card-glow rounded-3xl p-6 animate-fade-up"
-              style={{ animationDelay: "80ms" }}
-            >
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">
-                Job Overview
-              </h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {PRESETS.map((preset) => {
+            const active = activeBrowse === preset.label;
+            const count =
+              preset.label === "Latest Jobs"
+                ? jobs.length
+                : jobs.filter(preset.test).length;
 
-              <div className="mt-4 space-y-3">
-                {overview.map((o, i) => (
-                  <div key={i} className="flex items-center gap-2.5 text-sm text-white/80">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
-                      <o.icon className="h-3.5 w-3.5 text-[#22d3ee]" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[11px] uppercase tracking-wide text-white/40">
-                        {o.label}
-                      </span>
-                      <span>{o.text}</span>
-                    </span>
-                  </div>
-                ))}
-
-                {dates.map((d) => (
-                  <div key={d.label} className="flex items-center gap-2.5 text-sm text-white/80">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
-                      <CalendarClock className="h-3.5 w-3.5 text-[#22d3ee]" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[11px] uppercase tracking-wide text-white/40">
-                        {d.label}
-                      </span>
-                      <span>{d.value}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 hidden flex-col gap-2 lg:flex">
-                {expired ? (
-                  <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
-                    <div className="text-sm font-medium text-rose-300">
-                      Applications closed
-                    </div>
-                    <p className="mt-1 text-xs leading-relaxed text-white/50">
-                      This opportunity is no longer accepting applications. Explore the
-                      active related jobs below for other opportunities.
-                    </p>
-                  </div>
-                ) : job.applyLink ? (
-                  <a
-                    href={job.applyLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn-glow flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm"
-                  >
-                    Apply Now <ExternalLink className="h-4 w-4" />
-                  </a>
-                ) : (
-                  <span className="rounded-xl px-6 py-3 text-center text-sm text-white/50 ring-1 ring-white/10">
-                    Application link unavailable
+            return (
+              <button
+                key={preset.label}
+                onClick={() => activatePreset(preset.label)}
+                className={`glass card-glow rounded-2xl p-4 text-left transition ${
+                  active ? "ring-1 ring-[#00e5ff]/60" : "ring-1 ring-white/5 hover:ring-white/15"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5">
+                    <preset.icon className="h-4 w-4 text-[#00e5ff]" />
                   </span>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={share}
-                    className="btn-ghost-glow flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm"
-                  >
-                    <Share2 className="h-4 w-4" /> Share
-                  </button>
-                  <button
-                    onClick={copy}
-                    className="btn-ghost-glow flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm"
-                  >
-                    <Copy className="h-4 w-4" /> Copy link
-                  </button>
+                  <span className="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/50">
+                    {count}
+                  </span>
                 </div>
-              </div>
-            </div>
+                <div className="mt-4 text-sm font-semibold text-white">{preset.label}</div>
+                <div className="mt-1 text-xs leading-relaxed text-white/45">{preset.description}</div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="sticky top-20 z-30 mt-8 animate-fade-up">
+        <div className="glass-strong flex items-center gap-2 rounded-2xl p-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search company, role, location, skills…"
+              className="w-full rounded-xl bg-transparent py-3 pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none"
+            />
           </div>
-        </aside>
+          <button
+            onClick={() => setShowFilters((s) => !s)}
+            className="btn-ghost-glow flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            <span className="hidden sm:inline">Filters</span>
+          </button>
+        </div>
+
+        {showFilters && (
+          <div className="glass mt-2 grid grid-cols-2 gap-2 rounded-2xl p-3 md:grid-cols-5 animate-scale-in">
+            {[
+              { v: category, set: setCategory, opts: options.categories, label: "Category" },
+              { v: location, set: setLocation, opts: options.locations, label: "Location" },
+              { v: jobType, set: setJobType, opts: options.types, label: "Type" },
+              { v: experience, set: setExperience, opts: options.exps, label: "Experience" },
+            ].map((f, i) => (
+              <select
+                key={i}
+                value={f.v}
+                onChange={(e) => {
+                  f.set(e.target.value);
+                  setActiveBrowse("Latest Jobs");
+                }}
+                className="rounded-xl bg-white/5 px-3 py-2.5 text-sm text-white ring-1 ring-white/10 focus:outline-none focus:ring-[#00e5ff]/40"
+              >
+                <option value="">All {f.label}s</option>
+                {f.opts.map((o) => (
+                  <option key={o} value={o} className="bg-[#111827]">{o}</option>
+                ))}
+              </select>
+            ))}
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as Sort)}
+              className="rounded-xl bg-white/5 px-3 py-2.5 text-sm text-white ring-1 ring-white/10 focus:outline-none focus:ring-[#00e5ff]/40"
+            >
+              {SORTS.map((s) => (
+                <option key={s} value={s} className="bg-[#111827]">{s}</option>
+              ))}
+            </select>
+            {anyFilter && (
+              <button onClick={clear} className="btn-ghost-glow col-span-2 flex items-center justify-center gap-1 rounded-xl px-3 py-2.5 text-sm md:col-span-5">
+                <X className="h-4 w-4" /> Clear filters
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {related.length > 0 && (
-        <section className="mt-16">
-          <h2
-            className="text-2xl font-bold text-white"
-            style={{ fontFamily: "'Space Grotesk'" }}
-          >
-            Related Active Jobs
+      <div className="mt-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-white" style={{ fontFamily: "'Space Grotesk'" }}>
+            {activeBrowse}
           </h2>
-          <p className="mt-2 text-sm text-white/50">
-            Similar current opportunities you may want to review.
+          <p className="mt-1 text-xs text-white/45">
+            {filtered.length} matching {filtered.length === 1 ? "opportunity" : "opportunities"}
           </p>
-          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {related.map((j, i) => (
-              <JobCard key={j.id} job={j} index={i} />
+        </div>
+        {activeBrowse !== "Latest Jobs" && (
+          <button onClick={clear} className="inline-flex items-center gap-1 text-xs text-[#00e5ff] hover:text-white">
+            View all jobs <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      <div className="mt-5">
+        {filtered.length === 0 ? (
+          <div className="glass rounded-3xl p-16 text-center">
+            <Search className="mx-auto h-7 w-7 text-[#00e5ff]" />
+            <h3 className="mt-6 text-lg font-semibold text-white">No jobs found</h3>
+            <p className="mt-2 text-sm text-white/60">
+              This browse category does not currently have matching active listings.
+            </p>
+            <button onClick={clear} className="btn-ghost-glow mt-4 rounded-xl px-4 py-2 text-sm">
+              View all jobs
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((job, i) => (
+              <Fragment key={job.id}>
+                <JobCard job={job} index={i} />
+              </Fragment>
             ))}
           </div>
-        </section>
-      )}
-
-      <div
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#050816]/95 p-3 backdrop-blur-lg lg:hidden"
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
-      >
-        <div className="mx-auto flex max-w-6xl items-center gap-2">
-          {expired ? (
-            <span className="flex flex-1 items-center justify-center rounded-xl px-4 py-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
-              Applications closed
-            </span>
-          ) : job.applyLink ? (
-            <a
-              href={job.applyLink}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-glow flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-sm"
-            >
-              Apply Now <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          ) : (
-            <span className="flex flex-1 items-center justify-center rounded-xl px-4 py-3 text-sm text-white/50 ring-1 ring-white/10">
-              Application unavailable
-            </span>
-          )}
-
-          <button
-            onClick={share}
-            className="btn-ghost-glow flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-            aria-label="Share"
-          >
-            <Share2 className="h-4 w-4" />
-          </button>
-
-          <button
-            onClick={copy}
-            className="btn-ghost-glow flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-            aria-label="Copy link"
-          >
-            <Copy className="h-4 w-4" />
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
