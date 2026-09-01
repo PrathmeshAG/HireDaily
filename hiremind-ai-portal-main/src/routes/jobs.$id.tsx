@@ -5,11 +5,11 @@ import {
   ArrowRight,
   BadgeCheck,
   Copy,
+  Check,
   BriefcaseBusiness,
   CalendarDays,
   CheckCircle2,
   Clock3,
-  Check,
   ExternalLink,
   GraduationCap,
   IndianRupee,
@@ -19,13 +19,14 @@ import {
   Share2,
   Sparkles,
 } from "lucide-react";
-import { fetchJob } from "../lib/jobs";
-
+import { fetchJob, fetchJobs } from "../lib/jobs";
+import { JobCard } from "../components/job-card";
 
 export const Route = createFileRoute("/jobs/$id")({
   ssr: true,
   loader: async ({ params }) => ({
     job: await fetchJob(params.id),
+    allJobs: await fetchJobs(),
   }),
   component: JobDetailPage,
   head: ({ loaderData }) => {
@@ -127,7 +128,7 @@ function SectionTitle({
 }
 
 function JobDetailPage() {
-  const { job } = Route.useLoaderData();
+  const { job, allJobs } = Route.useLoaderData();
   const [copied, setCopied] = React.useState(false);
 
   if (!job) {
@@ -214,6 +215,48 @@ function JobDetailPage() {
       // Clipboard access may be unavailable in restricted browsers.
     }
   };
+
+  const normalizeRelatedValue = (value: unknown) =>
+    typeof value === "string"
+      ? value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+      : "";
+
+  const currentRole = normalizeRelatedValue(job.role);
+  const currentRoleTokens = new Set(
+    currentRole.split(/\s+/).filter((token) => token.length >= 3),
+  );
+
+  const relatedJobs = (allJobs ?? [])
+    .filter((candidate) => candidate.id !== job.id)
+    .map((candidate: NonNullable<typeof job>) => {
+      const role = normalizeRelatedValue(candidate.role);
+      const location = normalizeRelatedValue(candidate.location);
+      const skills = normalizeRelatedValue(candidate.skills);
+      let score = 0;
+
+      if (role === currentRole) score += 100;
+      else if (currentRole && role.includes(currentRole)) score += 80;
+      else if (role && currentRole.includes(role)) score += 70;
+
+      const roleTokens = role.split(/\s+/).filter((token) => token.length >= 3);
+      score += roleTokens.filter((token) => currentRoleTokens.has(token)).length * 20;
+
+      if (location && location === normalizeRelatedValue(job.location)) score += 8;
+      if (skills && job.skills && skills === normalizeRelatedValue(job.skills)) score += 5;
+
+      return { candidate, score };
+    })
+    .filter(({ score }: { score: number }) => score >= 20)
+    .sort(
+      (
+        a: { candidate: NonNullable<typeof job>; score: number },
+        b: { candidate: NonNullable<typeof job>; score: number },
+      ) =>
+        b.score - a.score ||
+        (b.candidate.createdAt ?? 0) - (a.candidate.createdAt ?? 0),
+    )
+    .slice(0, 3)
+    .map(({ candidate }) => candidate);
 
   return (
     <main className="relative mx-auto max-w-6xl px-3 py-5 pb-28 sm:px-4 sm:py-8 sm:pb-20">
@@ -706,6 +749,43 @@ function JobDetailPage() {
           </div>
         </div>
       )}
+      {relatedJobs.length > 0 && (
+        <section className="mt-10 sm:mt-12 md:mt-16">
+          <div className="mb-5 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#00e5ff]/70">
+                More opportunities
+              </p>
+              <h2 className="mt-1 text-2xl font-bold text-white sm:text-3xl" style={{ fontFamily: "'Space Grotesk'" }}>
+                Related Jobs
+              </h2>
+              <p className="mt-1 text-xs text-white/40 sm:text-sm">
+                Similar roles you may want to explore.
+              </p>
+            </div>
+            <Link
+              to="/jobs"
+              className="hidden items-center gap-1.5 text-xs font-semibold text-[#00e5ff] hover:text-white sm:inline-flex"
+            >
+              View all jobs <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {relatedJobs.map((relatedJob, index) => (
+              <JobCard key={relatedJob.id} job={relatedJob} index={index} />
+            ))}
+          </div>
+
+          <Link
+            to="/jobs"
+            className="btn-ghost-glow mt-4 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-semibold sm:hidden"
+          >
+            View all jobs <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </section>
+      )}
+
     </main>
   );
 }
