@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+
 import {
   ArrowRight,
   Search,
@@ -48,6 +49,12 @@ export const Route = createFileRoute("/")({
           "Explore current job opportunities, internships, fresher roles, remote jobs and practical career resources.",
       },
     ],
+    links: [
+    {
+      rel: "canonical",
+      href: "https://hire-daily.vercel.app/",
+    },
+  ],
   }),
 });
 
@@ -382,6 +389,20 @@ function Home() {
   ).length;
 
   return (
+     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "Hire Daily",
+            alternateName: "HireMind AI",
+            url: "https://hire-daily.vercel.app/",
+          }),
+        }}
+      />
+
     <div className="relative mx-auto max-w-7xl px-4">
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[760px] hd-grid" />
       <div className="pointer-events-none absolute left-[8%] top-[180px] -z-10 h-40 w-40 rounded-full bg-[#00e5ff]/10 blur-3xl hd-pulse-orb" />
@@ -1079,6 +1100,7 @@ function Home() {
         </div>
       </section>
     </div>
+    </>
   );
 }
 
