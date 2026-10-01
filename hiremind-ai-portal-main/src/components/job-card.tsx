@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { MapPin, Briefcase, IndianRupee, Clock, ArrowRight, BadgeCheck } from "lucide-react";
 import type { Job } from "../lib/firebase";
 import { getJobDateState } from "../lib/job-dates";
+import { getJobPath } from "../lib/job-url";
 
 export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
   const dateState = getJobDateState(job.createdAt, job.updatedAt, job.lastDate);
@@ -40,8 +41,7 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
           </div>
 
           <Link
-            to="/jobs/$id"
-            params={{ id: job.id }}
+            to={getJobPath(job)}
             className="mt-0.5 line-clamp-2 block text-lg font-semibold leading-tight text-white transition-colors group-hover:text-[#00e5ff]"
           >
             {job.role}
@@ -109,8 +109,7 @@ export function JobCard({ job, index = 0 }: { job: Job; index?: number }) {
 
       <div className="mt-5 flex items-center gap-2">
         <Link
-          to="/jobs/$id"
-          params={{ id: job.id }}
+          to={getJobPath(job)}
           className="btn-glow flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm"
         >
           Apply <ArrowRight className="h-3.5 w-3.5" />

@@ -47,9 +47,28 @@ export interface DataReader {
 }
 
 /** Builds the public Hire Daily job detail URL: `${base}/jobs/${jobId}`. */
-export function buildJobUrl(base: string, jobId: string): string {
+export function buildJobUrl(
+  base: string,
+  jobId: string,
+  location?: string | null,
+  jobTitle?: string | null,
+  company?: string | null,
+): string {
   const normalizedBase = base.replace(/\/+$/, "");
-  return `${normalizedBase}/jobs/${jobId}`;
+  if (!location || !jobTitle || !company) return `${normalizedBase}/jobs/${jobId}`;
+
+  const slugify = (value: string): string =>
+    value
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-{2,}/g, "-");
+
+  return `${normalizedBase}/jobs/${slugify(location) || "remote"}/${slugify(jobTitle) || "job"}/${slugify(company) || "company"}/${encodeURIComponent(jobId)}`;
 }
 
 function notMapped(mediaId: string, reason: string, jobId: string | null = null): PostJobResolution {
@@ -109,7 +128,7 @@ export async function resolvePostJobWithReader(
     mapped: true,
     mediaId,
     jobId,
-    jobUrl: buildJobUrl(publicBaseUrl, jobId),
+    jobUrl: buildJobUrl(publicBaseUrl, jobId, job.location, job.jobTitle, job.company),
     jobTitle,
     company: job.company,
     title: job.jobTitle,

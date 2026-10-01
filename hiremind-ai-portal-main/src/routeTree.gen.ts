@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as ServicesRouteImport } from './routes/services'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as HowWeVerifyJobsRouteImport } from './routes/how-we-verify-jobs'
@@ -20,8 +21,12 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as PreparationToolsResourcesRouteImport } from './routes/preparation.tools-resources'
+import { Route as PreparationStudyMaterialRouteImport } from './routes/preparation.study-material'
+import { Route as PreparationInterviewRouteImport } from './routes/preparation.interview'
 import { Route as JobsIdRouteImport } from './routes/jobs.$id'
 import { Route as AdminAutomationRouteImport } from './routes/admin.automation'
+import { Route as JobsLocationRoleCompanyIdRouteImport } from './routes/jobs.$location.$role.$company.$id'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -31,6 +36,11 @@ const TermsRoute = TermsRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
@@ -78,6 +88,23 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const PreparationToolsResourcesRoute =
+  PreparationToolsResourcesRouteImport.update({
+    id: '/preparation/tools-resources',
+    path: '/preparation/tools-resources',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PreparationStudyMaterialRoute =
+  PreparationStudyMaterialRouteImport.update({
+    id: '/preparation/study-material',
+    path: '/preparation/study-material',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PreparationInterviewRoute = PreparationInterviewRouteImport.update({
+  id: '/preparation/interview',
+  path: '/preparation/interview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JobsIdRoute = JobsIdRouteImport.update({
   id: '/jobs/$id',
   path: '/jobs/$id',
@@ -88,6 +115,12 @@ const AdminAutomationRoute = AdminAutomationRouteImport.update({
   path: '/automation',
   getParentRoute: () => AdminRoute,
 } as any)
+const JobsLocationRoleCompanyIdRoute =
+  JobsLocationRoleCompanyIdRouteImport.update({
+    id: '/jobs/$location/$role/$company/$id',
+    path: '/jobs/$location/$role/$company/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -97,12 +130,17 @@ export interface FileRoutesByFullPath {
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/services': typeof ServicesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/jobs/$id': typeof JobsIdRoute
+  '/preparation/interview': typeof PreparationInterviewRoute
+  '/preparation/study-material': typeof PreparationStudyMaterialRoute
+  '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin/': typeof AdminIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -111,12 +149,17 @@ export interface FileRoutesByTo {
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/services': typeof ServicesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/jobs/$id': typeof JobsIdRoute
+  '/preparation/interview': typeof PreparationInterviewRoute
+  '/preparation/study-material': typeof PreparationStudyMaterialRoute
+  '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin': typeof AdminIndexRoute
   '/jobs': typeof JobsIndexRoute
+  '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -127,12 +170,17 @@ export interface FileRoutesById {
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/services': typeof ServicesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/jobs/$id': typeof JobsIdRoute
+  '/preparation/interview': typeof PreparationInterviewRoute
+  '/preparation/study-material': typeof PreparationStudyMaterialRoute
+  '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin/': typeof AdminIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -144,12 +192,17 @@ export interface FileRouteTypes {
     | '/how-we-verify-jobs'
     | '/privacy'
     | '/robots.txt'
+    | '/services'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
     | '/jobs/$id'
+    | '/preparation/interview'
+    | '/preparation/study-material'
+    | '/preparation/tools-resources'
     | '/admin/'
     | '/jobs/'
+    | '/jobs/$location/$role/$company/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -158,12 +211,17 @@ export interface FileRouteTypes {
     | '/how-we-verify-jobs'
     | '/privacy'
     | '/robots.txt'
+    | '/services'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
     | '/jobs/$id'
+    | '/preparation/interview'
+    | '/preparation/study-material'
+    | '/preparation/tools-resources'
     | '/admin'
     | '/jobs'
+    | '/jobs/$location/$role/$company/$id'
   id:
     | '__root__'
     | '/'
@@ -173,12 +231,17 @@ export interface FileRouteTypes {
     | '/how-we-verify-jobs'
     | '/privacy'
     | '/robots.txt'
+    | '/services'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
     | '/jobs/$id'
+    | '/preparation/interview'
+    | '/preparation/study-material'
+    | '/preparation/tools-resources'
     | '/admin/'
     | '/jobs/'
+    | '/jobs/$location/$role/$company/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -189,10 +252,15 @@ export interface RootRouteChildren {
   HowWeVerifyJobsRoute: typeof HowWeVerifyJobsRoute
   PrivacyRoute: typeof PrivacyRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
+  ServicesRoute: typeof ServicesRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   JobsIdRoute: typeof JobsIdRoute
+  PreparationInterviewRoute: typeof PreparationInterviewRoute
+  PreparationStudyMaterialRoute: typeof PreparationStudyMaterialRoute
+  PreparationToolsResourcesRoute: typeof PreparationToolsResourcesRoute
   JobsIndexRoute: typeof JobsIndexRoute
+  JobsLocationRoleCompanyIdRoute: typeof JobsLocationRoleCompanyIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -209,6 +277,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/robots.txt': {
@@ -274,6 +349,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/preparation/tools-resources': {
+      id: '/preparation/tools-resources'
+      path: '/preparation/tools-resources'
+      fullPath: '/preparation/tools-resources'
+      preLoaderRoute: typeof PreparationToolsResourcesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preparation/study-material': {
+      id: '/preparation/study-material'
+      path: '/preparation/study-material'
+      fullPath: '/preparation/study-material'
+      preLoaderRoute: typeof PreparationStudyMaterialRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preparation/interview': {
+      id: '/preparation/interview'
+      path: '/preparation/interview'
+      fullPath: '/preparation/interview'
+      preLoaderRoute: typeof PreparationInterviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/jobs/$id': {
       id: '/jobs/$id'
       path: '/jobs/$id'
@@ -287,6 +383,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/automation'
       preLoaderRoute: typeof AdminAutomationRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/jobs/$location/$role/$company/$id': {
+      id: '/jobs/$location/$role/$company/$id'
+      path: '/jobs/$location/$role/$company/$id'
+      fullPath: '/jobs/$location/$role/$company/$id'
+      preLoaderRoute: typeof JobsLocationRoleCompanyIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -311,10 +414,15 @@ const rootRouteChildren: RootRouteChildren = {
   HowWeVerifyJobsRoute: HowWeVerifyJobsRoute,
   PrivacyRoute: PrivacyRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
+  ServicesRoute: ServicesRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   JobsIdRoute: JobsIdRoute,
+  PreparationInterviewRoute: PreparationInterviewRoute,
+  PreparationStudyMaterialRoute: PreparationStudyMaterialRoute,
+  PreparationToolsResourcesRoute: PreparationToolsResourcesRoute,
   JobsIndexRoute: JobsIndexRoute,
+  JobsLocationRoleCompanyIdRoute: JobsLocationRoleCompanyIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -13,6 +13,7 @@ import { EmptyState } from "../components/empty-state";
 import { TableSkeleton } from "../components/table-skeleton";
 import { PaginationBar } from "../components/pagination-bar";
 import { StatusBadge } from "../components/status-badge";
+import { getJobPath } from "../../../lib/job-url";
 
 export function PostMappingPage() {
   const qc = useQueryClient();
@@ -198,7 +199,7 @@ export function PostMappingPage() {
                           <Instagram className="h-3.5 w-3.5" />
                         </a>
                         <a
-                          href={`/jobs/${m.jobId}`}
+                          href={jobs?.find((j) => j.id === m.jobId) ? getJobPath(jobs.find((j) => j.id === m.jobId)!) : undefined}
                           target="_blank" rel="noreferrer"
                           aria-label="Open job detail page"
                           className="btn-ghost-glow rounded-lg p-1.5"
@@ -312,7 +313,7 @@ function MappingDialog({
 
   const selectedJob = jobs.find((j) => j.id === jobId);
   const selectedMedia = media.find((item) => item.id === mediaId);
-  const jobDetailUrl = jobId && typeof window !== "undefined" ? `${window.location.origin}/jobs/${jobId}` : "";
+  const jobDetailUrl = jobId && typeof window !== "undefined" ? `${window.location.origin}${selectedJob ? getJobPath(selectedJob) : `/jobs/${encodeURIComponent(jobId)}`}` : "";
   const officialApplyUrl = selectedJob?.applyLink ?? "";
 
   const availableMedia = media.filter((item) => {

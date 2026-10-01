@@ -28,7 +28,7 @@ export const Route = createFileRoute("/jobs/$id")({
     job: await fetchJob(params.id),
     allJobs: await fetchJobs(),
   }),
-  component: JobDetailPage,
+  component: LegacyJobDetailPage,
   head: ({ loaderData }) => {
     const job = loaderData?.job;
 
@@ -127,8 +127,18 @@ function SectionTitle({
   );
 }
 
-function JobDetailPage() {
+function LegacyJobDetailPage() {
   const { job, allJobs } = Route.useLoaderData();
+  return <JobDetailPage job={job} allJobs={allJobs} />;
+}
+
+export function JobDetailPage({
+  job,
+  allJobs,
+}: {
+  job: Awaited<ReturnType<typeof fetchJob>>;
+  allJobs: Awaited<ReturnType<typeof fetchJobs>>;
+}) {
   const [copied, setCopied] = React.useState(false);
 
   if (!job) {

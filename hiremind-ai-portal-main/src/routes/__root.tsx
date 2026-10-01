@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 
 import appCss from "../styles.css?url";
@@ -133,6 +133,11 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
         <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("hire-daily-theme");document.documentElement.classList.toggle("dark",t!=="light")}catch(e){document.documentElement.classList.add("dark")}})();`,
+          }}
+        />
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8398369566821360"
           crossOrigin="anonymous"
@@ -149,6 +154,23 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") return "dark";
+    try {
+      return localStorage.getItem("hire-daily-theme") === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  useEffect(() => {
+    const onThemeChange = (event: Event) => {
+      const nextTheme = (event as CustomEvent<"dark" | "light">).detail;
+      if (nextTheme === "dark" || nextTheme === "light") setTheme(nextTheme);
+    };
+    window.addEventListener("hire-daily-theme-change", onThemeChange);
+    return () => window.removeEventListener("hire-daily-theme-change", onThemeChange);
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -160,15 +182,23 @@ function RootComponent() {
         </main>
         <Footer />
         <Toaster
-          theme="dark"
+          theme={theme}
           position="bottom-right"
           toastOptions={{
-            style: {
-              background: "rgba(17,24,39,0.9)",
-              backdropFilter: "blur(12px)",
-              border: "1px solid rgba(0,229,255,0.2)",
-              color: "#fff",
-            },
+            style:
+              theme === "dark"
+                ? {
+                    background: "rgba(17,24,39,0.9)",
+                    backdropFilter: "blur(12px)",
+                    border: "1px solid rgba(0,229,255,0.2)",
+                    color: "#fff",
+                  }
+                : {
+                    background: "rgba(255,255,255,0.96)",
+                    backdropFilter: "blur(12px)",
+                    border: "1px solid rgba(15,23,42,0.1)",
+                    color: "#111827",
+                  },
           }}
         />
       </AuthProvider>

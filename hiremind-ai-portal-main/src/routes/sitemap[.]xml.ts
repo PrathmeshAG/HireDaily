@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { fetchJobs } from "../lib/jobs";
 import { getJobDateState } from "../lib/job-dates";
+import { getJobPath } from "../lib/job-url";
 
 const BASE_URL = "https://hire-daily.vercel.app";
 
@@ -46,7 +47,7 @@ export const Route = createFileRoute("/sitemap.xml")({
         const jobEntries: SitemapEntry[] = jobs
           .filter((job) => !getJobDateState(job.createdAt, job.updatedAt, job.lastDate, now).expired)
           .map((job) => ({
-            path: `/jobs/${encodeURIComponent(job.id)}`,
+            path: getJobPath(job),
             changefreq: "daily",
             priority: "0.8",
             lastModified: job.updatedAt ?? job.createdAt ?? undefined,

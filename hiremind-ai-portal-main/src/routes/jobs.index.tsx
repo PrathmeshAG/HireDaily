@@ -20,6 +20,7 @@ import {
 import { fetchJobs } from "../lib/jobs";
 import { getJobDateState } from "../lib/job-dates";
 import { JobCard, JobCardSkeleton } from "../components/job-card";
+import { getJobPath } from "../lib/job-url";
 
 export const Route = createFileRoute("/jobs/")({
   ssr: true,
@@ -642,7 +643,7 @@ function JobsPage() {
                   <button
                     key={job.id}
                     onClick={() => {
-                      window.location.href = `/jobs/${encodeURIComponent(job.id)}`;
+                      window.location.href = getJobPath(job);
                     }}
                     className="group flex min-w-[285px] items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-left md:min-w-0 ring-1 ring-white/[0.06] transition hover:bg-white/[0.05] hover:ring-white/15"
                   >
@@ -696,7 +697,7 @@ function JobsPage() {
                   <button
                     key={job.id}
                     onClick={() => {
-                      window.location.href = `/jobs/${encodeURIComponent(job.id)}`;
+                      window.location.href = getJobPath(job);
                     }}
                     className="group flex min-w-[285px] items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-left md:min-w-0 ring-1 ring-white/[0.06] transition hover:bg-white/[0.05] hover:ring-white/15"
                   >
