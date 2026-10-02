@@ -3,20 +3,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight, BookOpen, Clock, FileText, FlaskConical, Map, Search, Sparkles, X,
 } from "lucide-react";
+import { DEEP } from "../routes/study-deep"
+import { DETAILED, EXTRA_LIVE, type Content, type Kind, type Page, type Resource } from "../routes/study-content";
 
 export const Route = createFileRoute("/preparation/study-material")({
   component: StudyMaterialPage,
 });
-
-type Kind = "notes" | "cheat" | "roadmap" | "project";
-type Content =
-  | { kind: "steps"; items: [string, string, string][] } // title, detail, duration
-  | { kind: "table"; head: [string, string]; rows: [string, string][] }
-  | { kind: "points"; items: string[] };
-type Resource = {
-  id: string; type: Kind; domain: string; title: string; desc: string;
-  level: "Beginner" | "Intermediate" | "Advanced"; time: string; content?: Content;
-};
 
 const TYPES: { id: Kind; label: string; icon: typeof FileText; chip: string; bar: string; blurb: string }[] = [
   { id: "notes", label: "Notes", icon: FileText, blurb: "Concept notes in simple language", chip: "bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300", bar: "from-cyan-400 to-sky-500" },
@@ -27,7 +19,7 @@ const TYPES: { id: Kind; label: string; icon: typeof FileText; chip: string; bar
 
 const DOMAINS = ["All", "Software Development", "Data Analyst", "Data Science", "Cyber Security", "Cloud", "DevOps", "QA & Testing", "Business Analyst", "HR & Career"];
 
-const LIVE: Resource[] = [
+const BASE_LIVE: Resource[] = [
   {
     id: "rm-analyst", type: "roadmap", domain: "Data Analyst", title: "Data Analyst Roadmap", level: "Beginner", time: "4-5 months",
     desc: "From Excel and SQL to dashboards and a job-ready portfolio.",
@@ -134,6 +126,12 @@ const LIVE: Resource[] = [
   },
 ];
 
+const withSections = (r: Resource): Resource =>
+  r.sections ? r : { ...r, sections: r.content ? [{ title: "Overview", content: r.content }] : undefined };
+const LIVE: Resource[] = [...BASE_LIVE.map((r) => ({ ...r, ...(DETAILED[r.id] ?? {}) })), ...EXTRA_LIVE]
+  .map((r) => ({ ...r, ...(DEEP[r.id] ?? {}) }))
+  .map(withSections);
+
 const soon = (type: Kind, domain: string, title: string, desc: string): Resource =>
   ({ id: `${type}-${title}`, type, domain, title, desc, level: "Beginner", time: "Coming soon" });
 
@@ -165,6 +163,7 @@ function StudyMaterialPage() {
   const [type, setType] = useState<"all" | Kind>("all");
   const [domain, setDomain] = useState("All");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [tab, setTab] = useState(0);
 
   const q = query.trim().toLowerCase();
   const list = useMemo(
@@ -240,7 +239,7 @@ function StudyMaterialPage() {
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {list.map((r) => {
-              const t = typeOf(r.type); const Icon = t.icon; const live = !!r.content;
+              const t = typeOf(r.type); const Icon = t.icon; const live = !!r.sections;
               return (
                 <article key={r.id} className={`flex flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.035] ${live ? "transition hover:-translate-y-1 hover:shadow-2xl" : ""}`}>
                   <div className={`h-1.5 bg-gradient-to-r ${t.bar} ${live ? "" : "opacity-40"}`} />
@@ -255,7 +254,7 @@ function StudyMaterialPage() {
                       <span>{r.domain}</span>
                       {live && <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{r.time}</span>}
                     </div>
-                    <button type="button" disabled={!live} onClick={() => setOpenId(r.id)}
+                    <button type="button" disabled={!live} onClick={() => { setOpenId(r.id); setTab(0); }}
                       className={`mt-5 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold ${live ? "bg-slate-900 text-white hover:bg-slate-700 dark:bg-violet-400 dark:text-slate-950 dark:hover:bg-violet-300" : "cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-white/5 dark:text-white/35"}`}>
                       {live ? <>Open <ArrowRight className="h-4 w-4" /></> : "Notify me later"}
                     </button>
@@ -278,7 +277,7 @@ function StudyMaterialPage() {
       {open && (
         <div role="dialog" aria-modal="true" aria-label={open.title} onClick={() => setOpenId(null)}
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-6">
-          <div onClick={(e) => e.stopPropagation()} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl dark:bg-[#0a1024] sm:rounded-3xl sm:p-8">
+          <div onClick={(e) => e.stopPropagation()} className="max-h-[88vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl dark:bg-[#0a1024] sm:rounded-3xl sm:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-violet-700 dark:text-violet-300">{typeOf(open.type).label} · {open.domain}</p>
@@ -287,51 +286,137 @@ function StudyMaterialPage() {
               <button onClick={() => setOpenId(null)} aria-label="Close" className="rounded-full p-2 hover:bg-slate-100 dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
             </div>
 
-            <div className="mt-6">
-              {open.content?.kind === "steps" && (
-                <ol className="space-y-5 border-l-2 border-slate-200 pl-6 dark:border-white/10">
-                  {open.content.items.map(([title, detail, dur], i) => (
-                    <li key={title} className="relative">
-                      <span className="absolute -left-[37px] flex h-7 w-7 items-center justify-center rounded-full bg-violet-500 text-xs font-bold text-white">{i + 1}</span>
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <h3 className="font-bold">{title}</h3>
-                        <span className="text-xs font-semibold text-slate-500 dark:text-white/45">{dur}</span>
-                      </div>
-                      <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-white/60">{detail}</p>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {open.content?.kind === "table" && (
-                <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 dark:bg-white/5">
-                      <tr>{open.content.head.map((h) => <th key={h} className="px-4 py-3 font-bold">{h}</th>)}</tr>
-                    </thead>
-                    <tbody>
-                      {open.content.rows.map(([a, b]) => (
-                        <tr key={a} className="border-t border-slate-100 dark:border-white/10">
-                          <td className="px-4 py-3 font-medium">{a}</td>
-                          <td className="px-4 py-3 font-mono text-xs text-violet-700 dark:text-violet-300">{b}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {open.content?.kind === "points" && (
-                <ul className="space-y-3">
-                  {open.content.items.map((p) => (
-                    <li key={p} className="flex gap-3 text-[15px] leading-7 text-slate-600 dark:text-white/65">
-                      <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />{p}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {open.sections && open.sections.length > 1 && (
+              <div role="tablist" className="mt-6 flex gap-2 overflow-x-auto pb-1">
+                {open.sections.map((s, i) => (
+                  <button key={s.title} role="tab" aria-selected={tab === i} onClick={() => setTab(i)}
+                    className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold transition ${tab === i ? "border-violet-500 bg-violet-500 text-white" : "border-slate-200 text-slate-600 hover:border-slate-400 dark:border-white/10 dark:text-white/60"}`}>
+                    {s.title}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="mt-6">{open.sections && <Body key={`${open.id}-${tab}`} c={open.sections[Math.min(tab, open.sections.length - 1)].content} />}</div>
           </div>
         </div>
       )}
     </main>
+  );
+}
+
+const chip = "rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-white/10 dark:text-white/65";
+
+function Body({ c }: { c: Content }) {
+  if (c.kind === "steps")
+    return (
+      <ol className="space-y-5 border-l-2 border-slate-200 pl-6 dark:border-white/10">
+        {c.items.map(([title, detail, dur], i) => (
+          <li key={title} className="relative">
+            <span className="absolute -left-[37px] flex h-7 w-7 items-center justify-center rounded-full bg-violet-500 text-xs font-bold text-white">{i + 1}</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-bold">{title}</h3><span className="text-xs font-semibold text-slate-500 dark:text-white/45">{dur}</span></div>
+            <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-white/60">{detail}</p>
+          </li>
+        ))}
+      </ol>
+    );
+  if (c.kind === "table")
+    return (
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 dark:bg-white/5"><tr>{c.head.map((h) => <th key={h} className="px-4 py-3 font-bold">{h}</th>)}</tr></thead>
+          <tbody>{c.rows.map(([a, b]) => (
+            <tr key={a} className="border-t border-slate-100 dark:border-white/10">
+              <td className="px-4 py-3 font-medium">{a}</td>
+              <td className="px-4 py-3 font-mono text-xs text-violet-700 dark:text-violet-300">{b}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    );
+  if (c.kind === "points")
+    return (
+      <ul className="space-y-3">
+        {c.items.map((p) => (
+          <li key={p} className="flex gap-3 text-[15px] leading-7 text-slate-600 dark:text-white/65">
+            <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />{p}
+          </li>
+        ))}
+      </ul>
+    );
+  if (c.kind === "pages") return <Pages items={c.items} />;
+  if (c.kind === "roadmap")
+    return (
+      <ol className="space-y-6 border-l-2 border-slate-200 pl-7 dark:border-white/10">
+        {c.items.map((ph, i) => (
+          <li key={ph.title} className="relative">
+            <span className="absolute -left-[41px] flex h-8 w-8 items-center justify-center rounded-full bg-violet-500 text-sm font-bold text-white">{i + 1}</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-lg font-bold">{ph.title}</h3>
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">{ph.time}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">{ph.topics.map((t) => <span key={t} className={chip}>{t}</span>)}</div>
+            <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-white/60"><b className="text-slate-900 dark:text-white">Practice:</b> {ph.practice}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-white/60"><b className="text-slate-900 dark:text-white">Goal:</b> {ph.goal}</p>
+          </li>
+        ))}
+      </ol>
+    );
+  return (
+    <div className="space-y-5">
+      {c.items.map((p) => (
+        <div key={p.name} className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
+          <h3 className="text-lg font-bold">{p.name}</h3>
+          <p className="mt-1 text-sm text-slate-600 dark:text-white/60">{p.about}</p>
+          <p className="mt-4 text-xs font-bold text-slate-500 dark:text-white/45">Tools used</p>
+          <div className="mt-2 flex flex-wrap gap-2">{p.tools.map((t) => <span key={t} className={chip}>{t}</span>)}</div>
+          <p className="mt-4 text-xs font-bold text-slate-500 dark:text-white/45">How to build</p>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-6 text-slate-600 dark:text-white/65">{p.steps.map((s) => <li key={s}>{s}</li>)}</ol>
+          <p className="mt-4 text-sm font-semibold text-violet-700 dark:text-violet-300">{p.outcome}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Pages({ items }: { items: Page[] }) {
+  const [i, setI] = useState(0);
+  const page = items[i];
+  const go = (n: number) => setI(Math.max(0, Math.min(items.length - 1, n)));
+  return (
+    <div className="grid gap-6 sm:grid-cols-[190px_1fr]">
+      <nav aria-label="Pages" className="flex gap-2 overflow-x-auto sm:flex-col sm:overflow-visible">
+        {items.map((it, n) => (
+          <button key={it.title} onClick={() => setI(n)} aria-current={n === i}
+            className={`shrink-0 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${n === i ? "bg-violet-500 text-white" : "text-slate-600 hover:bg-slate-100 dark:text-white/60 dark:hover:bg-white/10"}`}>
+            {it.title}
+          </button>
+        ))}
+      </nav>
+      <div className="min-w-0">
+        <h3 className="text-xl font-black">{page.title.replace(/^\d+\.\s*/, "")}</h3>
+        <div className="mt-4 space-y-4">
+          {page.blocks.map((b, k) => {
+            if (b.t === "p") return <p key={k} className="text-[15px] leading-7 text-slate-600 dark:text-white/65">{b.text}</p>;
+            if (b.t === "h") return <h4 key={k} className="pt-2 text-sm font-bold">{b.text}</h4>;
+            if (b.t === "code") return <pre key={k} className="overflow-x-auto rounded-xl bg-slate-900 p-4 font-mono text-xs leading-6 text-cyan-100 dark:bg-black/40"><code>{b.text}</code></pre>;
+            if (b.t === "tip") return <p key={k} className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100"><b>Tip:</b> {b.text}</p>;
+            return (
+              <ul key={k} className="space-y-2">
+                {b.items.map((x) => (
+                  <li key={x} className="flex gap-3 text-[15px] leading-7 text-slate-600 dark:text-white/65">
+                    <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />{x}
+                  </li>
+                ))}
+              </ul>
+            );
+          })}
+        </div>
+        <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-white/10">
+          <button onClick={() => go(i - 1)} disabled={i === 0} className="rounded-xl px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-30 dark:text-white dark:hover:bg-white/10">Previous</button>
+          <span className="text-xs text-slate-500 dark:text-white/45">{i + 1} of {items.length}</span>
+          <button onClick={() => go(i + 1)} disabled={i === items.length - 1} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-30 dark:bg-violet-400 dark:text-slate-950">Next</button>
+        </div>
+      </div>
+    </div>
   );
 }

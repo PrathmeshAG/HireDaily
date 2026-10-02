@@ -64,6 +64,19 @@ function Photo({ src, alt, className = "" }: { src: string; alt: string; classNa
 const cv = (o: Record<string, string | number>) => o as CSSProperties;
 const prefersReduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** Reactive media query (false on the server, correct after mount). */
+function useMedia(query: string) {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMatch(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return match;
+}
+
 function useInView<T extends Element>(threshold = 0.15) {
   const ref = useRef<T>(null);
   const [seen, setSeen] = useState(false);
@@ -200,7 +213,6 @@ type StackStep = { icon: typeof Search; title: string; body: string; image: stri
 /** Sticky cards that pile on top of each other; earlier cards shrink and dim as the next one lands. */
 function StackSteps({ steps }: { steps: StackStep[] }) {
   const wrap = useRef<HTMLDivElement>(null);
-  const OFF = 26;
   useEffect(() => {
     const el = wrap.current;
     if (!el || prefersReduced()) return;
@@ -208,11 +220,12 @@ function StackSteps({ steps }: { steps: StackStep[] }) {
     let raf = 0;
     const update = () => {
       raf = 0;
+      const off = cards.length > 1 ? parseFloat(getComputedStyle(cards[1]).top) - parseFloat(getComputedStyle(cards[0]).top) || 16 : 16;
       cards.forEach((c, i) => {
         const next = cards[i + 1];
         let o = 0;
         if (next) {
-          const gap = next.getBoundingClientRect().top - c.getBoundingClientRect().top - OFF;
+          const gap = next.getBoundingClientRect().top - c.getBoundingClientRect().top - off;
           o = Math.min(1, Math.max(0, 1 - gap / c.offsetHeight));
         }
         c.style.setProperty("--o", o.toFixed(3));
@@ -236,13 +249,13 @@ function StackSteps({ steps }: { steps: StackStep[] }) {
       {steps.map((st, i) => {
         const Icon = st.icon;
         return (
-          <div key={st.title} data-stack className="sticky mb-10" style={{ top: `${96 + i * OFF}px`, transform: `rotate(${i % 2 ? 0.7 : -0.7}deg)` }}>
+          <div key={st.title} data-stack className="hd-stack sticky mb-8 md:mb-10" style={cv({ "--i": i })}>
             <div
               className="hd-stack-in grid overflow-hidden rounded-3xl border border-white/10 shadow-2xl md:min-h-[22rem] md:grid-cols-[1.05fr_1fr]"
               style={{ background: `linear-gradient(135deg, hsl(${st.hue} 60% 15%), #0a0f1f 65%)` }}
             >
-              <div className="relative flex flex-col justify-center p-8 md:p-12">
-                <span className="pointer-events-none absolute right-6 top-2 select-none text-[7rem] font-extrabold leading-none md:text-[9rem]" style={{ color: "transparent", WebkitTextStroke: "1px rgba(255,255,255,.14)" }}>
+              <div className="relative flex flex-col justify-center p-6 sm:p-8 md:p-12">
+                <span className="pointer-events-none absolute right-6 top-2 select-none text-[5rem] font-extrabold leading-none sm:text-[7rem] md:text-[9rem]" style={{ color: "transparent", WebkitTextStroke: "1px rgba(255,255,255,.14)" }}>
                   {i + 1}
                 </span>
                 <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[#00e5ff] text-slate-950 shadow-lg shadow-cyan-500/20">
@@ -256,9 +269,9 @@ function StackSteps({ steps }: { steps: StackStep[] }) {
                 </h3>
                 <p className="relative mt-3 max-w-md text-sm leading-7 text-white/60 md:text-base">{st.body}</p>
               </div>
-              <div className="relative min-h-[14rem] overflow-hidden">
+              <div className="relative min-h-[11rem] overflow-hidden sm:min-h-[14rem]">
                 <Photo src={st.image} alt={st.title} className="hd-ken absolute inset-0 h-full w-full" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0f1f] via-[#0a0f1f]/30 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#0a0f1f] via-[#0a0f1f]/20 to-transparent md:bg-gradient-to-r md:via-[#0a0f1f]/30" />
               </div>
             </div>
           </div>
@@ -268,31 +281,36 @@ function StackSteps({ steps }: { steps: StackStep[] }) {
   );
 }
 
-/** Pinned section: vertical scroll drives a horizontal rail of cards. */
+/** Desktop: pinned section where vertical scroll drives a horizontal rail. Touch / small screens: native swipe rail with snap. */
 function HRail({ items, head }: { items: typeof BROWSE_ITEMS; head: ReactNode }) {
   const outer = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
-  const [reduced, setReduced] = useState(false);
+  const wide = useMedia("(min-width: 1024px) and (hover: hover) and (pointer: fine)");
+  const calm = useMedia("(prefers-reduced-motion: reduce)");
+  const pinned = wide && !calm;
+
   useEffect(() => {
-    if (prefersReduced()) {
-      setReduced(true);
-      return;
-    }
     const o = outer.current;
     const t = track.current;
     if (!o || !t) return;
+    if (!pinned) {
+      o.style.height = "";
+      t.style.transform = "";
+      return;
+    }
+    const vh = () => document.documentElement.clientHeight || window.innerHeight;
     let raf = 0;
     let dist = 0;
     const update = () => {
       raf = 0;
-      const total = Math.max(1, o.offsetHeight - window.innerHeight);
+      const total = Math.max(1, o.offsetHeight - vh());
       const pr = Math.min(1, Math.max(0, -o.getBoundingClientRect().top / total));
       t.style.transform = `translate3d(${-pr * dist}px,0,0)`;
       o.style.setProperty("--hp", pr.toFixed(4));
     };
     const measure = () => {
       dist = Math.max(0, t.scrollWidth - (t.parentElement as HTMLElement).clientWidth);
-      o.style.height = `${dist + window.innerHeight}px`;
+      o.style.height = `${dist + vh()}px`;
       update();
     };
     const on = () => {
@@ -306,32 +324,44 @@ function HRail({ items, head }: { items: typeof BROWSE_ITEMS; head: ReactNode })
       window.removeEventListener("resize", measure);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [pinned]);
 
   return (
     <div ref={outer} className="relative">
-      <div className={reduced ? "" : "sticky top-0 flex h-screen flex-col justify-center overflow-hidden pt-20"}>
+      <div className={pinned ? "sticky top-0 flex h-[100svh] flex-col justify-center overflow-hidden pt-20" : ""}>
         {head}
-        <div className={reduced ? "overflow-x-auto pb-4" : "overflow-hidden"}>
-          <div ref={track} className="flex items-start gap-5 will-change-transform">
+        <div
+          className={
+            pinned
+              ? "overflow-hidden"
+              : "-mx-4 snap-x snap-mandatory overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          }
+        >
+          <div ref={track} className={`flex items-start will-change-transform ${pinned ? "gap-5" : "gap-3 sm:gap-4"}`}>
             {items.map(([label, body, Icon], i) => (
               <a
                 key={label}
                 href={`/jobs?browse=${encodeURIComponent(label)}`}
-                className="hd-rail-card group relative flex h-[21rem] w-[16.5rem] shrink-0 flex-col justify-between overflow-hidden rounded-3xl border border-white/10 p-6 md:w-[18.5rem]"
-                style={{ background: `linear-gradient(160deg, hsl(${(i * 47 + 185) % 360} 65% 17%), #0a0f1f 72%)`, marginTop: i % 2 ? "2.5rem" : 0 }}
+                className={`hd-rail-card group relative flex shrink-0 flex-col justify-between overflow-hidden rounded-3xl border border-white/10 p-5 sm:p-6 ${
+                  pinned ? "h-[21rem] w-[18.5rem]" : "h-[16.5rem] w-[72vw] max-w-[17rem] snap-start sm:h-[18rem] sm:w-[16rem]"
+                }`}
+                style={{ background: `linear-gradient(160deg, hsl(${(i * 47 + 185) % 360} 65% 17%), #0a0f1f 72%)`, marginTop: pinned && i % 2 ? "2.5rem" : 0 }}
               >
                 <Icon className="pointer-events-none absolute -right-6 -top-6 h-40 w-40 text-white/[0.04]" />
                 <div
-                  className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 backdrop-blur"
-                  style={{ transform: `translate3d(calc((0.5 - var(--hp, 0)) * ${((i % 3) - 1) * 70}px), 0, 0) rotate(calc((var(--hp, 0) - 0.5) * ${i % 2 ? 24 : -24}deg))` }}
+                  className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur sm:h-16 sm:w-16"
+                  style={
+                    pinned
+                      ? { transform: `translate3d(calc((0.5 - var(--hp, 0)) * ${((i % 3) - 1) * 70}px), 0, 0) rotate(calc((var(--hp, 0) - 0.5) * ${i % 2 ? 24 : -24}deg))` }
+                      : undefined
+                  }
                 >
-                  <Icon className="h-7 w-7 text-[#00e5ff]" />
+                  <Icon className="h-6 w-6 text-[#00e5ff] sm:h-7 sm:w-7" />
                 </div>
                 <div className="relative">
-                  <div className="text-xl font-bold text-white">{label}</div>
+                  <div className="text-lg font-bold text-white sm:text-xl">{label}</div>
                   <div className="mt-1 text-sm leading-6 text-white/55">{body}</div>
-                  <div className="mt-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 transition group-hover:bg-[#00e5ff] group-hover:text-slate-950">
+                  <div className="mt-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 transition group-hover:bg-[#00e5ff] group-hover:text-slate-950 sm:mt-4">
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>
@@ -339,12 +369,16 @@ function HRail({ items, head }: { items: typeof BROWSE_ITEMS; head: ReactNode })
             ))}
           </div>
         </div>
-        {!reduced && (
+        {pinned ? (
           <div className="mt-8 flex items-center gap-4">
             <span className="text-xs text-white/40">Keep scrolling</span>
             <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
               <div className="h-full origin-left rounded-full bg-gradient-to-r from-[#00e5ff] to-[#7c3aed]" style={{ transform: "scaleX(var(--hp, 0))" }} />
             </div>
+          </div>
+        ) : (
+          <div className="mt-1 flex items-center gap-2 text-xs text-white/40">
+            Swipe to explore <ArrowRight className="h-3.5 w-3.5" />
           </div>
         )}
       </div>
@@ -367,7 +401,7 @@ function ScrubText({ text }: { text: string }) {
     let raf = 0;
     const update = () => {
       raf = 0;
-      const total = Math.max(1, o.offsetHeight - window.innerHeight);
+      const total = Math.max(1, o.offsetHeight - (document.documentElement.clientHeight || window.innerHeight));
       o.style.setProperty("--p", Math.min(1, Math.max(0, -o.getBoundingClientRect().top / total)).toFixed(4));
     };
     const on = () => {
@@ -384,9 +418,9 @@ function ScrubText({ text }: { text: string }) {
   }, []);
   const words = text.split(" ");
   return (
-    <div ref={outer} className={reduced ? "py-16" : "h-[210vh]"}>
-      <div className={reduced ? "" : "sticky top-0 flex h-screen items-center"}>
-        <p className="mx-auto max-w-5xl text-center text-3xl font-bold leading-[1.15] text-white md:text-6xl" style={{ fontFamily: "'Space Grotesk', 'Inter', sans-serif" }}>
+    <div ref={outer} className={reduced ? "py-10" : "h-[170svh] md:h-[210vh]"}>
+      <div className={reduced ? "" : "sticky top-0 flex h-[100svh] items-center"}>
+        <p className="mx-auto max-w-5xl text-center text-[1.75rem] font-bold leading-[1.18] text-white sm:text-4xl md:text-6xl" style={{ fontFamily: "'Space Grotesk', 'Inter', sans-serif" }}>
           {words.map((w, i) => (
             <span key={i} className="hd-scrub" style={cv({ "--i": i, "--n": words.length })}>
               {w}
@@ -498,7 +532,7 @@ function SectionHead({
 }) {
   return (
     <Reveal v="up">
-    <div className={`mb-9 flex items-end justify-between gap-6 ${center ? "justify-center text-center" : ""}`}>
+    <div className={`mb-7 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 md:mb-9 ${center ? "justify-center text-center" : ""}`}>
       <div>
         <div className={`mb-2 inline-flex items-center gap-2 text-sm font-semibold text-[#00e5ff]`}>
           <Icon className="h-4 w-4" /> {eyebrow}
@@ -509,7 +543,7 @@ function SectionHead({
         {text && <p className={`mt-3 max-w-2xl text-sm leading-6 text-white/55 ${center ? "mx-auto" : ""}`}>{text}</p>}
       </div>
       {to && (
-        <Link to={to} className="hidden shrink-0 items-center gap-1 text-sm text-[#00e5ff] hover:text-white md:inline-flex">
+        <Link to={to} className="inline-flex shrink-0 items-center gap-1 text-sm text-[#00e5ff] hover:text-white">
           {linkLabel} <ArrowRight className="h-4 w-4" />
         </Link>
       )}
@@ -538,7 +572,7 @@ function FeatureCard({
   return (
     <Reveal v="flip" delay={delay ?? ((step ?? 1) - 1) * 130} className="h-full">
       <FlipCard
-        className="h-[16rem] rounded-2xl"
+        className="h-[19rem] rounded-2xl sm:h-[15rem] md:h-[19rem] lg:h-[16rem]"
         front={
           <div className="glass card-glow flex h-full flex-col rounded-2xl border border-white/10 p-6">
             <div className="flex items-center justify-between">
@@ -718,6 +752,7 @@ function Home() {
   const locationStats = useMemo(() => topCounts(allJobs, (j) => j.location), [allJobs]);
   const verifiedCount = allJobs.filter((j) => j.verificationStatus === "verified").length;
 
+  const isNarrow = useMedia("(max-width: 767px)");
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = rootRef.current;
@@ -762,7 +797,7 @@ function Home() {
   };
 
   const tile = (i: number, speed: number, span: string, src: string, alt: string, extra = "") => (
-    <div className={span} style={{ transform: `translate3d(0, calc(var(--sy, 0) * ${speed}px), 0)` }}>
+    <div className={`hd-par ${span}`} style={cv({ "--ps": speed })}>
       <div className="hd-tile h-full overflow-hidden rounded-3xl border border-white/10 shadow-2xl" style={cv({ "--i": i })}>
         <Photo src={src} alt={alt} className={`h-full w-full ${extra}`} />
       </div>
@@ -884,31 +919,62 @@ function Home() {
           .company-marquee-shell { transform: none !important; }
           .hd-flip-in { transition-duration: .01s; }
         }
+        .hd-stack { top: calc(84px + var(--i, 0) * 16px); }
+        .hd-par { transform: none; }
+        .hd-rv.is-in { will-change: auto; }
+        @media (min-width: 768px) {
+          .hd-stack { top: calc(96px + var(--i, 0) * 26px); }
+          .hd-stack:nth-child(odd) { transform: rotate(-.7deg); }
+          .hd-stack:nth-child(even) { transform: rotate(.7deg); }
+        }
+        @media (min-width: 1024px) {
+          .hd-par { transform: translate3d(0, calc(var(--sy, 0) * var(--ps, 0) * 1px), 0); }
+          .hd-hero-copy { opacity: calc(1 - var(--sy, 0) / 900); transform: translate3d(0, calc(var(--sy, 0) * .1px), 0); }
+        }
+        @media (max-width: 767px) {
+          .hd-rv[data-v]:not(.is-in) { filter: none; }
+          .hd-rv[data-v="up"]:not(.is-in) { transform: translate3d(0,36px,0); }
+          .hd-rv[data-v="left"]:not(.is-in) { transform: translate3d(-32px,0,0); }
+          .hd-rv[data-v="right"]:not(.is-in) { transform: translate3d(32px,0,0); }
+          .hd-rv[data-v="zoom"]:not(.is-in) { transform: scale(.92); }
+          .hd-rv[data-v="flip"]:not(.is-in) { transform: translate3d(0,40px,0); }
+          .hd-orb { filter: blur(48px); animation-duration: 22s; }
+          .hd-stage { transform: none; }
+          .hd-flip-in { transition-duration: .7s; }
+        }
+        @media (hover: none) {
+          .hd-glow-card:hover, .hd-rail-card:hover, .company-marquee-card:hover, .hd-magnetic:hover { transform: none; box-shadow: none; }
+          .hd-glow-card:hover .hd-icon-bounce, .hd-glow-card:hover .hd-img { transform: none; }
+          .hd-glare { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hd-hero-copy, .hd-par, .hd-stack { transform: none !important; }
+        }
       `}</style>
 
-      <div ref={rootRef} className="relative mx-auto max-w-7xl px-4">
+      <div ref={rootRef} className="relative mx-auto max-w-7xl overflow-x-clip px-4 sm:px-6">
         <div className="hd-progress" aria-hidden />
         <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[760px] hd-grid" />
         <div className="pointer-events-none absolute left-[6%] top-[180px] -z-10 h-44 w-44 rounded-full bg-[#00e5ff]/10 blur-3xl hd-pulse-orb" />
         <div className="pointer-events-none absolute right-[6%] top-[360px] -z-10 h-56 w-56 rounded-full bg-[#7c3aed]/10 blur-3xl hd-pulse-orb" />
 
         {/* HERO */}
-        <section onPointerMove={onHeroMove} className="relative overflow-hidden py-12 md:py-20">
-          <Particles count={34} />
+        <section onPointerMove={onHeroMove} className="relative overflow-hidden py-8 md:py-20">
+          <Particles count={isNarrow ? 14 : 34} />
           <div className="hd-spot pointer-events-none absolute inset-0" aria-hidden />
           <div className="hd-orb -left-20 top-10 h-72 w-72 bg-[#00e5ff]/15" />
           <div className="hd-orb right-0 top-1/3 h-80 w-80 bg-[#7c3aed]/20" style={{ animationDelay: "-5s" }} />
           <div className="hd-orb bottom-0 left-1/3 h-64 w-64 bg-[#ff4ecd]/10" style={{ animationDelay: "-9s" }} />
 
           <div className="relative z-10 grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
-            <div style={{ opacity: "calc(1 - var(--sy, 0) / 900)", transform: "translate3d(0, calc(var(--sy, 0) * 0.1px), 0)" }}>
+            <div className="hd-hero-copy">
               <div className="hd-rise inline-flex items-center gap-2 rounded-full border border-[#00e5ff]/20 bg-[#00e5ff]/5 px-4 py-1.5 text-xs text-white/75 backdrop-blur" style={cv({ "--d": "0ms" })}>
                 <Sparkles className="h-3.5 w-3.5 text-[#00e5ff]" />
                 Jobs, internships, fresher roles and remote opportunities
               </div>
 
               <h1
-                className="mt-6 text-5xl font-bold leading-[1.03] tracking-tight text-white md:text-7xl"
+                className="mt-5 text-[2.6rem] font-bold leading-[1.05] tracking-tight text-white sm:text-6xl md:mt-6 md:text-7xl"
                 style={{ fontFamily: "'Space Grotesk', 'Inter', sans-serif" }}
               >
                 <Words text="Find your next" delay={250} />
@@ -932,9 +998,9 @@ function Home() {
                   type="search"
                   aria-label="Search jobs"
                   placeholder="Role, company, skill or location"
-                  className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                  className="min-w-0 flex-1 bg-transparent px-2 py-3 text-base text-white outline-none placeholder:text-white/35 sm:text-sm"
                 />
-                <Magnetic>
+                <Magnetic className="shrink-0">
                   <button type="submit" className="btn-glow hd-shine flex items-center gap-2 rounded-xl px-5 py-3 text-sm">
                     Search <ArrowRight className="h-4 w-4" />
                   </button>
@@ -947,7 +1013,7 @@ function Home() {
                   <a
                     key={t}
                     href={`/jobs?browse=${encodeURIComponent(t)}`}
-                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 transition hover:-translate-y-0.5 hover:border-[#00e5ff]/30 hover:text-white"
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-2 transition hover:-translate-y-0.5 hover:border-[#00e5ff]/30 hover:text-white"
                   >
                     {t}
                   </a>
@@ -966,7 +1032,7 @@ function Home() {
                 </div>
               </div>
 
-              <div className="hd-pop absolute -left-4 top-10 md:-left-10" style={cv({ "--d": "1500ms" })}>
+              <div className="hd-pop absolute left-0 top-4 sm:-left-4 sm:top-10 md:-left-10" style={cv({ "--d": "1500ms" })}>
                 <div className="glass hd-float flex items-center gap-3 rounded-2xl p-3 shadow-xl">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#00e5ff]/15"><Building2 className="h-5 w-5 text-[#00e5ff]" /></div>
                   <div>
@@ -975,7 +1041,7 @@ function Home() {
                   </div>
                 </div>
               </div>
-              <div className="hd-pop absolute -right-3 bottom-12 md:-right-8" style={cv({ "--d": "1750ms" })}>
+              <div className="hd-pop absolute right-0 bottom-6 sm:-right-3 sm:bottom-12 md:-right-8" style={cv({ "--d": "1750ms" })}>
                 <div className="glass hd-float hd-float-2 flex items-center gap-3 rounded-2xl p-3 shadow-xl">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#7c3aed]/20"><BadgeCheck className="h-5 w-5 text-[#a78bfa]" /></div>
                   <div>
@@ -999,7 +1065,7 @@ function Home() {
         </p>
 
         {/* BROWSE */}
-        <section className="py-8">
+        <section className="py-4 md:py-8">
           <HRail
             items={BROWSE_ITEMS}
             head={
@@ -1019,7 +1085,7 @@ function Home() {
         </section>
 
         {/* LATEST JOBS */}
-        <section className="py-14">
+        <section className="py-10 md:py-14">
           <SectionHead
             icon={Clock3}
             eyebrow="Current listings"
@@ -1057,7 +1123,7 @@ function Home() {
 
         {/* COMPANIES */}
         {companyStats.length > 0 && (
-          <section className="relative overflow-hidden py-16">
+          <section className="relative overflow-hidden py-10 md:py-16">
             <SectionHead
               icon={Building2}
               eyebrow="Employer directory"
@@ -1073,7 +1139,7 @@ function Home() {
         )}
 
         {/* CATEGORY + LOCATION */}
-        <section className="grid grid-cols-1 gap-6 py-16 lg:grid-cols-2">
+        <section className="grid grid-cols-1 gap-6 py-10 md:py-16 lg:grid-cols-2">
           <Reveal v="left" className="h-full">
           <DirectoryPanel
             icon={BriefcaseBusiness}
@@ -1095,7 +1161,7 @@ function Home() {
         </section>
 
         {/* CANDIDATE GUIDE */}
-        <section className="py-16">
+        <section className="py-10 md:py-16">
           <SectionHead
             center
             icon={BookOpen}
@@ -1111,7 +1177,7 @@ function Home() {
         </section>
 
         {/* LISTING TRANSPARENCY */}
-        <section className="py-16">
+        <section className="py-10 md:py-16">
           <div className="glass-strong overflow-hidden rounded-3xl">
             <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.3fr]">
               <div className="relative min-h-[18rem]">
@@ -1160,7 +1226,7 @@ function Home() {
         </section>
 
         {/* CAREER RESOURCES */}
-        <section className="py-16">
+        <section className="py-10 md:py-16">
           <SectionHead
             icon={BookOpen}
             eyebrow="Career resources"
@@ -1171,7 +1237,7 @@ function Home() {
             {CAREER_RESOURCES.map((r, i) => (
               <Reveal key={r.title} v={i % 2 ? "right" : "left"} delay={(i >> 1) * 150} className="h-full">
                 <FlipCard
-                  className="h-[25rem] rounded-2xl"
+                  className="h-[27rem] rounded-2xl sm:h-[25rem] md:h-[27rem] lg:h-[25rem]"
                   front={
                     <article className="glass card-glow h-full overflow-hidden rounded-2xl border border-white/10">
                       <div className="relative h-48 overflow-hidden">
@@ -1216,11 +1282,11 @@ function Home() {
           <Reveal v="zoom">
           <div className="hd-cta relative overflow-hidden rounded-[2rem] border border-white/10">
             <Photo src={IMG("photo-1552664730-d307ca884978", 1600)} alt="Team in a career planning meeting" className="hd-ken absolute inset-0 h-full w-full" />
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-slate-950/30" />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-950/90 via-slate-950/80 to-slate-950/95 md:bg-gradient-to-r md:from-slate-950 md:via-slate-950/85 md:to-slate-950/30" />
             <div className="pointer-events-none absolute right-14 top-1/2 z-10 hidden -translate-y-1/2 md:block">
               <RotatingBadge />
             </div>
-            <div className="relative z-10 max-w-2xl p-8 md:p-14">
+            <div className="relative z-10 max-w-2xl p-6 sm:p-8 md:p-14">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-[#00e5ff] backdrop-blur">
                 <Rocket className="h-3.5 w-3.5" /> Career services
               </div>
@@ -1230,13 +1296,13 @@ function Home() {
               <p className="mt-4 text-sm leading-7 text-white/65 md:text-base">
                 Resume review from ₹29, resume building, LinkedIn optimization and premium portfolios. No payment upfront.
               </p>
-              <div className="mt-7 flex flex-wrap gap-3">
-                <Magnetic>
-                  <Link to="/services" className="btn-glow hd-shine group inline-flex items-center gap-2 rounded-2xl px-6 py-3.5 text-sm">
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <Magnetic className="w-full sm:w-auto">
+                  <Link to="/services" className="btn-glow hd-shine group inline-flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm sm:w-auto">
                     View career services <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </Link>
                 </Magnetic>
-                <Link to="/jobs" className="btn-ghost-glow inline-flex items-center gap-2 rounded-2xl px-6 py-3.5 text-sm">
+                <Link to="/jobs" className="btn-ghost-glow inline-flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm sm:w-auto">
                   <GraduationCap className="h-4 w-4 text-[#00e5ff]" /> Explore fresher jobs
                 </Link>
               </div>
@@ -1246,7 +1312,7 @@ function Home() {
         </section>
 
         {/* HOW IT WORKS */}
-        <section className="py-16">
+        <section className="py-10 md:py-16">
           <SectionHead
             center
             icon={Instagram}
@@ -1258,14 +1324,14 @@ function Home() {
         </section>
 
         {/* WHY */}
-        <section className="grid grid-cols-1 gap-5 py-16 md:grid-cols-3">
+        <section className="grid grid-cols-1 gap-5 py-10 md:py-16 md:grid-cols-3">
           <FeatureCard icon={Zap} title="Fresh opportunity discovery" body="The directory is built around current job listings and searchable filters rather than a static list of links." back="Counts, categories and locations are generated from live directory data, so they change as jobs do." />
           <FeatureCard icon={ShieldCheck} title="Source-aware listings" body="Job pages expose source and verification information when available so candidates can make their own checks." back="Where the source provides it, you can see where a job came from and its verification status and date." />
           <FeatureCard icon={CheckCircle2} title="Candidate-first experience" body="The goal is to help a candidate understand a role before sending them to an external application destination." back="Role details come first. The external application link comes after you have had a chance to review them." />
         </section>
 
         {/* FAQ */}
-        <section id="faq" className="py-16">
+        <section id="faq" className="py-10 md:py-16">
           <div className="mx-auto max-w-3xl">
             <SectionHead center icon={MessageCircle} eyebrow="Help" title="Frequently asked questions" />
             <div className="space-y-3">

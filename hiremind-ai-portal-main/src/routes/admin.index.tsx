@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type DragEvent, type FormEvent, type Reac
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { HeroBanner, AnalyticsSection, AuthBackdrop, EmptyArt } from "../components/admin-extras";
 import {
   LayoutDashboard, Plus, List, LogOut, Lock, ShieldAlert, Loader2, Trash2, Pencil,
   Search, Upload, Save, X, Briefcase, TrendingUp, Calendar, Mail, Eye, EyeOff,
@@ -115,6 +116,8 @@ function AdminPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <AdminStyles />
+        <AuthBackdrop />
+        
         <div className="ad-ring flex h-16 w-16 items-center justify-center rounded-2xl bg-[#050816]">
           <Loader2 className="h-7 w-7 animate-spin text-[#00e5ff]" />
         </div>
@@ -151,6 +154,7 @@ export function LoginCard() {
   return (
     <div className="relative mx-auto flex min-h-[78vh] max-w-md items-center px-4">
       <AdminStyles />
+      <AuthBackdrop />
       <div className="ad-orb -left-28 top-10 h-72 w-72 bg-[#00e5ff]/20" />
       <div className="ad-orb -right-24 bottom-0 h-80 w-80 bg-[#7c3aed]/25" style={{ animationDelay: "-6s" }} />
 
@@ -209,6 +213,7 @@ export function AccessDenied() {
   return (
     <div className="relative mx-auto flex min-h-[70vh] max-w-md items-center px-4">
       <AdminStyles />
+      <AuthBackdrop />
       <div className="ad-orb left-0 top-20 h-64 w-64 bg-red-500/15" />
       <div className="glass ad-pop relative w-full rounded-3xl p-8 text-center">
         <div className="ad-pulse mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/20 ring-1 ring-red-500/40">
@@ -257,6 +262,7 @@ function AdminDashboard() {
   return (
     <div className="relative mx-auto max-w-7xl px-4 pb-16">
       <AdminStyles />
+      <AuthBackdrop />
       <div className="ad-orb -left-20 top-0 h-72 w-72 bg-[#00e5ff]/10" />
       <div className="ad-orb right-0 top-60 h-80 w-80 bg-[#7c3aed]/10" style={{ animationDelay: "-7s" }} />
 
@@ -381,20 +387,13 @@ function DashboardTab({ goto }: { goto: (t: Tab) => void }) {
 
   return (
     <div className="space-y-6">
-      <PageHead
-        title={`${greeting}, admin`}
-        sub={new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-        action={
-          <button onClick={() => goto("add")} className="btn-glow ad-shine flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
-            <Plus className="h-4 w-4" /> Post a job
-          </button>
-        }
-      />
+      <HeroBanner greeting={greeting} jobs={list} onAdd={() => goto("add")} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {cards.map((c, i) => (
           <StatCard key={c.label} {...c} i={i} />
         ))}
+        <AnalyticsSection jobs={list} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
