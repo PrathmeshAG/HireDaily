@@ -9,63 +9,28 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TermsRouteImport } from './routes/terms'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as ServicesRouteImport } from './routes/services'
-import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
-import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as HowWeVerifyJobsRouteImport } from './routes/how-we-verify-jobs'
-import { Route as ContactRouteImport } from './routes/contact'
-import { Route as AdminRouteImport } from './routes/admin'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as JobsIndexRouteImport } from './routes/jobs.index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as HowWeVerifyJobsRouteImport } from './routes/how-we-verify-jobs'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as ServicesRouteImport } from './routes/services'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
-import { Route as PreparationToolsResourcesRouteImport } from './routes/preparation.tools-resources'
-import { Route as PreparationStudyMaterialRouteImport } from './routes/preparation.study-material'
-import { Route as PreparationInterviewRouteImport } from './routes/preparation.interview'
-import { Route as JobsIdRouteImport } from './routes/jobs.$id'
 import { Route as AdminAutomationRouteImport } from './routes/admin.automation'
+import { Route as JobsIndexRouteImport } from './routes/jobs.index'
+import { Route as JobsIdRouteImport } from './routes/jobs.$id'
+import { Route as PreparationInterviewRouteImport } from './routes/preparation.interview'
+import { Route as PreparationStudyMaterialRouteImport } from './routes/preparation.study-material'
+import { Route as PreparationToolsResourcesRouteImport } from './routes/preparation.tools-resources'
 import { Route as JobsLocationRoleCompanyIdRouteImport } from './routes/jobs.$location.$role.$company.$id'
 
-const TermsRoute = TermsRouteImport.update({
-  id: '/terms',
-  path: '/terms',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ServicesRoute = ServicesRouteImport.update({
-  id: '/services',
-  path: '/services',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
-  id: '/robots.txt',
-  path: '/robots.txt',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HowWeVerifyJobsRoute = HowWeVerifyJobsRouteImport.update({
-  id: '/how-we-verify-jobs',
-  path: '/how-we-verify-jobs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContactRoute = ContactRouteImport.update({
-  id: '/contact',
-  path: '/contact',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -73,14 +38,44 @@ const AboutRoute = AboutRouteImport.update({
   path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const JobsIndexRoute = JobsIndexRouteImport.update({
-  id: '/jobs/',
-  path: '/jobs/',
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HowWeVerifyJobsRoute = HowWeVerifyJobsRouteImport.update({
+  id: '/how-we-verify-jobs',
+  path: '/how-we-verify-jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -88,21 +83,14 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
-const PreparationToolsResourcesRoute =
-  PreparationToolsResourcesRouteImport.update({
-    id: '/preparation/tools-resources',
-    path: '/preparation/tools-resources',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const PreparationStudyMaterialRoute =
-  PreparationStudyMaterialRouteImport.update({
-    id: '/preparation/study-material',
-    path: '/preparation/study-material',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const PreparationInterviewRoute = PreparationInterviewRouteImport.update({
-  id: '/preparation/interview',
-  path: '/preparation/interview',
+const AdminAutomationRoute = AdminAutomationRouteImport.update({
+  id: '/automation',
+  path: '/automation',
+  getParentRoute: () => AdminRoute,
+} as any)
+const JobsIndexRoute = JobsIndexRouteImport.update({
+  id: '/jobs/',
+  path: '/jobs/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JobsIdRoute = JobsIdRouteImport.update({
@@ -110,11 +98,23 @@ const JobsIdRoute = JobsIdRouteImport.update({
   path: '/jobs/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminAutomationRoute = AdminAutomationRouteImport.update({
-  id: '/automation',
-  path: '/automation',
-  getParentRoute: () => AdminRoute,
+const PreparationInterviewRoute = PreparationInterviewRouteImport.update({
+  id: '/preparation/interview',
+  path: '/preparation/interview',
+  getParentRoute: () => rootRouteImport,
 } as any)
+const PreparationStudyMaterialRoute =
+  PreparationStudyMaterialRouteImport.update({
+    id: '/preparation/study-material',
+    path: '/preparation/study-material',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PreparationToolsResourcesRoute =
+  PreparationToolsResourcesRouteImport.update({
+    id: '/preparation/tools-resources',
+    path: '/preparation/tools-resources',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const JobsLocationRoleCompanyIdRoute =
   JobsLocationRoleCompanyIdRouteImport.update({
     id: '/jobs/$location/$role/$company/$id',
@@ -265,60 +265,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/terms': {
-      id: '/terms'
-      path: '/terms'
-      fullPath: '/terms'
-      preLoaderRoute: typeof TermsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/services': {
-      id: '/services'
-      path: '/services'
-      fullPath: '/services'
-      preLoaderRoute: typeof ServicesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/robots.txt': {
-      id: '/robots.txt'
-      path: '/robots.txt'
-      fullPath: '/robots.txt'
-      preLoaderRoute: typeof RobotsDottxtRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/how-we-verify-jobs': {
-      id: '/how-we-verify-jobs'
-      path: '/how-we-verify-jobs'
-      fullPath: '/how-we-verify-jobs'
-      preLoaderRoute: typeof HowWeVerifyJobsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contact': {
-      id: '/contact'
-      path: '/contact'
-      fullPath: '/contact'
-      preLoaderRoute: typeof ContactRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -328,18 +279,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/jobs/': {
-      id: '/jobs/'
-      path: '/jobs'
-      fullPath: '/jobs/'
-      preLoaderRoute: typeof JobsIndexRouteImport
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/how-we-verify-jobs': {
+      id: '/how-we-verify-jobs'
+      path: '/how-we-verify-jobs'
+      fullPath: '/how-we-verify-jobs'
+      preLoaderRoute: typeof HowWeVerifyJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -349,25 +342,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/preparation/tools-resources': {
-      id: '/preparation/tools-resources'
-      path: '/preparation/tools-resources'
-      fullPath: '/preparation/tools-resources'
-      preLoaderRoute: typeof PreparationToolsResourcesRouteImport
-      parentRoute: typeof rootRouteImport
+    '/admin/automation': {
+      id: '/admin/automation'
+      path: '/automation'
+      fullPath: '/admin/automation'
+      preLoaderRoute: typeof AdminAutomationRouteImport
+      parentRoute: typeof AdminRoute
     }
-    '/preparation/study-material': {
-      id: '/preparation/study-material'
-      path: '/preparation/study-material'
-      fullPath: '/preparation/study-material'
-      preLoaderRoute: typeof PreparationStudyMaterialRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/preparation/interview': {
-      id: '/preparation/interview'
-      path: '/preparation/interview'
-      fullPath: '/preparation/interview'
-      preLoaderRoute: typeof PreparationInterviewRouteImport
+    '/jobs/': {
+      id: '/jobs/'
+      path: '/jobs'
+      fullPath: '/jobs/'
+      preLoaderRoute: typeof JobsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/jobs/$id': {
@@ -377,12 +363,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JobsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/automation': {
-      id: '/admin/automation'
-      path: '/automation'
-      fullPath: '/admin/automation'
-      preLoaderRoute: typeof AdminAutomationRouteImport
-      parentRoute: typeof AdminRoute
+    '/preparation/interview': {
+      id: '/preparation/interview'
+      path: '/preparation/interview'
+      fullPath: '/preparation/interview'
+      preLoaderRoute: typeof PreparationInterviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preparation/study-material': {
+      id: '/preparation/study-material'
+      path: '/preparation/study-material'
+      fullPath: '/preparation/study-material'
+      preLoaderRoute: typeof PreparationStudyMaterialRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preparation/tools-resources': {
+      id: '/preparation/tools-resources'
+      path: '/preparation/tools-resources'
+      fullPath: '/preparation/tools-resources'
+      preLoaderRoute: typeof PreparationToolsResourcesRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/jobs/$location/$role/$company/$id': {
       id: '/jobs/$location/$role/$company/$id'
