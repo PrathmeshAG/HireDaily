@@ -247,6 +247,12 @@ export function Navbar() {
     setMenu(null);
   };
 
+  useEffect(() => {
+    const onOpen = (e: Event) => openAuth((e as CustomEvent<"signin" | "signup">).detail || "signin");
+    window.addEventListener("hd-open-auth", onOpen);
+    return () => window.removeEventListener("hd-open-auth", onOpen);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const goAccount = () => {
     setOpen(false);
     setMenu(null);

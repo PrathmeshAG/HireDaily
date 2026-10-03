@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  AlertTriangle, BookOpen, CheckCircle2, ExternalLink, Lightbulb, Loader2, Play, RotateCcw, Sparkles, Terminal, Trophy, XCircle,
+  AlertTriangle, Award, BookOpen, CheckCircle2, ExternalLink, Lightbulb, Loader2, Play, RotateCcw, Sparkles, Terminal, Trophy, XCircle,
 } from "lucide-react";
-import { PROBLEMS } from "../data/coding-problems";
+import { PROBLEMS, TRACKS, problemsOf, type Level, type Track } from "../data/coding-problems";
+import { BadgeShelf, TaskBadge } from "../components/badge";
+import { useProgress } from "../lib/progress";
 import {
   explainError, explainWrong, runCode, timeoutExplanation,
   type Explanation, type RunOutcome,
@@ -11,7 +13,7 @@ import {
 
 const TITLE = "Coding Practice — Write and Run JavaScript in Your Browser | Hire Daily";
 const DESC =
-  "Practice interview-style coding problems in your browser. Run your code, see each test pass or fail with animation, and learn why errors happen with simple fixes and topics to study.";
+  "Practice interview-style coding problems for software, data analyst and cyber security roles in your browser. Run your code, see each test pass or fail with animation, and learn why errors happen with simple fixes and topics to study.";
 
 export const Route = createFileRoute("/preparation/coding-practice")({
   component: CodingPracticePage,
@@ -44,7 +46,6 @@ const STYLES = `
 
 const card = "rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.035]";
 const KEY = (id: string) => `hd-code-${id}`;
-const SOLVED_KEY = "hd-code-solved";
 
 const show = (v: unknown) => {
   try { return typeof v === "string" ? JSON.stringify(v) : JSON.stringify(v); } catch { return String(v); }
@@ -66,26 +67,28 @@ function Confetti() {
 }
 
 function CodingPracticePage() {
+  const [track, setTrack] = useState<Track>("software");
+  const [levelFilter, setLevelFilter] = useState<"All" | Level>("All");
   const [pid, setPid] = useState(PROBLEMS[0].id);
   const problem = PROBLEMS.find((p) => p.id === pid) ?? PROBLEMS[0];
+  const list = problemsOf(track).filter((p) => levelFilter === "All" || p.level === levelFilter);
+  const { progress, record, sync, signedIn } = useProgress();
+  const solvedIds = Object.keys(progress);
+  const attempts = useRef<Record<string, number>>({});
   const [code, setCode] = useState(problem.starter);
   const [running, setRunning] = useState(false);
   const [outcome, setOutcome] = useState<RunOutcome | null>(null);
   const [shown, setShown] = useState(0);
   const [hint, setHint] = useState(false);
-  const [solved, setSolved] = useState<string[]>([]);
   const [shake, setShake] = useState(0);
+  const [reveal, setReveal] = useState<string | null>(null);
   const gutter = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    try { setSolved(JSON.parse(localStorage.getItem(SOLVED_KEY) ?? "[]")); } catch { /* ignore */ }
-  }, []);
 
   useEffect(() => {
     let saved: string | null = null;
     try { saved = localStorage.getItem(KEY(problem.id)); } catch { /* ignore */ }
     setCode(saved ?? problem.starter);
-    setOutcome(null); setShown(0); setHint(false);
+    setOutcome(null); setShown(0); setHint(false); setReveal(null);
   }, [problem]);
 
   const update = (v: string) => {
@@ -114,12 +117,7 @@ function CodingPracticePage() {
 
   useEffect(() => {
     if (outcome?.type === "done" && passedAll && doneShowing) {
-      setSolved((s) => {
-        if (s.includes(problem.id)) return s;
-        const next = [...s, problem.id];
-        try { localStorage.setItem(SOLVED_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-        return next;
-      });
+      void record(problem.id, attempts.current[problem.id] ?? 1).then((isNew) => { if (isNew) setReveal(problem.id); });
     }
     if (outcome && doneShowing && !passedAll) setShake((n) => n + 1);
   }, [doneShowing]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -127,6 +125,7 @@ function CodingPracticePage() {
   const run = useCallback(async () => {
     if (running) return;
     setRunning(true); setOutcome(null); setShown(0);
+    attempts.current[problem.id] = (attempts.current[problem.id] ?? 0) + 1;
     const res = await runCode(code, problem.fn, problem.tests);
     setOutcome(res); setRunning(false);
   }, [code, problem, running]);
@@ -155,7 +154,7 @@ function CodingPracticePage() {
   };
 
   const levelCls = (l: string) =>
-    l === "Easy" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300" : "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200";
+    l === "Easy" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300" : l === "Medium" ? "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : "bg-rose-50 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300";
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-20 pt-10 sm:px-6">
@@ -169,19 +168,41 @@ function CodingPracticePage() {
         </p>
       </header>
 
-      <div className="mt-8 flex items-center justify-between gap-4">
-        <div role="tablist" aria-label="Problems" className="flex gap-2 overflow-x-auto pb-1">
-          {PROBLEMS.map((p) => (
-            <button key={p.id} role="tab" aria-selected={p.id === pid} onClick={() => setPid(p.id)}
-              className={`flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${p.id === pid ? "border-slate-900 bg-slate-900 text-white dark:border-[#00e5ff] dark:bg-[#00e5ff] dark:text-slate-950" : "border-slate-200 text-slate-600 hover:border-slate-400 dark:border-white/10 dark:text-white/60"}`}>
-              {solved.includes(p.id) && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-              {p.title}
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+        <div role="tablist" aria-label="Tracks" className="flex gap-2 overflow-x-auto pb-1">
+          {TRACKS.map((t) => (
+            <button key={t.id} role="tab" aria-selected={t.id === track}
+              onClick={() => { setTrack(t.id); setLevelFilter("All"); setPid(problemsOf(t.id)[0].id); }}
+              className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${t.id === track ? "border-slate-900 bg-slate-900 text-white dark:border-[#00e5ff] dark:bg-[#00e5ff] dark:text-slate-950" : "border-slate-200 text-slate-600 hover:border-slate-400 dark:border-white/10 dark:text-white/60"}`}>
+              {t.label}
             </button>
           ))}
         </div>
-        <span className="hidden shrink-0 items-center gap-1.5 text-sm font-semibold text-slate-600 sm:flex dark:text-white/60">
-          <Trophy className="h-4 w-4 text-amber-500" /> {solved.length}/{PROBLEMS.length} solved
+        <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold text-slate-600 dark:text-white/60">
+          <Trophy className="h-4 w-4 text-amber-500" /> {solvedIds.length}/{PROBLEMS.length} solved
         </span>
+      </div>
+      <p className="mt-3 text-sm text-slate-500 dark:text-white/45">{TRACKS.find((t) => t.id === track)?.blurb}</p>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {(["All", "Easy", "Medium", "Hard"] as const).map((l) => (
+          <button key={l} onClick={() => { setLevelFilter(l); const first = problemsOf(track).find((p) => l === "All" || p.level === l); if (first) setPid(first.id); }}
+            aria-pressed={levelFilter === l}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${levelFilter === l ? "bg-gradient-to-r from-[#00e5ff] to-[#7c3aed] text-[#050816]" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-white/60 dark:hover:bg-white/10"}`}>
+            {l}
+          </button>
+        ))}
+        <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:block dark:bg-white/10" />
+        <div className="flex gap-2 overflow-x-auto">
+          {list.map((p) => (
+            <button key={p.id} onClick={() => setPid(p.id)} aria-current={p.id === pid}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${p.id === pid ? "border-cyan-500 bg-cyan-50 text-cyan-800 dark:border-[#00e5ff]/60 dark:bg-[#00e5ff]/10 dark:text-[#00e5ff]" : "border-slate-200 text-slate-600 hover:border-slate-400 dark:border-white/10 dark:text-white/60"}`}>
+              {progress[p.id] && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+              {p.title}
+              <span className={`rounded px-1.5 py-0.5 text-[10px] ${levelCls(p.level)}`}>{p.level}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -286,7 +307,18 @@ function CodingPracticePage() {
                 <Confetti />
                 <Sparkles className="mx-auto h-6 w-6 text-emerald-600 dark:text-emerald-300" />
                 <p className="mt-2 text-lg font-bold text-slate-900 dark:text-white">All {total} tests passed. Great job!</p>
-                <p className="mt-1 text-sm text-slate-600 dark:text-white/60">Try the next problem to keep your streak going.</p>
+                <div className="mt-3 flex flex-col items-center">
+                  <div className={reveal === problem.id ? "cp-pop" : ""}><TaskBadge problem={problem} locked={!signedIn} size={96} /></div>
+                  {signedIn ? (
+                    <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300"><Award className="h-4 w-4" /> Badge collected: {problem.title}</p>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-white/60">You earned this badge. Sign in to collect it and keep your progress.</p>
+                      <button onClick={() => window.dispatchEvent(new CustomEvent("hd-open-auth", { detail: "signup" }))} className="btn-glow mt-3 rounded-xl px-5 py-2.5 text-sm font-semibold">Create free account</button>
+                    </>
+                  )}
+                  {signedIn && sync === "error" && <p className="mt-1 text-xs text-slate-500 dark:text-white/45">Saved on this device.</p>}
+                </div>
               </div>
             )}
 
@@ -320,6 +352,12 @@ function CodingPracticePage() {
           )}
         </section>
       </div>
+
+      <section className={`mt-12 p-6 sm:p-8 ${card}`}>
+        <h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900 dark:text-white"><Award className="h-6 w-6 text-amber-500" /> Your badges</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-white/55">Every coding task you solve earns a badge. Sign in to collect them and see them on your profile.</p>
+        <div className="mt-6"><BadgeShelf progress={progress} collected={signedIn} /></div>
+      </section>
 
       <section className={`mt-12 p-6 sm:p-8 ${card}`}>
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Common JavaScript errors, in plain language</h2>

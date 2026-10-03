@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { ArrowRight, CalendarDays, KeyRound, Loader2, LogOut, Mail, Pencil, ShieldCheck } from "lucide-react";
 import { auth } from "../lib/firebase";
 import { useAuth } from "../lib/auth-context";
+import { useProgress } from "../lib/progress";
+import { BadgeShelf } from "../components/badge";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -25,6 +27,7 @@ function ProfilePage() {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { progress } = useProgress();
 
   useEffect(() => {
     setName(user?.displayName ?? "");
@@ -152,6 +155,12 @@ function ProfilePage() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className={`mt-6 p-5 sm:p-8 ${card}`}>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white">My badges</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-white/45">Earned by solving coding tasks in Preparation.</p>
+        <div className="mt-5"><BadgeShelf progress={progress} collected /></div>
       </div>
     </section>
   );
