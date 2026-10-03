@@ -15,14 +15,18 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as HowWeVerifyJobsRouteImport } from './routes/how-we-verify-jobs'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as ServicesRouteImport } from './routes/services'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminAutomationRouteImport } from './routes/admin.automation'
+import { Route as BlogIndexRouteImport } from './routes/blog.index'
+import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
 import { Route as JobsIdRouteImport } from './routes/jobs.$id'
+import { Route as PreparationCodingPracticeRouteImport } from './routes/preparation.coding-practice'
 import { Route as PreparationInterviewRouteImport } from './routes/preparation.interview'
 import { Route as PreparationStudyMaterialRouteImport } from './routes/preparation.study-material'
 import { Route as PreparationToolsResourcesRouteImport } from './routes/preparation.tools-resources'
@@ -58,6 +62,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   id: '/robots.txt',
   path: '/robots.txt',
@@ -88,6 +97,16 @@ const AdminAutomationRoute = AdminAutomationRouteImport.update({
   path: '/automation',
   getParentRoute: () => AdminRoute,
 } as any)
+const BlogIndexRoute = BlogIndexRouteImport.update({
+  id: '/blog/',
+  path: '/blog/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: '/blog/$slug',
+  path: '/blog/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JobsIndexRoute = JobsIndexRouteImport.update({
   id: '/jobs/',
   path: '/jobs/',
@@ -98,6 +117,12 @@ const JobsIdRoute = JobsIdRouteImport.update({
   path: '/jobs/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PreparationCodingPracticeRoute =
+  PreparationCodingPracticeRouteImport.update({
+    id: '/preparation/coding-practice',
+    path: '/preparation/coding-practice',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const PreparationInterviewRoute = PreparationInterviewRouteImport.update({
   id: '/preparation/interview',
   path: '/preparation/interview',
@@ -129,16 +154,20 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/services': typeof ServicesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/jobs/$id': typeof JobsIdRoute
+  '/preparation/coding-practice': typeof PreparationCodingPracticeRoute
   '/preparation/interview': typeof PreparationInterviewRoute
   '/preparation/study-material': typeof PreparationStudyMaterialRoute
   '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin/': typeof AdminIndexRoute
+  '/blog/': typeof BlogIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
@@ -148,16 +177,20 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/services': typeof ServicesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/jobs/$id': typeof JobsIdRoute
+  '/preparation/coding-practice': typeof PreparationCodingPracticeRoute
   '/preparation/interview': typeof PreparationInterviewRoute
   '/preparation/study-material': typeof PreparationStudyMaterialRoute
   '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin': typeof AdminIndexRoute
+  '/blog': typeof BlogIndexRoute
   '/jobs': typeof JobsIndexRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
@@ -169,16 +202,20 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/how-we-verify-jobs': typeof HowWeVerifyJobsRoute
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/services': typeof ServicesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/jobs/$id': typeof JobsIdRoute
+  '/preparation/coding-practice': typeof PreparationCodingPracticeRoute
   '/preparation/interview': typeof PreparationInterviewRoute
   '/preparation/study-material': typeof PreparationStudyMaterialRoute
   '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin/': typeof AdminIndexRoute
+  '/blog/': typeof BlogIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
@@ -191,16 +228,20 @@ export interface FileRouteTypes {
     | '/contact'
     | '/how-we-verify-jobs'
     | '/privacy'
+    | '/profile'
     | '/robots.txt'
     | '/services'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
+    | '/blog/$slug'
     | '/jobs/$id'
+    | '/preparation/coding-practice'
     | '/preparation/interview'
     | '/preparation/study-material'
     | '/preparation/tools-resources'
     | '/admin/'
+    | '/blog/'
     | '/jobs/'
     | '/jobs/$location/$role/$company/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -210,16 +251,20 @@ export interface FileRouteTypes {
     | '/contact'
     | '/how-we-verify-jobs'
     | '/privacy'
+    | '/profile'
     | '/robots.txt'
     | '/services'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
+    | '/blog/$slug'
     | '/jobs/$id'
+    | '/preparation/coding-practice'
     | '/preparation/interview'
     | '/preparation/study-material'
     | '/preparation/tools-resources'
     | '/admin'
+    | '/blog'
     | '/jobs'
     | '/jobs/$location/$role/$company/$id'
   id:
@@ -230,16 +275,20 @@ export interface FileRouteTypes {
     | '/contact'
     | '/how-we-verify-jobs'
     | '/privacy'
+    | '/profile'
     | '/robots.txt'
     | '/services'
     | '/sitemap.xml'
     | '/terms'
     | '/admin/automation'
+    | '/blog/$slug'
     | '/jobs/$id'
+    | '/preparation/coding-practice'
     | '/preparation/interview'
     | '/preparation/study-material'
     | '/preparation/tools-resources'
     | '/admin/'
+    | '/blog/'
     | '/jobs/'
     | '/jobs/$location/$role/$company/$id'
   fileRoutesById: FileRoutesById
@@ -251,14 +300,18 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   HowWeVerifyJobsRoute: typeof HowWeVerifyJobsRoute
   PrivacyRoute: typeof PrivacyRoute
+  ProfileRoute: typeof ProfileRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   ServicesRoute: typeof ServicesRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  BlogSlugRoute: typeof BlogSlugRoute
   JobsIdRoute: typeof JobsIdRoute
+  PreparationCodingPracticeRoute: typeof PreparationCodingPracticeRoute
   PreparationInterviewRoute: typeof PreparationInterviewRoute
   PreparationStudyMaterialRoute: typeof PreparationStudyMaterialRoute
   PreparationToolsResourcesRoute: typeof PreparationToolsResourcesRoute
+  BlogIndexRoute: typeof BlogIndexRoute
   JobsIndexRoute: typeof JobsIndexRoute
   JobsLocationRoleCompanyIdRoute: typeof JobsLocationRoleCompanyIdRoute
 }
@@ -307,6 +360,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/robots.txt': {
       id: '/robots.txt'
       path: '/robots.txt'
@@ -349,6 +409,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAutomationRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/blog/': {
+      id: '/blog/'
+      path: '/blog'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/$slug': {
+      id: '/blog/$slug'
+      path: '/blog/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/jobs/': {
       id: '/jobs/'
       path: '/jobs'
@@ -361,6 +435,13 @@ declare module '@tanstack/react-router' {
       path: '/jobs/$id'
       fullPath: '/jobs/$id'
       preLoaderRoute: typeof JobsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preparation/coding-practice': {
+      id: '/preparation/coding-practice'
+      path: '/preparation/coding-practice'
+      fullPath: '/preparation/coding-practice'
+      preLoaderRoute: typeof PreparationCodingPracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/preparation/interview': {
@@ -413,14 +494,18 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   HowWeVerifyJobsRoute: HowWeVerifyJobsRoute,
   PrivacyRoute: PrivacyRoute,
+  ProfileRoute: ProfileRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   ServicesRoute: ServicesRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  BlogSlugRoute: BlogSlugRoute,
   JobsIdRoute: JobsIdRoute,
+  PreparationCodingPracticeRoute: PreparationCodingPracticeRoute,
   PreparationInterviewRoute: PreparationInterviewRoute,
   PreparationStudyMaterialRoute: PreparationStudyMaterialRoute,
   PreparationToolsResourcesRoute: PreparationToolsResourcesRoute,
+  BlogIndexRoute: BlogIndexRoute,
   JobsIndexRoute: JobsIndexRoute,
   JobsLocationRoleCompanyIdRoute: JobsLocationRoleCompanyIdRoute,
 }

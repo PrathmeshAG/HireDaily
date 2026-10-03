@@ -35,12 +35,15 @@ export const Route = createFileRoute("/jobs/")({
           "Discover fresh job opportunities across India. Search jobs by role, company, location, experience and job type, then review job details and application information before applying.",
       },
       { property: "og:title", content: "Browse Jobs — Hire Daily" },
+      { name: "twitter:title", content: "Browse Jobs — Hire Daily" },
       {
         property: "og:description",
         content:
           "Discover fresh jobs, fresher opportunities, internships, remote roles and location-based openings on Hire Daily.",
       },
     ],
+    // Filtered URLs such as /jobs?browse=Fresher Jobs must point to the main listing page.
+    links: [{ rel: "canonical", href: "https://hire-daily.vercel.app/jobs" }],
   }),
 });
 

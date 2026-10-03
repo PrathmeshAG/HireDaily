@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Menu,
@@ -20,13 +20,17 @@ import {
   LibraryBig,
   Wrench,
   ArrowRight,
+  Code2,
 } from "lucide-react";
+import { AuthSheet } from "./auth-sheet";
+import { useAuth } from "../lib/auth-context";
 
 type NavLink = { to: string; hash?: string; label: string };
 
 const links: NavLink[] = [
   { to: "/", label: "Home" },
   { to: "/jobs", label: "Jobs" },
+  { to: "/blog", label: "Guides" },
   { to: "/about", label: "About" },
   { to: "/about", hash: "disclaimer", label: "Disclaimer" },
 ];
@@ -44,6 +48,12 @@ const preparation = [
     label: "Interview Preparation",
     description: "HR, technical and domain-wise interview preparation.",
     icon: ClipboardCheck,
+  },
+  {
+    to: "/preparation/coding-practice",
+    label: "Coding Practice",
+    description: "Write code, run tests and learn from every error.",
+    icon: Code2,
   },
   {
     to: "/preparation/study-material",
@@ -149,6 +159,8 @@ export function Navbar() {
   const [authMode, setAuthMode] = useState<AuthMode>(null);
   const [comingSoon, setComingSoon] = useState(false);
   const navRef = useRef<HTMLElement>(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => String(s.location.hash ?? "").replace("#", "") });
@@ -235,6 +247,14 @@ export function Navbar() {
     setMenu(null);
   };
 
+  const goAccount = () => {
+    setOpen(false);
+    setMenu(null);
+    if (user) void navigate({ to: "/profile" });
+    else openAuth("signin");
+  };
+  const accountLabel = user ? user.displayName?.split(" ")[0] || "Profile" : "Sign in";
+
   const submitComingSoon = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setComingSoon(true);
@@ -263,7 +283,7 @@ export function Navbar() {
               </div>
               <div className="flex flex-col leading-none">
                 <span className="text-base font-bold tracking-tight text-slate-900 dark:text-white">Hire Daily</span>
-                <span className="mt-0.5 text-[10px] uppercase tracking-widest text-slate-500 dark:text-white/50">HireMind AI</span>
+                <span className="mt-0.5 text-[10px] uppercase tracking-widest text-slate-500 dark:text-white/50">Jobs &amp; Career Guides</span>
               </div>
             </Link>
 
@@ -349,13 +369,13 @@ export function Navbar() {
 
               <button
                 type="button"
-                onClick={() => openAuth("signin")}
+                onClick={goAccount}
                 className={`group ml-1 flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#0891a6]/40 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.05] dark:text-white/90 dark:hover:border-[#00e5ff]/30 dark:hover:bg-white/10 ${focusRing}`}
               >
                 <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-[#00e5ff]/15 to-[#7c3aed]/15 text-[#0891a6] transition-transform group-hover:scale-105 dark:text-[#00e5ff]">
                   <User className="h-3.5 w-3.5" />
                 </span>
-                Account
+                {accountLabel}
               </button>
 
               <div className="ml-1">
@@ -468,11 +488,11 @@ export function Navbar() {
               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 dark:border-white/10">
                 <button
                   type="button"
-                  onClick={() => openAuth("signin")}
+                  onClick={goAccount}
                   className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-800 shadow-sm transition active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.05] dark:text-white/90"
                 >
                   <User className="h-4 w-4 text-[#0891a6] dark:text-[#00e5ff]" />
-                  Account
+                  {accountLabel}
                 </button>
                 <Link to="/jobs" onClick={() => setOpen(false)} className="btn-glow flex min-h-12 items-center justify-center rounded-xl text-sm">
                   Browse Jobs
@@ -483,102 +503,7 @@ export function Navbar() {
         </div>
       </header>
 
-      {/* auth: bottom sheet on mobile, centered card on desktop */}
-      {authMode && (
-        <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/55 backdrop-blur-md sm:items-center sm:p-4 dark:bg-black/70"
-          onMouseDown={() => setAuthMode(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="auth-title"
-        >
-          <div
-            className="relative max-h-[92dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-3xl border border-slate-200 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.25)] sm:rounded-3xl dark:border-white/10 dark:bg-[#090b12] dark:shadow-[0_30px_100px_rgba(0,0,0,0.6)] animate-scale-in"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="h-1 bg-gradient-to-r from-[#00e5ff] via-[#7c3aed] to-[#00e5ff]" />
-            <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-slate-200 sm:hidden dark:bg-white/15" aria-hidden />
-
-            <div className="flex justify-end px-3 pt-2 sm:px-4 sm:pt-4">
-              <button
-                type="button"
-                onClick={() => setAuthMode(null)}
-                className={`flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-white/50 dark:hover:bg-white/5 dark:hover:text-white ${focusRing}`}
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#00e5ff]/15 to-[#7c3aed]/20 text-[#0891a6] shadow-[0_0_35px_rgba(0,229,255,0.12)] dark:text-[#00e5ff]">
-                <User className="h-6 w-6" />
-              </div>
-
-              <div className="text-center">
-                <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-[#0891a6] dark:text-[#00e5ff]">Your Hire Daily Account</p>
-                <h2 id="auth-title" className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  {authMode === "signin" ? "Welcome Back" : "Create Your Account"}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-white/50">
-                  {authMode === "signin" ? "Sign in to manage your Hire Daily experience." : "Create your profile now and unlock account features when authentication launches."}
-                </p>
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-[#0891a6]/20 bg-gradient-to-r from-[#00e5ff]/10 to-[#7c3aed]/10 px-4 py-3 text-center dark:border-[#00e5ff]/15">
-                <span className="text-xs font-semibold uppercase tracking-widest text-[#0891a6] dark:text-[#00e5ff]">Coming Soon</span>
-                <p className="mt-1 text-xs text-slate-600 dark:text-white/45">Authentication is currently under development.</p>
-              </div>
-
-              <form onSubmit={submitComingSoon} className="mt-5 space-y-3">
-                {authMode === "signup" && <AuthField label="Full Name" icon={User} placeholder="Your name" autoComplete="name" />}
-                <AuthField label="Email Address" icon={Mail} type="email" placeholder="you@example.com" autoComplete="email" />
-                <AuthField label="Password" icon={Lock} type="password" placeholder="••••••••" autoComplete={authMode === "signin" ? "current-password" : "new-password"} />
-                {authMode === "signup" && <AuthField label="Re-enter Password" icon={Lock} type="password" placeholder="••••••••" autoComplete="new-password" />}
-
-                <button
-                  type="button"
-                  onClick={() => setComingSoon(true)}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.05] dark:text-white dark:hover:bg-white/[0.09]"
-                >
-                  <Chrome className="h-4 w-4" />
-                  Continue with Google
-                </button>
-
-                <div className="flex items-center gap-3 py-1">
-                  <div className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
-                  <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-white/30">or</span>
-                  <div className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
-                </div>
-
-                <button type="submit" className="btn-glow flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold">
-                  {authMode === "signin" ? "Sign In" : "Create Account"}
-                </button>
-
-                {comingSoon && (
-                  <div role="status" className="rounded-xl border border-[#0891a6]/25 bg-[#0891a6]/5 px-4 py-3 text-center text-xs font-medium text-[#007f91] dark:border-[#00e5ff]/15 dark:bg-[#00e5ff]/5 dark:text-[#8eefff]">
-                    Coming Soon — account authentication will be available in a future update.
-                  </div>
-                )}
-              </form>
-
-              <p className="mt-5 text-center text-sm text-slate-600 dark:text-white/45">
-                {authMode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode(authMode === "signin" ? "signup" : "signin");
-                    setComingSoon(false);
-                  }}
-                  className="font-semibold text-[#0891a6] hover:underline dark:text-[#00e5ff]"
-                >
-                  {authMode === "signin" ? "Sign Up" : "Sign In"}
-                </button>
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      <AuthSheet mode={authMode} onClose={() => setAuthMode(null)} onSwitch={(m) => setAuthMode(m)} />
     </>
   );
 }

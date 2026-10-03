@@ -20,6 +20,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { fetchJob, fetchJobs } from "../lib/jobs";
+import { getJobPath } from "../lib/job-url";
+import { SITE } from "../lib/site";
 import { JobCard } from "../components/job-card";
 
 export const Route = createFileRoute("/jobs/$id")({
@@ -43,13 +45,22 @@ export const Route = createFileRoute("/jobs/$id")({
             : "The requested job listing could not be found on Hire Daily.",
         },
         { property: "og:title", content: title },
+        { name: "twitter:title", content: title },
         {
           property: "og:description",
           content: job
             ? `Review the details and application information for ${job.role} at ${job.companyName}.`
             : "The requested job listing could not be found.",
         },
+        {
+          name: "twitter:description",
+          content: job
+            ? `Review the details and application information for ${job.role} at ${job.companyName}.`
+            : "The requested job listing could not be found.",
+        },
       ],
+      // One canonical address per job: the long SEO URL, so /jobs/<id> does not compete with it.
+      links: job ? [{ rel: "canonical", href: `${SITE.url}${getJobPath(job)}` }] : [],
     };
   },
 });
@@ -140,6 +151,21 @@ async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Useful next steps for this role, chosen from the job's role, category and skills. */
+function prepLinks(job: { role?: string; category?: string; skills?: string }) {
+  const text = `${job.role ?? ""} ${job.category ?? ""} ${job.skills ?? ""}`.toLowerCase();
+  const out: { to: string; slug?: string; label: string; note: string }[] = [];
+  if (/data|analy|sql|power ?bi|excel|tableau/.test(text))
+    out.push({ to: "/blog/$slug", slug: "data-analyst-fresher-interview-questions", label: "Data analyst interview questions", note: "SQL, Excel and case questions with sample answers" });
+  if (/software|developer|engineer|java|python|react|web|full.?stack|backend|frontend/.test(text))
+    out.push({ to: "/preparation/coding-practice", label: "Practise coding in your browser", note: "Run tests and learn from each error" });
+  if (/cyber|security|cloud|devops|network/.test(text))
+    out.push({ to: "/preparation/study-material", label: "Roadmaps and notes", note: "Study plans for security, cloud and DevOps" });
+  out.push({ to: "/blog/$slug", slug: "ats-resume-guide-for-freshers", label: "Write an ATS-friendly resume", note: "Tailor your resume before you apply" });
+  out.push({ to: "/preparation/interview", label: "Interview questions and answers", note: "HR and technical rounds by domain and level" });
+  return out.slice(0, 3);
 }
 
 function LegacyJobDetailPage() {
@@ -271,6 +297,26 @@ export function JobDetailPage({
     .slice(0, 3)
     .map(({ candidate }) => candidate);
 
+  const isRemote = /remote|work from home|wfh/i.test(`${job.location ?? ""} ${job.jobType ?? ""}`);
+  const jobPostingLd =
+    !isExpired && job.applyLink && (job.description?.trim().length ?? 0) > 80
+      ? {
+          "@context": "https://schema.org",
+          "@type": "JobPosting",
+          title: job.role,
+          description: job.description,
+          datePosted: Number.isFinite(postedTimestamp) ? new Date(postedTimestamp).toISOString().slice(0, 10) : undefined,
+          validThrough: hasDeadline ? new Date(deadlineTimestamp).toISOString() : undefined,
+          hiringOrganization: { "@type": "Organization", name: job.companyName, ...(job.companyLogo ? { logo: job.companyLogo } : {}) },
+          ...(isRemote
+            ? { jobLocationType: "TELECOMMUTE", applicantLocationRequirements: { "@type": "Country", name: "IN" } }
+            : job.location
+              ? { jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressLocality: job.location, addressCountry: "IN" } } }
+              : {}),
+          directApply: false,
+        }
+      : null;
+
   const applyProps = {
     href: job.applyLink,
     target: "_blank",
@@ -279,6 +325,9 @@ export function JobDetailPage({
 
   return (
     <main className="relative min-h-screen overflow-x-clip bg-white text-slate-900 dark:bg-[#050816] dark:text-white">
+      {jobPostingLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingLd).replace(/</g, "\\u003c") }} />
+      )}
       <div className="pointer-events-none absolute left-1/4 top-10 -z-0 h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl dark:bg-[#00e5ff]/10" />
       <div className="pointer-events-none absolute right-0 top-[28rem] -z-0 h-80 w-80 rounded-full bg-violet-300/20 blur-3xl dark:bg-[#7c3aed]/10" />
 
@@ -382,6 +431,22 @@ export function JobDetailPage({
               <SectionTitle eyebrow="Role overview">About this job</SectionTitle>
               <div className="mt-5 max-w-[75ch] whitespace-pre-line text-[15px] leading-7 text-slate-600 dark:text-white/65">
                 {job.description || "The employer has not provided a detailed description for this listing."}
+              </div>
+            </article>
+
+            <article className={`p-5 sm:p-6 md:p-8 ${card}`}>
+              <SectionTitle eyebrow="Get ready">How to prepare for this role</SectionTitle>
+              <p className="mt-3 max-w-[65ch] text-sm leading-6 text-slate-600 dark:text-white/55">
+                Read the requirements above, match them with your resume, and practise the topics below before you apply or attend an interview.
+              </p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {prepLinks(job).map((l) => (
+                  <Link key={l.label} to={l.to as never} params={(l.slug ? { slug: l.slug } : undefined) as never} className={`group flex flex-col rounded-2xl p-4 transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-md ${tile}`}>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">{l.label}</span>
+                    <span className="mt-1 flex-1 text-xs leading-5 text-slate-500 dark:text-white/45">{l.note}</span>
+                    <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-cyan-700 dark:text-[#00e5ff]">Open <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" /></span>
+                  </Link>
+                ))}
               </div>
             </article>
 

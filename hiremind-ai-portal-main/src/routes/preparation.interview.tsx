@@ -4,7 +4,7 @@ import {
   ArrowRight, BarChart3, Brain, Briefcase, Bug, ChevronDown, Clock, Cloud,
   Code2, Search, Server, ShieldCheck, Sparkles, Users, ClipboardCheck,
 } from "lucide-react";
-import { EXTRA } from "../routes/interview-questions"
+import { EXTRA } from "../data/interview-questions"
 
 export const Route = createFileRoute("/preparation/interview")({
   component: InterviewPreparationPage,

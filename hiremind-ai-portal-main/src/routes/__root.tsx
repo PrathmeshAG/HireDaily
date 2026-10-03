@@ -16,6 +16,7 @@ import { AuroraBg } from "../components/aurora-bg";
 import { Navbar } from "../components/navbar";
 import { Footer } from "../components/footer";
 import { AuthProvider } from "../lib/auth-context";
+import { ConsentBanner } from "../components/consent-banner";
 
 function NotFoundComponent() {
   return (
@@ -102,12 +103,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Hire Daily — Find Your Dream Job Faster" },
-      {
-        name: "twitter:description",
-        content:
-          "Discover fresh job opportunities with structured details, source information, verification details, and application links.",
-      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -181,6 +176,7 @@ function RootComponent() {
           <Outlet />
         </main>
         <Footer />
+        <ConsentBanner />
         <Toaster
           theme={theme}
           position="bottom-right"

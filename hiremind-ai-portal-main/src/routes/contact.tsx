@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SITE } from "../lib/site";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -6,7 +7,9 @@ export const Route = createFileRoute("/contact")({
       { title: "Contact Hire Daily — Hire Daily" },
       { name: "description", content: "Contact Hire Daily for questions, feedback, or support." },
       { property: "og:title", content: "Contact Hire Daily — Hire Daily" },
+      { name: "twitter:title", content: "Contact Hire Daily — Hire Daily" },
       { property: "og:description", content: "Contact Hire Daily for questions, feedback, or support." },
+      { name: "twitter:description", content: "Contact Hire Daily for questions, feedback, or support." },
       { property: "og:url", content: "https://hire-daily.vercel.app/contact" },
     ],
     links: [{ rel: "canonical", href: "https://hire-daily.vercel.app/contact" }],
@@ -42,14 +45,24 @@ function ContactPage() {
 
         <section>
           <h2 className="mb-3 text-2xl font-semibold text-white">
+            Who runs Hire Daily
+          </h2>
+          <p className="leading-7 text-white/70">
+            Hire Daily is run by <strong>{SITE.owner.name}</strong> ({SITE.owner.role}), based in {SITE.owner.location}.
+            You are writing to a real person, not a support bot.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-2xl font-semibold text-white">
             Email
           </h2>
 
           <a
-            href="mailto:prathmeshbobade33@gmail.com"
+            href={`mailto:${SITE.contactEmail}`}
             className="inline-block text-lg font-medium text-cyan-400 hover:underline"
           >
-                prathmeshbobade33@gmail.com
+                {SITE.contactEmail}
 
           </a>
 
@@ -65,7 +78,7 @@ function ContactPage() {
 
           <p className="leading-7 text-white/70">
             Interested in promoting your company, hiring candidates, or
-            advertising on HireDaily? Contact us via email and we'll get back to
+            advertising on Hire Daily? Contact us via email and we'll get back to
             you with partnership opportunities.
           </p>
         </section>
@@ -84,11 +97,11 @@ function ContactPage() {
 
         <section>
           <h2 className="mb-3 text-2xl font-semibold text-white">
-            About HireDaily
+            About Hire Daily
           </h2>
 
           <p className="leading-7 text-white/70">
-            HireDaily is a platform dedicated to helping students, freshers, and
+            Hire Daily is a platform dedicated to helping students, freshers, and
             professionals discover verified job opportunities from leading
             companies. We strive to provide reliable, up-to-date job listings
             and a smooth job search experience.
@@ -97,7 +110,7 @@ function ContactPage() {
 
         <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5">
           <p className="text-center text-white/80">
-            Thank you for choosing <span className="font-semibold text-cyan-400">HireDaily</span>.
+            Thank you for choosing <span className="font-semibold text-cyan-400">Hire Daily</span>.
             We appreciate your trust and look forward to assisting you.
           </p>
         </div>

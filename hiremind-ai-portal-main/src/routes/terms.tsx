@@ -6,7 +6,9 @@ export const Route = createFileRoute("/terms")({
       { title: "Terms of Use — Hire Daily" },
       { name: "description", content: "Read the Hire Daily terms of use." },
       { property: "og:title", content: "Terms of Use — Hire Daily" },
+      { name: "twitter:title", content: "Terms of Use — Hire Daily" },
       { property: "og:description", content: "Read the Hire Daily terms of use." },
+      { name: "twitter:description", content: "Read the Hire Daily terms of use." },
       { property: "og:url", content: "https://hire-daily.vercel.app/terms" },
     ],
     links: [{ rel: "canonical", href: "https://hire-daily.vercel.app/terms" }],
@@ -33,7 +35,7 @@ function TermsPage() {
           </h2>
 
           <p className="leading-7 text-white/70">
-            By accessing and using HireDaily, you agree to comply with these
+            By accessing and using Hire Daily, you agree to comply with these
             Terms & Conditions. If you do not agree with any part of these
             terms, please discontinue using our website.
           </p>
@@ -45,7 +47,7 @@ function TermsPage() {
           </h2>
 
           <p className="leading-7 text-white/70">
-            HireDaily provides job opportunities collected from official company
+            Hire Daily provides job opportunities collected from official company
             career portals and other publicly available sources. We strive to
             keep all information accurate and up to date; however, we cannot
             guarantee that every listing is complete, current, or error-free.
@@ -71,7 +73,7 @@ function TermsPage() {
           </h2>
 
           <p className="leading-7 text-white/70">
-            HireDaily is an informational platform only. We do not guarantee
+            Hire Daily is an informational platform only. We do not guarantee
             interviews, job offers, employment, salary, or recruitment outcomes.
             Final hiring decisions are made solely by the respective employers.
           </p>
@@ -96,8 +98,8 @@ function TermsPage() {
           </h2>
 
           <p className="leading-7 text-white/70">
-            The HireDaily logo, branding, website design, and original content
-            are the intellectual property of HireDaily unless otherwise stated.
+            The Hire Daily logo, branding, website design, and original content
+            are the intellectual property of Hire Daily unless otherwise stated.
             Unauthorized copying or redistribution is prohibited.
           </p>
         </section>
@@ -108,7 +110,7 @@ function TermsPage() {
           </h2>
 
           <p className="leading-7 text-white/70">
-            HireDaily shall not be liable for any direct or indirect loss,
+            Hire Daily shall not be liable for any direct or indirect loss,
             damages, or inconvenience arising from the use of this website or
             reliance on any job listing published on the platform.
           </p>
@@ -121,7 +123,7 @@ function TermsPage() {
 
           <p className="leading-7 text-white/70">
             We may update these Terms & Conditions at any time without prior
-            notice. Continued use of HireDaily after changes are published
+            notice. Continued use of Hire Daily after changes are published
             constitutes acceptance of the updated terms.
           </p>
         </section>

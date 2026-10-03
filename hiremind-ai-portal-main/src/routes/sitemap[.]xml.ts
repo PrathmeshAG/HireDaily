@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { fetchJobs } from "../lib/jobs";
+import { ARTICLES } from "../data/articles";
 import { getJobDateState } from "../lib/job-dates";
 import { getJobPath } from "../lib/job-url";
 
@@ -42,6 +43,17 @@ export const Route = createFileRoute("/sitemap.xml")({
           { path: "/privacy", changefreq: "yearly", priority: "0.3" },
           { path: "/terms", changefreq: "yearly", priority: "0.3" },
           { path: "/how-we-verify-jobs", changefreq: "monthly", priority: "0.6" },
+          { path: "/blog", changefreq: "weekly", priority: "0.7" },
+          { path: "/preparation/interview", changefreq: "monthly", priority: "0.6" },
+          { path: "/preparation/study-material", changefreq: "monthly", priority: "0.6" },
+          { path: "/preparation/coding-practice", changefreq: "monthly", priority: "0.6" },
+          { path: "/preparation/tools-resources", changefreq: "monthly", priority: "0.5" },
+          ...ARTICLES.map((a) => ({
+            path: `/blog/${a.slug}`,
+            changefreq: "monthly" as const,
+            priority: "0.7",
+            lastModified: Date.parse(a.updated),
+          })),
         ];
 
         const jobEntries: SitemapEntry[] = jobs

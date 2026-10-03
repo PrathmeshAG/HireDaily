@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { Sparkles, Github, Twitter, Linkedin } from "lucide-react";
+import { Sparkles, Github, Twitter, Linkedin, Instagram } from "lucide-react";
+import { SITE } from "../lib/site";
+import { OPEN_EVENT } from "./consent-banner";
 
 export function Footer() {
   return (
@@ -24,18 +26,24 @@ export function Footer() {
             opportunities before applying.
           </p>
 
-          <div className="mt-6 flex gap-3">
-            {[Twitter, Github, Linkedin].map((Icon, i) => (
-              <a
-                key={i}
-                href="#"
-                className="btn-ghost-glow flex h-9 w-9 items-center justify-center rounded-lg"
-                aria-label="social"
-              >
-                <Icon className="h-4 w-4" />
-              </a>
-            ))}
-          </div>
+          {(() => {
+            const socials = [
+              { name: "Instagram", Icon: Instagram, href: SITE.social.instagram },
+              { name: "LinkedIn", Icon: Linkedin, href: SITE.social.linkedin },
+              { name: "X", Icon: Twitter, href: SITE.social.x },
+              { name: "GitHub", Icon: Github, href: SITE.social.github },
+            ].filter((x) => x.href);
+            // Icons are shown only for real profiles, so no link ever points to "#".
+            return socials.length ? (
+              <div className="mt-6 flex gap-3">
+                {socials.map(({ name, Icon, href }) => (
+                  <a key={name} href={href} target="_blank" rel="noopener noreferrer me" className="btn-ghost-glow flex h-9 w-9 items-center justify-center rounded-lg" aria-label={`Hire Daily on ${name}`}>
+                    <Icon className="h-4 w-4" />
+                  </a>
+                ))}
+              </div>
+            ) : null;
+          })()}
         </div>
 
         <div>
@@ -44,6 +52,16 @@ export function Footer() {
             <li>
               <Link to="/jobs" className="hover:text-[#00e5ff]">
                 Browse Jobs
+              </Link>
+            </li>
+            <li>
+              <Link to="/blog" className="hover:text-[#00e5ff]">
+                Career guides
+              </Link>
+            </li>
+            <li>
+              <Link to="/preparation/coding-practice" className="hover:text-[#00e5ff]">
+                Coding practice
               </Link>
             </li>
             <li>
@@ -82,12 +100,17 @@ export function Footer() {
                 Terms & Conditions
               </Link>
             </li>
+            <li>
+              <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))} className="hover:text-[#00e5ff]">
+                Cookie settings
+              </button>
+            </li>
           </ul>
         </div>
       </div>
 
       <div className="border-t border-white/5 py-6 text-center text-xs text-white/40">
-        © {new Date().getFullYear()} Hire Daily. Find Your Dream Job Faster.
+        © {new Date().getFullYear()} {SITE.name}. {SITE.tagline}.
       </div>
     </footer>
   );

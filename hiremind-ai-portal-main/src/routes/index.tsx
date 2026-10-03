@@ -30,6 +30,9 @@ import { JobCard, JobCardSkeleton } from "../components/job-card";
 import { Particles } from "../components/aurora-bg";
 
 export const Route = createFileRoute("/")({
+  ssr: true,
+  // Load jobs on the server so the first HTML already contains the real counts and latest jobs.
+  loader: async () => ({ jobs: await fetchJobs().catch(() => [] as Awaited<ReturnType<typeof fetchJobs>>) }),
   component: Home,
   head: () => ({
     meta: [
@@ -40,6 +43,7 @@ export const Route = createFileRoute("/")({
           "Discover current jobs, internships, fresher opportunities, remote roles and career resources on Hire Daily. Browse by role, company, location and experience.",
       },
       { property: "og:title", content: "Hire Daily — Jobs, Internships & Career Opportunities" },
+      { name: "twitter:title", content: "Hire Daily — Jobs, Internships & Career Opportunities" },
       {
         property: "og:description",
         content: "Explore current job opportunities, internships, fresher roles, remote jobs and practical career resources.",
@@ -743,7 +747,8 @@ function topCounts<T>(items: T[], pick: (item: T) => string | undefined | null, 
 /* ---------- page ---------- */
 
 function Home() {
-  const { data: jobs, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs });
+  const loaded = Route.useLoaderData();
+  const { data: jobs, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs, initialData: loaded.jobs });
 
   const allJobs = jobs ?? [];
   const latest = allJobs.slice(0, 6);
@@ -813,7 +818,6 @@ function Home() {
             "@context": "https://schema.org",
             "@type": "WebSite",
             name: "Hire Daily",
-            alternateName: "HireMind AI",
             url: "https://hire-daily.vercel.app/",
           }),
         }}

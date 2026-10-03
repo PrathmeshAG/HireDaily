@@ -3,8 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight, BookOpen, Clock, FileText, FlaskConical, Map, Search, Sparkles, X,
 } from "lucide-react";
-import { DEEP } from "../routes/study-deep"
-import { DETAILED, EXTRA_LIVE, type Content, type Kind, type Page, type Resource } from "../routes/study-content";
+import { DEEP } from "../data/study-deep"
+import { DETAILED, EXTRA_LIVE, type Content, type Kind, type Page, type Resource } from "../data/study-content";
 
 export const Route = createFileRoute("/preparation/study-material")({
   component: StudyMaterialPage,

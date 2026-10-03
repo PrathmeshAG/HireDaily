@@ -1,3 +1,4 @@
+import { SALARY_NOTE } from "../lib/site";
 import {
   ShieldCheck,
   SearchCheck,
@@ -97,7 +98,7 @@ export default function HowWeVerifyJobs() {
           <InfoCard
             icon={<AlertCircle size={30} />}
             title='What does "Expected" salary mean?'
-            text='If salary is displayed as "Expected", the available job information does not provide a confirmed employer salary figure. It is not a guaranteed salary and is not an estimate created by Hire Daily.'
+            text={SALARY_NOTE}
           />
         </div>
       </section>

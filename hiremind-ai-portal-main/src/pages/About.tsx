@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { SALARY_NOTE, SITE } from "../lib/site";
 import {
   ArrowRight,
   BadgeCheck,
@@ -158,6 +159,30 @@ export default function About() {
         </div>
       </section>
 
+      {/* Who runs Hire Daily */}
+      <section className="relative mx-auto max-w-6xl px-4 pb-14 sm:px-6 sm:pb-20">
+        <div className={`flex flex-col gap-6 p-6 sm:flex-row sm:items-center sm:p-9 ${card}`}>
+          {SITE.owner.photo ? (
+            <img src={SITE.owner.photo} alt={SITE.owner.name} className="h-28 w-28 shrink-0 rounded-3xl object-cover" />
+          ) : (
+            <span className="flex h-28 w-28 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-[#00e5ff] to-[#7c3aed] text-4xl font-bold text-[#050816]" style={heading}>
+              {SITE.owner.name[0]}
+            </span>
+          )}
+          <div>
+            <p className="text-sm font-semibold text-cyan-700 dark:text-[#00e5ff]/80">Who runs Hire Daily</p>
+            <h2 className="mt-1 text-2xl font-bold sm:text-3xl" style={heading}>{SITE.owner.name}</h2>
+            <p className="text-sm text-slate-500 dark:text-white/45">{SITE.owner.role} · {SITE.owner.location}</p>
+            <p className="mt-3 max-w-2xl text-[15px] leading-7 text-slate-600 dark:text-white/55">{SITE.owner.bio}</p>
+            <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
+              <a href={`mailto:${SITE.contactEmail}`} className="text-cyan-700 hover:underline dark:text-[#00e5ff]">{SITE.contactEmail}</a>
+              {SITE.owner.linkedin && <a href={SITE.owner.linkedin} target="_blank" rel="noopener noreferrer me" className="text-cyan-700 hover:underline dark:text-[#00e5ff]">LinkedIn</a>}
+              <Link to="/blog" className="text-cyan-700 hover:underline dark:text-[#00e5ff]">Read our guides</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Verification */}
       <section id="verification" className="relative mx-auto max-w-6xl scroll-mt-24 px-4 pb-14 sm:px-6 sm:pb-20">
         <div className={`p-6 sm:p-9 md:p-12 ${card}`}>
@@ -184,10 +209,7 @@ export default function About() {
 
           <div className="mt-6 rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-violet-50 p-6 dark:border-[#00e5ff]/15 dark:from-[#00e5ff]/[0.05] dark:to-[#7c3aed]/[0.05]">
             <p className="text-[15px] leading-7 text-slate-600 dark:text-white/60">
-              <span className="font-semibold text-slate-900 dark:text-white">About salary:</span> If a job shows a salary as{" "}
-              <span className="font-semibold text-slate-900 dark:text-white">Expected</span>, it means the available job information
-              does not provide a confirmed employer salary figure. It should not be interpreted as a guaranteed salary or an
-              estimate created by Hire Daily.
+              <span className="font-semibold text-slate-900 dark:text-white">About salary:</span> {SALARY_NOTE}
             </p>
           </div>
         </div>
@@ -231,7 +253,7 @@ export default function About() {
             </p>
             <p>Applicants should always verify every job posting through the company's official careers website before applying.</p>
             <p>
-              Hire Daily and HireMind AI are not responsible for expired links, hiring decisions, application outcomes,
+              Hire Daily is not responsible for expired links, hiring decisions, application outcomes,
               inaccurate information supplied by third parties, technical issues, or any direct or indirect loss resulting
               from the use of this platform.
             </p>
@@ -243,13 +265,13 @@ export default function About() {
         </div>
       </section>
 
-      {/* HireMind AI */}
-      <section className="relative mx-auto max-w-6xl px-4 pb-24 sm:px-6">
+      {/* AI career tools */}
+      {/* <section className="relative mx-auto max-w-6xl px-4 pb-24 sm:px-6">
         <div className="relative overflow-hidden rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-violet-50 p-8 text-center dark:border-[#00e5ff]/15 dark:from-[#00e5ff]/10 dark:via-transparent dark:to-[#7c3aed]/10 sm:p-12">
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white dark:bg-[#00e5ff] dark:text-slate-950">
             <Briefcase className="h-7 w-7" />
           </span>
-          <h2 className="mt-5 text-4xl font-bold tracking-tight sm:text-5xl" style={heading}>HireMind AI</h2>
+          <h2 className="mt-5 text-4xl font-bold tracking-tight sm:text-5xl" style={heading}>AI career tools</h2>
           <p className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-400/10 dark:text-amber-200">
             Coming soon
           </p>
@@ -264,7 +286,7 @@ export default function About() {
             ))}
           </ul>
         </div>
-      </section>
+      </section> */}
     </div>
   );
 }
