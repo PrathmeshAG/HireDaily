@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Clock3 } from "lucide-react";
 import { ARTICLES, getArticle } from "../data/articles";
+import { ArticleCover } from "../components/article-cover";
 import { ArticleBody, headingsOf, slugifyHeading } from "../components/article-body";
 import { SITE } from "../lib/site";
 
@@ -66,6 +67,8 @@ function ArticlePage() {
           <span>Updated {fmt(a.updated)}</span>
           <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {a.minutes} min read</span>
         </div>
+
+        <ArticleCover category={a.category} slug={a.slug} className="mt-6 rounded-3xl shadow-xl ring-1 ring-black/5 dark:ring-white/10" />
 
         <nav aria-label="In this article" className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-white/10 dark:bg-white/[0.03]">
           <p className="text-sm font-bold text-slate-900 dark:text-white">In this article</p>

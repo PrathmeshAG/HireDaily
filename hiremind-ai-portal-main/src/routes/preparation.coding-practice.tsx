@@ -355,7 +355,7 @@ function CodingPracticePage() {
 
       <section className={`mt-12 p-6 sm:p-8 ${card}`}>
         <h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900 dark:text-white"><Award className="h-6 w-6 text-amber-500" /> Your badges</h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-white/55">Every coding task you solve earns a badge. Sign in to collect them and see them on your profile.</p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-white/55">Every coding task you solve earns a badge. Finish a whole track to unlock a certificate. Sign in to collect them and see them on your profile.</p>
         <div className="mt-6"><BadgeShelf progress={progress} collected={signedIn} /></div>
       </section>
 

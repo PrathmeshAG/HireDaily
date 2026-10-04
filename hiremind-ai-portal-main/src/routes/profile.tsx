@@ -7,6 +7,7 @@ import { auth } from "../lib/firebase";
 import { useAuth } from "../lib/auth-context";
 import { useProgress } from "../lib/progress";
 import { BadgeShelf } from "../components/badge";
+import { CertificateShelf } from "../components/certificate-shelf";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -161,6 +162,12 @@ function ProfilePage() {
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">My badges</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-white/45">Earned by solving coding tasks in Preparation.</p>
         <div className="mt-5"><BadgeShelf progress={progress} collected /></div>
+      </div>
+
+      <div className={`mt-6 p-5 sm:p-8 ${card}`}>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white">My certificates</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-white/45">Solve every task in a track to earn its certificate. It carries your profile name, so update your name above first.</p>
+        <div className="mt-5"><CertificateShelf progress={progress} name={shown} uid={user.uid} /></div>
       </div>
     </section>
   );
