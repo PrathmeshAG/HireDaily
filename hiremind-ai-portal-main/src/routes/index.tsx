@@ -958,17 +958,19 @@ function Home() {
 
       <div ref={rootRef} className="relative mx-auto max-w-7xl overflow-x-clip px-4 sm:px-6">
         <div className="hd-progress" aria-hidden />
-        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[760px] hd-grid" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[760px] hd-grid [-webkit-mask-image:radial-gradient(ellipse_75%_65%_at_50%_0%,black_35%,transparent_100%)] [mask-image:radial-gradient(ellipse_75%_65%_at_50%_0%,black_35%,transparent_100%)]" aria-hidden />
         <div className="pointer-events-none absolute left-[6%] top-[180px] -z-10 h-44 w-44 rounded-full bg-[#00e5ff]/10 blur-3xl hd-pulse-orb" />
         <div className="pointer-events-none absolute right-[6%] top-[360px] -z-10 h-56 w-56 rounded-full bg-[#7c3aed]/10 blur-3xl hd-pulse-orb" />
 
         {/* HERO */}
         <section onPointerMove={onHeroMove} className="relative overflow-hidden py-8 md:py-20">
           <Particles count={isNarrow ? 14 : 34} />
-          <div className="hd-spot pointer-events-none absolute inset-0" aria-hidden />
-          <div className="hd-orb -left-20 top-10 h-72 w-72 bg-[#00e5ff]/15" />
-          <div className="hd-orb right-0 top-1/3 h-80 w-80 bg-[#7c3aed]/20" style={{ animationDelay: "-5s" }} />
-          <div className="hd-orb bottom-0 left-1/3 h-64 w-64 bg-[#ff4ecd]/10" style={{ animationDelay: "-9s" }} />
+          <div className="pointer-events-none absolute inset-0 [-webkit-mask-image:radial-gradient(ellipse_closest-side,black_55%,transparent_100%)] [mask-image:radial-gradient(ellipse_closest-side,black_55%,transparent_100%)]" aria-hidden>
+            <div className="hd-spot absolute inset-0" />
+            <div className="hd-orb left-0 top-10 h-72 w-72 bg-[#00e5ff]/15" />
+            <div className="hd-orb right-0 top-1/3 h-80 w-80 bg-[#7c3aed]/20" style={{ animationDelay: "-5s" }} />
+            <div className="hd-orb bottom-0 left-1/3 h-64 w-64 bg-[#ff4ecd]/10" style={{ animationDelay: "-9s" }} />
+          </div>
 
           <div className="relative z-10 grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
             <div className="hd-hero-copy">
@@ -1036,7 +1038,7 @@ function Home() {
                 </div>
               </div>
 
-              <div className="hd-pop absolute left-0 top-4 sm:-left-4 sm:top-10 md:-left-10" style={cv({ "--d": "1500ms" })}>
+              <div className="hd-pop absolute left-2 top-3 sm:left-3 sm:top-6" style={cv({ "--d": "1500ms" })}>
                 <div className="glass hd-float flex items-center gap-3 rounded-2xl p-3 shadow-xl">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#00e5ff]/15"><Building2 className="h-5 w-5 text-[#00e5ff]" /></div>
                   <div>
@@ -1045,7 +1047,7 @@ function Home() {
                   </div>
                 </div>
               </div>
-              <div className="hd-pop absolute right-0 bottom-6 sm:-right-3 sm:bottom-12 md:-right-8" style={cv({ "--d": "1750ms" })}>
+              <div className="hd-pop absolute bottom-4 right-2 sm:bottom-8 sm:right-3" style={cv({ "--d": "1750ms" })}>
                 <div className="glass hd-float hd-float-2 flex items-center gap-3 rounded-2xl p-3 shadow-xl">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#7c3aed]/20"><BadgeCheck className="h-5 w-5 text-[#a78bfa]" /></div>
                   <div>

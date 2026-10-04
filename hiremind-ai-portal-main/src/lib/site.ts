@@ -34,7 +34,10 @@ export const SITE = {
     github: "",
   },
 
-  lastPolicyUpdate: "3 October 2026",
+  /** Set to true only when Hire Daily really has more than one person. Controls "our team" wording. */
+  hasTeam: false,
+
+  lastPolicyUpdate: "4 October 2026",
 } as const;
 
 /**

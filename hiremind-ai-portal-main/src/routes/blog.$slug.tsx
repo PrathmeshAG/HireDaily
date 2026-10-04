@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Clock3 } from "lucide-react";
-import { ARTICLES, getArticle } from "../data/articles";
+import { getArticle, liveArticles, readMinutes } from "../data/articles";
 import { ArticleCover } from "../components/article-cover";
 import { ArticleBody, headingsOf, slugifyHeading } from "../components/article-body";
 import { SITE } from "../lib/site";
@@ -24,7 +24,7 @@ export const Route = createFileRoute("/blog/$slug")({
         { property: "og:title", content: title },
         { property: "og:description", content: a.description },
         { property: "article:published_time", content: a.published },
-        { property: "article:modified_time", content: a.updated },
+        ...(a.updated ? [{ property: "article:modified_time", content: a.updated }] : []),
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: a.description },
       ],
@@ -38,14 +38,14 @@ const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numer
 function ArticlePage() {
   const { article: a } = Route.useLoaderData();
   const toc = headingsOf(a.body);
-  const related = ARTICLES.filter((x) => x.slug !== a.slug).slice(0, 2);
+  const related = liveArticles().filter((x) => x.slug !== a.slug).slice(0, 2);
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     headline: a.title,
     description: a.description,
     datePublished: a.published,
-    dateModified: a.updated,
+    dateModified: a.updated ?? a.published,
     mainEntityOfPage: `${SITE.url}/blog/${a.slug}`,
     author: { "@type": "Person", name: SITE.owner.name },
     publisher: { "@type": "Organization", name: SITE.name, url: SITE.url },
@@ -64,8 +64,9 @@ function ArticlePage() {
         <p className="mt-4 text-lg leading-8 text-slate-600 dark:text-white/60">{a.description}</p>
         <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-slate-200 py-3 text-sm text-slate-500 dark:border-white/10 dark:text-white/45">
           <span>By <b className="font-semibold text-slate-700 dark:text-white/75">{SITE.owner.name}</b></span>
-          <span>Updated {fmt(a.updated)}</span>
-          <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {a.minutes} min read</span>
+          <span>Published {fmt(a.published)}</span>
+          {a.updated && a.updated !== a.published && <span>Updated {fmt(a.updated)}</span>}
+          <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {readMinutes(a)} min read</span>
         </div>
 
         <ArticleCover category={a.category} slug={a.slug} className="mt-6 rounded-3xl shadow-xl ring-1 ring-black/5 dark:ring-white/10" />
@@ -79,6 +80,13 @@ function ArticlePage() {
 
         <div className="mt-2"><ArticleBody body={a.body} /></div>
       </article>
+
+      {a.authorNote && (
+        <aside className="mt-10 rounded-3xl border border-cyan-200 bg-cyan-50 p-5 dark:border-[#00e5ff]/20 dark:bg-[#00e5ff]/[0.06]">
+          <p className="text-sm font-bold text-cyan-900 dark:text-[#00e5ff]">From the author</p>
+          <p className="mt-2 whitespace-pre-line text-[15px] leading-7 text-slate-700 dark:text-white/70">{a.authorNote}</p>
+        </aside>
+      )}
 
       <aside className="mt-12 flex items-start gap-4 rounded-3xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/[0.035]">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#00e5ff] to-[#7c3aed] text-lg font-bold text-[#050816]">{SITE.owner.name[0]}</span>

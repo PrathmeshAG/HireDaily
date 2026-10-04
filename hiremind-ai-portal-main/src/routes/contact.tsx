@@ -26,7 +26,7 @@ function ContactPage() {
 
       <p className="mb-8 text-white/60">
         We'd love to hear from you. Whether you have questions, feedback,
-        partnership opportunities, or advertising inquiries, our team is here
+        partnership opportunities, or advertising inquiries, {SITE.hasTeam ? "our team is here" : "I am here"}
         to help.
       </p>
 

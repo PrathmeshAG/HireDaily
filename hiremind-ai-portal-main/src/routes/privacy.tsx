@@ -117,15 +117,28 @@ function PrivacyPage() {
 
         <section>
           <h2 className="mb-3 text-2xl font-semibold text-white">
-            Accounts and Firebase
+            Accounts, Sign-in and Firebase
           </h2>
           <p className="leading-7 text-white/70">
-            Hire Daily uses Google Firebase to run the website. Firebase Authentication handles sign-in with an
-            email and password or with Google. If you create an account we store your email address, the name
-            you enter and basic sign-in details (such as the account creation time) with Firebase. Passwords are
-            handled by Firebase and are never visible to us. Firebase Realtime Database stores job listings and
-            Firebase Storage stores company logos. These services are provided by Google and process data under
-            Google's own privacy terms. You may ask us to delete your account at any time by emailing us.
+            You can browse Hire Daily without an account. If you create one, we use Google Firebase to run it.
+            This is what is stored and why:
+          </p>
+          <ul className="mt-3 list-disc space-y-2 pl-6 leading-7 text-white/70">
+            <li><strong>Email and password sign-up:</strong> your email address, the name you enter, the account creation and last sign-in time, and a unique user ID. Your password is handled by Firebase Authentication and is never visible to us.</li>
+            <li><strong>Sign in with Google:</strong> Google shares your name, email address and profile picture link with us. We use the name and picture to show your profile and to write your name on certificates. We do not receive your Google password and we do not access your Gmail, Drive or contacts.</li>
+            <li><strong>Coding practice progress:</strong> which practice tasks you solved, when you solved them and how many runs it took. This is saved in Firebase Realtime Database under your user ID so that your badges and certificates follow you to another device. Your code is not uploaded. Drafts of your code stay only in your browser.</li>
+            <li><strong>In your browser:</strong> Firebase keeps a sign-in session in your browser storage, and we keep your progress, code drafts and cookie choice in local storage on your device.</li>
+          </ul>
+          <p className="mt-3 leading-7 text-white/70">
+            We use this data only to provide the account, profile, badges and certificates, to keep the service secure,
+            and to reply if you contact us. We do not sell it or use it to build advertising profiles. Firebase is operated
+            by Google and processes the data on our behalf under Google's terms and privacy policy. Job listings and
+            company logos are also stored with Firebase. You can sign out at any time from your profile.
+          </p>
+          <p className="mt-3 leading-7 text-white/70">
+            <strong>Keeping and deleting data:</strong> we keep account data for as long as your account exists. To
+            delete your account and the progress stored under it, email us from the address you signed up with and we
+            will remove it. Clearing your browser data removes the copies stored on your device.
           </p>
         </section>
 
@@ -147,9 +160,9 @@ function PrivacyPage() {
             Your Choices and Rights
           </h2>
           <ul className="list-disc space-y-2 pl-6 text-white/70">
-            <li>You can accept or reject personalised ads and change your decision any time using Cookie settings in the footer.</li>
+            <li>You can accept or reject personalised ads and change your decision any time using Cookie settings in the footer. Signing in does not require you to accept personalised ads.</li>
             <li>You can delete cookies or block them in your browser settings.</li>
-            <li>You can ask us to access, correct or delete the personal data we hold about you.</li>
+            <li>You can ask us to access, correct or delete the personal data we hold about you, including your account and coding progress. You can change your display name yourself on your profile page.</li>
             <li>Visitors in the EEA, UK and Switzerland have additional rights under local data protection laws. Contact us to use them.</li>
             <li>Our website is not directed at children under 13 and we do not knowingly collect their data.</li>
           </ul>

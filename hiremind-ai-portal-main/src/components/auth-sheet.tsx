@@ -7,6 +7,7 @@ import {
   signInWithPopup,
   updateProfile,
 } from "firebase/auth";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Chrome, Eye, EyeOff, Loader2, Lock, Mail, User, X } from "lucide-react";
 import { auth } from "../lib/firebase";
@@ -242,7 +243,11 @@ export function AuthSheet({
             )}
           </p>
           <p className="mt-4 text-center text-[11px] leading-5 text-slate-400 dark:text-white/30">
-            By continuing you agree to our Terms and Privacy Policy. Sign-in is handled by Firebase Authentication.
+            By continuing you agree to our{" "}
+            <Link to="/terms" onClick={onClose} className="font-semibold text-[#0891a6] underline underline-offset-2 hover:text-[#067a8c] dark:text-[#00e5ff]">Terms of Use</Link>{" "}
+            and{" "}
+            <Link to="/privacy" onClick={onClose} className="font-semibold text-[#0891a6] underline underline-offset-2 hover:text-[#067a8c] dark:text-[#00e5ff]">Privacy Policy</Link>.
+            We store your email, name and coding progress with Firebase (Google) to run your account.
           </p>
         </div>
       </div>

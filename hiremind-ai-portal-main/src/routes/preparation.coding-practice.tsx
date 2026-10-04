@@ -36,6 +36,11 @@ const STYLES = `
   @keyframes cpShake { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-5px) } 75% { transform: translateX(5px) } }
   @keyframes cpBurst { from { transform: translate(0,0) scale(1); opacity: 1 } to { transform: translate(var(--x), var(--y)) scale(0); opacity: 0 } }
   @keyframes cpPulse { 0%,100% { opacity: .5 } 50% { opacity: 1 } }
+  .cp-scroll { scrollbar-width: thin; scrollbar-color: rgba(100,116,139,.55) transparent; }
+  .cp-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+  .cp-scroll::-webkit-scrollbar-track { background: transparent; }
+  .cp-scroll::-webkit-scrollbar-thumb { background: rgba(100,116,139,.45); border-radius: 9999px; }
+  .cp-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,229,255,.6); }
   .cp-in { animation: cpIn .35s cubic-bezier(.16,1,.3,1) both }
   .cp-pop { animation: cpPop .5s cubic-bezier(.34,1.4,.64,1) both }
   .cp-shake { animation: cpShake .4s ease }
@@ -169,7 +174,7 @@ function CodingPracticePage() {
       </header>
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" aria-label="Tracks" className="flex gap-2 overflow-x-auto pb-1">
+        <div role="tablist" aria-label="Tracks" className="cp-scroll flex gap-2 overflow-x-auto pb-1">
           {TRACKS.map((t) => (
             <button key={t.id} role="tab" aria-selected={t.id === track}
               onClick={() => { setTrack(t.id); setLevelFilter("All"); setPid(problemsOf(t.id)[0].id); }}
@@ -193,7 +198,7 @@ function CodingPracticePage() {
           </button>
         ))}
         <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:block dark:bg-white/10" />
-        <div className="flex gap-2 overflow-x-auto">
+        <div className="cp-scroll flex gap-2 overflow-x-auto pb-1.5">
           {list.map((p) => (
             <button key={p.id} onClick={() => setPid(p.id)} aria-current={p.id === pid}
               className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${p.id === pid ? "border-cyan-500 bg-cyan-50 text-cyan-800 dark:border-[#00e5ff]/60 dark:bg-[#00e5ff]/10 dark:text-[#00e5ff]" : "border-slate-200 text-slate-600 hover:border-slate-400 dark:border-white/10 dark:text-white/60"}`}>
@@ -257,7 +262,7 @@ function CodingPracticePage() {
                 onKeyDown={onKey}
                 onScroll={(e) => { if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop; }}
                 spellCheck={false} autoCapitalize="off" autoCorrect="off" aria-label="Code editor"
-                className="h-full min-w-0 flex-1 resize-none bg-transparent p-3 text-cyan-50 caret-[#00e5ff] outline-none"
+                className="cp-scroll h-full min-w-0 flex-1 resize-none bg-transparent p-3 text-cyan-50 caret-[#00e5ff] outline-none"
                 wrap="off"
               />
             </div>
@@ -325,7 +330,7 @@ function CodingPracticePage() {
             {logs.length > 0 && (
               <div className="mt-4">
                 <p className="text-xs font-bold text-slate-500 dark:text-white/45">Console output</p>
-                <pre className="mt-1.5 max-h-32 overflow-auto rounded-xl bg-slate-950 p-3 font-mono text-xs text-emerald-200">{logs.slice(0, 50).join("\n")}</pre>
+                <pre className="cp-scroll mt-1.5 max-h-32 overflow-auto rounded-xl bg-slate-950 p-3 font-mono text-xs text-emerald-200">{logs.slice(0, 50).join("\n")}</pre>
               </div>
             )}
           </div>

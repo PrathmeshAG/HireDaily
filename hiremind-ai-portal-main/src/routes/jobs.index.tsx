@@ -526,363 +526,34 @@ function JobsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-3 py-4 pb-12 sm:px-4 sm:py-8 sm:pb-20">
-      {/* Hero */}
-      <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#00e5ff]/10 via-white/[0.02] to-[#7c3aed]/10 px-4 py-6 animate-fade-up sm:rounded-[2rem] sm:px-5 sm:py-10 md:px-10 md:py-14">
-        <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#00e5ff]/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-28 -right-20 h-72 w-72 rounded-full bg-[#7c3aed]/10 blur-3xl" />
-
-        <div className="relative max-w-3xl md:min-h-0">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1.5 text-xs font-medium text-[#7defff] ring-1 ring-white/10">
-            <Sparkles className="h-3.5 w-3.5" />
-            Fresh opportunities, organized for faster discovery
-          </div>
-
-          <h1
-            className="mt-3 text-[2rem] font-bold leading-[1.05] text-white sm:text-4xl md:mt-5 md:text-6xl"
-            style={{ fontFamily: "'Space Grotesk'" }}
-          >
-            Find your next{" "}
-            <span className="text-gradient">opportunity</span>
-          </h1>
-
-          <p className="mt-2 max-w-2xl text-[11px] leading-5 text-white/55 sm:text-xs md:mt-4 md:text-base md:leading-7">
-            Explore fresher jobs, internships, remote roles and location-based
-            opportunities across India. Search by role, company, skills or
-            location and review the listing details before you apply.
-          </p>
-
-          <div className="mt-5 flex flex-col gap-2 rounded-2xl md:mt-7 bg-black/20 p-2 ring-1 ring-white/10 sm:flex-row">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
-              <input
-                value={q}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") sectionJump();
-                }}
-                placeholder="Search jobs, companies, skills or locations..."
-                className="w-full rounded-xl bg-transparent py-3 pl-11 pr-3 text-xs text-white placeholder:text-white/35 focus:outline-none sm:text-sm md:py-3.5 md:pr-4"
-              />
-            </div>
-
+      {/* Header: kept short so the jobs are visible straight away */}
+      <header className="animate-fade-up">
+        <h1
+          className="text-2xl font-bold leading-tight text-white sm:text-3xl md:text-4xl"
+          style={{ fontFamily: "'Space Grotesk'" }}
+        >
+          Find your next <span className="text-gradient">opportunity</span>
+        </h1>
+        <p className="mt-2 max-w-2xl text-xs leading-5 text-white/55 sm:text-sm sm:leading-6">
+          Fresher jobs, internships, remote roles and location-based openings across India. Check the source and deadline before you apply.
+        </p>
+        <div className="-mx-3 mt-4 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {["Fresher Jobs", "Remote", "Internship", "Data Analyst", "Pune Jobs"].map((label) => (
             <button
-              onClick={sectionJump}
-              className="btn-glow rounded-xl px-5 py-2.5 text-xs font-semibold sm:text-sm md:px-6 md:py-3"
+              key={label}
+              onClick={() => activatePreset(label)}
+              className={`inline-flex shrink-0 rounded-full px-3.5 py-1.5 text-xs ring-1 transition ${activeBrowse === label ? "bg-[#00e5ff]/15 text-[#7defff] ring-[#00e5ff]/40" : "bg-white/5 text-white/60 ring-white/10 hover:bg-white/10 hover:text-white"}`}
             >
-              Search Jobs
+              {label}
             </button>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {["Fresher Jobs", "Remote", "Internship", "Data Analyst", "Pune Jobs"].map(
-              (label, chipIndex) => (
-                <button
-                  key={label}
-                  onClick={() => activatePreset(label)}
-                  className={`${chipIndex > 2 ? "hidden sm:inline-flex" : "inline-flex"} rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/60 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white`}
-                >
-                  {label}
-                </button>
-              ),
-            )}
-          </div>
+          ))}
         </div>
       </header>
-
-      {/* Live stats */}
-      <section className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 md:mt-5 md:grid md:grid-cols-4 md:overflow-visible">
-        {stats.map((stat, i) => (
-          <div
-            key={stat.label}
-            className="glass card-glow min-w-[132px] snap-start rounded-xl p-2.5 animate-fade-up sm:min-w-[145px] md:min-w-0 md:rounded-2xl md:p-4"
-            style={{ animationDelay: `${i * 70}ms` }}
-          >
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#00e5ff]/10">
-                <stat.icon className="h-4 w-4 text-[#00e5ff]" />
-              </span>
-              <div>
-                <div className="text-xl font-bold text-white">
-                  {formatCount(stat.value)}
-                </div>
-                <div className="text-[11px] text-white/45">{stat.label}</div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </section>
-
-      {/* Fresh / closing soon */}
-      {(freshJobs.length > 0 || closingSoon.length > 0) && (
-        <section className="mt-5 grid grid-cols-1 gap-3 lg:mt-10 lg:grid-cols-2">
-          {freshJobs.length > 0 && (
-            <div className="glass rounded-2xl p-4 md:rounded-3xl md:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-[#00e5ff]" />
-                    <h2
-                      className="text-xl font-semibold text-white"
-                      style={{ fontFamily: "'Space Grotesk'" }}
-                    >
-                      Fresh Jobs
-                    </h2>
-                  </div>
-                  <p className="mt-1 text-xs text-white/45">
-                    Recently added opportunities
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => activatePreset("Latest Jobs")}
-                  className="text-xs text-[#00e5ff] hover:text-white"
-                >
-                  View latest
-                </button>
-              </div>
-
-              <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 md:mt-5 md:block md:space-y-2">
-                {freshJobs.map((job) => (
-                  <button
-                    key={job.id}
-                    onClick={() => {
-                      window.location.href = getJobPath(job);
-                    }}
-                    className="group flex min-w-[285px] items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-left md:min-w-0 ring-1 ring-white/[0.06] transition hover:bg-white/[0.05] hover:ring-white/15"
-                  >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5">
-                      {job.companyLogo ? (
-                        <img
-                          src={job.companyLogo}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-sm font-bold text-white/70">
-                          {job.companyName?.[0]?.toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white group-hover:text-[#00e5ff]">
-                        {job.role}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-white/45">
-                        {job.companyName} · {job.location || "Remote"}
-                      </p>
-                    </div>
-
-                    <ArrowRight className="h-4 w-4 shrink-0 text-white/25 transition group-hover:translate-x-1 group-hover:text-[#00e5ff]" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {closingSoon.length > 0 && (
-            <div className="glass rounded-2xl p-4 md:rounded-3xl md:p-6">
-              <div className="flex items-center gap-2">
-                <Timer className="h-4 w-4 text-amber-300" />
-                <h2
-                  className="text-xl font-semibold text-white"
-                  style={{ fontFamily: "'Space Grotesk'" }}
-                >
-                  Closing Soon
-                </h2>
-              </div>
-              <p className="mt-1 text-xs text-white/45">
-                Opportunities with an upcoming application deadline
-              </p>
-
-              <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 md:mt-5 md:block md:space-y-2">
-                {closingSoon.map(({ job, days }) => (
-                  <button
-                    key={job.id}
-                    onClick={() => {
-                      window.location.href = getJobPath(job);
-                    }}
-                    className="group flex min-w-[285px] items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-left md:min-w-0 ring-1 ring-white/[0.06] transition hover:bg-white/[0.05] hover:ring-white/15"
-                  >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5">
-                      {job.companyLogo ? (
-                        <img
-                          src={job.companyLogo}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-sm font-bold text-white/70">
-                          {job.companyName?.[0]?.toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white group-hover:text-[#00e5ff]">
-                        {job.role}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-white/45">
-                        {job.companyName} · {job.location || "Remote"}
-                      </p>
-                    </div>
-
-                    <span className="shrink-0 rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold text-amber-200 ring-1 ring-amber-400/20">
-                      {days === 0 ? "Today" : `${days}d left`}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Mobile-first jobs CTA */}
-      <div className="mt-5 flex items-center justify-between rounded-2xl border border-[#00e5ff]/15 bg-[#00e5ff]/[0.04] px-4 py-3 md:hidden">
-        <div>
-          <div className="text-sm font-semibold text-white">Ready to browse?</div>
-          <div className="mt-0.5 text-[11px] text-white/45">
-            {formatCount(activeJobs.length)} active opportunities
-          </div>
-        </div>
-        <button
-          onClick={sectionJump}
-          className="btn-glow rounded-xl px-4 py-2 text-xs font-semibold"
-        >
-          View Jobs
-        </button>
-      </div>
-
-      {/* Mobile priority CTA: jobs stay one tap away */}
-      <div className="mt-4 flex items-center justify-between rounded-2xl border border-[#00e5ff]/15 bg-[#00e5ff]/[0.045] px-3.5 py-3 md:hidden">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-white">Browse latest jobs</div>
-          <div className="mt-0.5 text-[10px] text-white/45">
-            {formatCount(activeJobs.length)} active opportunities
-          </div>
-        </div>
-        <button
-          onClick={sectionJump}
-          className="btn-glow shrink-0 rounded-xl px-4 py-2 text-xs font-semibold"
-        >
-          View Jobs
-        </button>
-      </div>
-
-      {/* Browse */}
-      <section className="mt-5 md:mt-10">
-        <div className="mb-4">
-          <h2
-            className="text-xl font-semibold text-white md:text-2xl"
-            style={{ fontFamily: "'Space Grotesk'" }}
-          >
-            Explore jobs by intent
-          </h2>
-          <p className="mt-1 text-xs text-white/50 md:text-sm">
-            Start with a popular search and refine the results whenever you need.
-          </p>
-        </div>
-
-        <div className="flex snap-x gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-4 lg:overflow-visible">
-          {PRESETS.map((preset) => {
-            const active = activeBrowse === preset.label;
-            const count =
-              preset.label === "Latest Jobs"
-                ? activeJobs.length
-                : activeJobs.filter(preset.test).length;
-
-            return (
-              <button
-                key={preset.label}
-                onClick={() => activatePreset(preset.label)}
-                className={`glass card-glow min-w-[188px] snap-start rounded-xl p-3.5 text-left transition sm:min-w-[210px] md:rounded-2xl md:p-4 md:min-w-[230px] lg:min-w-0 ${
-                  active
-                    ? "ring-1 ring-[#00e5ff]/60"
-                    : "ring-1 ring-white/5 hover:-translate-y-0.5 hover:ring-white/15"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5">
-                    <preset.icon className="h-4 w-4 text-[#00e5ff]" />
-                  </span>
-
-                  <span className="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/50">
-                    {count}
-                  </span>
-                </div>
-
-                <div className="mt-4 text-sm font-semibold text-white">
-                  {preset.label}
-                </div>
-
-                <div className="mt-1 text-xs leading-relaxed text-white/45">
-                  {preset.description}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Companies */}
-      {popularCompanies.length > 0 && (
-        <section className="mt-6 md:mt-10">
-          <div className="mb-4 flex items-end justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-[#00e5ff]" />
-                <h2
-                  className="text-xl font-semibold text-white md:text-2xl"
-                  style={{ fontFamily: "'Space Grotesk'" }}
-                >
-                  Companies in job listings
-                </h2>
-              </div>
-              <p className="mt-1 text-xs text-white/50 md:text-sm">
-                Explore active listings from companies appearing in Hire Daily jobs.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex snap-x gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-8 lg:overflow-visible">
-            {popularCompanies.map((company) => (
-              <button
-                key={company.name}
-                onClick={() => companySearch(company.name)}
-                className="glass min-w-[105px] snap-start rounded-xl p-3 text-center transition sm:min-w-[118px] sm:p-4 md:rounded-2xl hover:-translate-y-0.5 hover:ring-1 hover:ring-[#00e5ff]/30"
-                title={`View ${company.name} jobs`}
-              >
-                <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white/5">
-                  {company.logo ? (
-                    <img
-                      src={company.logo}
-                      alt={`${company.name} logo`}
-                      loading="lazy"
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-base font-bold text-white/70">
-                      {company.name[0]?.toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 truncate text-xs font-medium text-white/70">
-                  {company.name}
-                </p>
-                <p className="mt-0.5 text-[10px] text-white/35">
-                  {company.count} {company.count === 1 ? "job" : "jobs"}
-                </p>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Search / filters */}
       <div id="all-jobs" className="scroll-mt-28" />
 
-      <div className="sticky top-14 z-30 mt-5 animate-fade-up md:top-20 md:mt-10">
+      <div className="sticky top-14 z-30 mt-4 animate-fade-up md:top-20 md:mt-5">
         <div className="glass-strong flex items-center gap-1.5 rounded-2xl p-1.5 sm:gap-2 sm:p-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
@@ -1033,6 +704,265 @@ function JobsPage() {
           </div>
         )}
       </div>
+
+      {/* More about the board (below the jobs) */}
+      {/* Live stats */}
+      <section className="mt-10 flex snap-x gap-2 overflow-x-auto pb-1 md:mt-5 md:grid md:grid-cols-4 md:overflow-visible">
+        {stats.map((stat, i) => (
+          <div
+            key={stat.label}
+            className="glass card-glow min-w-[132px] snap-start rounded-xl p-2.5 animate-fade-up sm:min-w-[145px] md:min-w-0 md:rounded-2xl md:p-4"
+            style={{ animationDelay: `${i * 70}ms` }}
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#00e5ff]/10">
+                <stat.icon className="h-4 w-4 text-[#00e5ff]" />
+              </span>
+              <div>
+                <div className="text-xl font-bold text-white">
+                  {formatCount(stat.value)}
+                </div>
+                <div className="text-[11px] text-white/45">{stat.label}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {/* Fresh / closing soon */}
+      {(freshJobs.length > 0 || closingSoon.length > 0) && (
+        <section className="mt-5 grid grid-cols-1 gap-3 lg:mt-10 lg:grid-cols-2">
+          {freshJobs.length > 0 && (
+            <div className="glass rounded-2xl p-4 md:rounded-3xl md:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-[#00e5ff]" />
+                    <h2
+                      className="text-xl font-semibold text-white"
+                      style={{ fontFamily: "'Space Grotesk'" }}
+                    >
+                      Fresh Jobs
+                    </h2>
+                  </div>
+                  <p className="mt-1 text-xs text-white/45">
+                    Recently added opportunities
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => activatePreset("Latest Jobs")}
+                  className="text-xs text-[#00e5ff] hover:text-white"
+                >
+                  View latest
+                </button>
+              </div>
+
+              <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 md:mt-5 md:block md:space-y-2">
+                {freshJobs.map((job) => (
+                  <button
+                    key={job.id}
+                    onClick={() => {
+                      window.location.href = getJobPath(job);
+                    }}
+                    className="group flex min-w-[285px] items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-left md:min-w-0 ring-1 ring-white/[0.06] transition hover:bg-white/[0.05] hover:ring-white/15"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5">
+                      {job.companyLogo ? (
+                        <img
+                          src={job.companyLogo}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-bold text-white/70">
+                          {job.companyName?.[0]?.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white group-hover:text-[#00e5ff]">
+                        {job.role}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-white/45">
+                        {job.companyName} · {job.location || "Remote"}
+                      </p>
+                    </div>
+
+                    <ArrowRight className="h-4 w-4 shrink-0 text-white/25 transition group-hover:translate-x-1 group-hover:text-[#00e5ff]" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {closingSoon.length > 0 && (
+            <div className="glass rounded-2xl p-4 md:rounded-3xl md:p-6">
+              <div className="flex items-center gap-2">
+                <Timer className="h-4 w-4 text-amber-300" />
+                <h2
+                  className="text-xl font-semibold text-white"
+                  style={{ fontFamily: "'Space Grotesk'" }}
+                >
+                  Closing Soon
+                </h2>
+              </div>
+              <p className="mt-1 text-xs text-white/45">
+                Opportunities with an upcoming application deadline
+              </p>
+
+              <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 md:mt-5 md:block md:space-y-2">
+                {closingSoon.map(({ job, days }) => (
+                  <button
+                    key={job.id}
+                    onClick={() => {
+                      window.location.href = getJobPath(job);
+                    }}
+                    className="group flex min-w-[285px] items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-left md:min-w-0 ring-1 ring-white/[0.06] transition hover:bg-white/[0.05] hover:ring-white/15"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5">
+                      {job.companyLogo ? (
+                        <img
+                          src={job.companyLogo}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-bold text-white/70">
+                          {job.companyName?.[0]?.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white group-hover:text-[#00e5ff]">
+                        {job.role}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-white/45">
+                        {job.companyName} · {job.location || "Remote"}
+                      </p>
+                    </div>
+
+                    <span className="shrink-0 rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold text-amber-200 ring-1 ring-amber-400/20">
+                      {days === 0 ? "Today" : `${days}d left`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Browse */}
+      <section className="mt-5 md:mt-10">
+        <div className="mb-4">
+          <h2
+            className="text-xl font-semibold text-white md:text-2xl"
+            style={{ fontFamily: "'Space Grotesk'" }}
+          >
+            Explore jobs by intent
+          </h2>
+          <p className="mt-1 text-xs text-white/50 md:text-sm">
+            Start with a popular search and refine the results whenever you need.
+          </p>
+        </div>
+
+        <div className="flex snap-x gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-4 lg:overflow-visible">
+          {PRESETS.map((preset) => {
+            const active = activeBrowse === preset.label;
+            const count =
+              preset.label === "Latest Jobs"
+                ? activeJobs.length
+                : activeJobs.filter(preset.test).length;
+
+            return (
+              <button
+                key={preset.label}
+                onClick={() => activatePreset(preset.label)}
+                className={`glass card-glow min-w-[188px] snap-start rounded-xl p-3.5 text-left transition sm:min-w-[210px] md:rounded-2xl md:p-4 md:min-w-[230px] lg:min-w-0 ${
+                  active
+                    ? "ring-1 ring-[#00e5ff]/60"
+                    : "ring-1 ring-white/5 hover:-translate-y-0.5 hover:ring-white/15"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5">
+                    <preset.icon className="h-4 w-4 text-[#00e5ff]" />
+                  </span>
+
+                  <span className="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/50">
+                    {count}
+                  </span>
+                </div>
+
+                <div className="mt-4 text-sm font-semibold text-white">
+                  {preset.label}
+                </div>
+
+                <div className="mt-1 text-xs leading-relaxed text-white/45">
+                  {preset.description}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Companies */}
+      {popularCompanies.length > 0 && (
+        <section className="mt-6 md:mt-10">
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-[#00e5ff]" />
+                <h2
+                  className="text-xl font-semibold text-white md:text-2xl"
+                  style={{ fontFamily: "'Space Grotesk'" }}
+                >
+                  Companies in job listings
+                </h2>
+              </div>
+              <p className="mt-1 text-xs text-white/50 md:text-sm">
+                Explore active listings from companies appearing in Hire Daily jobs.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex snap-x gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-8 lg:overflow-visible">
+            {popularCompanies.map((company) => (
+              <button
+                key={company.name}
+                onClick={() => companySearch(company.name)}
+                className="glass min-w-[105px] snap-start rounded-xl p-3 text-center transition sm:min-w-[118px] sm:p-4 md:rounded-2xl hover:-translate-y-0.5 hover:ring-1 hover:ring-[#00e5ff]/30"
+                title={`View ${company.name} jobs`}
+              >
+                <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white/5">
+                  {company.logo ? (
+                    <img
+                      src={company.logo}
+                      alt={`${company.name} logo`}
+                      loading="lazy"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-base font-bold text-white/70">
+                      {company.name[0]?.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 truncate text-xs font-medium text-white/70">
+                  {company.name}
+                </p>
+                <p className="mt-0.5 text-[10px] text-white/35">
+                  {company.count} {company.count === 1 ? "job" : "jobs"}
+                </p>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Trust / process */}
       <section className="mt-8 grid grid-cols-1 gap-3 md:mt-16 md:gap-5 lg:grid-cols-3">

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Check, Copy } from "lucide-react";
+import { EXTRA_COLLECTIONS, type CopyItem, type Step } from "../data/tools-extra";
+import { toast } from "sonner";
 import {
   ArrowRight, Bot, Briefcase, Clock, ExternalLink, GraduationCap, Mic, Search, Sparkles, Wallet, FileText, Zap, X,
 } from "lucide-react";
@@ -9,7 +12,7 @@ export const Route = createFileRoute("/preparation/tools-resources")({
 });
 
 type Tool = { name: string; desc: string; url: string; tag: "Free" | "Freemium" };
-type Tab = { title: string; tip: string; tools: Tool[] };
+type Tab = { title: string; tip: string; tools?: Tool[]; copies?: CopyItem[]; steps?: Step[] };
 type Collection = {
   id: string; title: string; desc: string; icon: typeof Mic; grad: string; chip: string; tabs: Tab[];
 };
@@ -121,12 +124,8 @@ const COLLECTIONS: Collection[] = [
   },
 ];
 
-const SOON = [
-  { title: "Resume and Cover Letter Templates", desc: "ATS-friendly templates for freshers and experienced candidates.", icon: FileText },
-  { title: "Salary and Negotiation Guides", desc: "Market ranges, offer comparison and negotiation scripts.", icon: Wallet },
-  { title: "AI Tools for Careers", desc: "Practical AI tools for resumes, practice and research.", icon: Bot },
-  { title: "Company-wise Prep Kits", desc: "Process, rounds and sample questions for popular employers.", icon: Briefcase },
-];
+const ICONS = { resume: FileText, salary: Wallet, ai: Bot, kits: Briefcase } as const;
+COLLECTIONS.push(...EXTRA_COLLECTIONS.map((c) => ({ id: c.id, title: c.title, desc: c.desc, grad: c.grad, chip: c.chip, icon: ICONS[c.id] as typeof Mic, tabs: c.tabs })));
 
 function ToolsResourcesPage() {
   const [query, setQuery] = useState("");
@@ -137,9 +136,10 @@ function ToolsResourcesPage() {
   const q = query.trim().toLowerCase();
   const list = useMemo(() => COLLECTIONS.filter((c) =>
     (cat === "all" || c.id === cat) &&
-    (!q || `${c.title} ${c.desc} ${c.tabs.map((x) => x.title + x.tools.map((y) => y.name + y.desc).join(" ")).join(" ")}`.toLowerCase().includes(q))), [q, cat]);
+    (!q || `${c.title} ${c.desc} ${c.tabs.map((x) => x.title + [...(x.tools ?? []).map((y) => y.name + y.desc), ...(x.copies ?? []).map((y) => y.title), ...(x.steps ?? []).map((y) => y.t)].join(" ")).join(" ")}`.toLowerCase().includes(q))), [q, cat]);
   const open = COLLECTIONS.find((c) => c.id === openId) ?? null;
-  const toolCount = COLLECTIONS.reduce((n, c) => n + c.tabs.reduce((m, x) => m + x.tools.length, 0), 0);
+  const toolCount = COLLECTIONS.reduce((n, c) => n + c.tabs.reduce((m, x) => m + (x.tools?.length ?? 0), 0), 0);
+  const guideCount = COLLECTIONS.reduce((n, c) => n + c.tabs.reduce((m, x) => m + (x.copies?.length ?? 0) + (x.steps?.length ? 1 : 0), 0), 0);
 
   useEffect(() => {
     if (!open) return;
@@ -173,7 +173,7 @@ function ToolsResourcesPage() {
           </div>
 
           <dl className="mt-8 grid max-w-2xl grid-cols-3 gap-4">
-            {[[`${toolCount}`, "Curated tools"], [`${COLLECTIONS.length}`, "Live collections"], [`${SOON.length}`, "Coming soon"]].map(([v, l]) => (
+            {[[`${toolCount}`, "Curated tools"], [`${COLLECTIONS.length}`, "Live collections"], [`${guideCount}`, "Templates and guides"]].map(([v, l]) => (
               <div key={l} className="rounded-2xl border border-slate-200 bg-white/70 p-4 dark:border-white/10 dark:bg-white/[0.03]">
                 <dt className="text-2xl font-black">{v}</dt><dd className="mt-1 text-xs text-slate-500 dark:text-white/45">{l}</dd>
               </div>
@@ -199,7 +199,7 @@ function ToolsResourcesPage() {
         ) : (
           <div className="grid gap-5 md:grid-cols-2">
             {list.map((c) => {
-              const Icon = c.icon; const count = c.tabs.reduce((n, x) => n + x.tools.length, 0);
+              const Icon = c.icon; const count = c.tabs.reduce((n, x) => n + (x.tools?.length ?? 0) + (x.copies?.length ?? 0) + (x.steps?.length ? 1 : 0), 0);
               return (
                 <article key={c.id} className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-2xl dark:border-white/10 dark:bg-white/[0.035]">
                   <div className={`flex items-center justify-between bg-gradient-to-br ${c.grad} p-6 text-white`}>
@@ -215,7 +215,7 @@ function ToolsResourcesPage() {
                       {c.tabs.map((x) => <span key={x.title} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${c.chip}`}>{x.title}</span>)}
                     </div>
                     <div className="mt-6 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-slate-500 dark:text-white/45">{count} tools</span>
+                      <span className="text-sm font-semibold text-slate-500 dark:text-white/45">{count} resources</span>
                       <button onClick={() => show(c.id)} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-700 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300">
                         Explore <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
                       </button>
@@ -227,21 +227,6 @@ function ToolsResourcesPage() {
           </div>
         )}
 
-        {cat === "all" && !q && (
-          <>
-            <h2 className="mb-5 mt-14 text-2xl font-bold">Coming soon</h2>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {SOON.map(({ title, desc, icon: Icon }) => (
-                <div key={title} className="rounded-3xl border border-dashed border-slate-300 p-6 opacity-80 dark:border-white/15">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-white/55"><Icon className="h-5 w-5" /></span>
-                  <h3 className="mt-4 font-bold">{title}</h3>
-                  <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-white/45">{desc}</p>
-                  <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-white/45"><Clock className="h-3.5 w-3.5" /> Coming soon</span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
         <p className="mt-10 text-xs text-slate-500 dark:text-white/40">Links open third-party websites. Plans and pricing may change, so check each site for the latest details.</p>
       </section>
 
@@ -268,22 +253,76 @@ function ToolsResourcesPage() {
 
             <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100"><b>How to use:</b> {active.tip}</p>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {active.tools.map((tool) => (
-                <a key={tool.name} href={tool.url} target="_blank" rel="noopener noreferrer"
-                  className="group/tool flex flex-col rounded-2xl border border-slate-200 p-5 transition hover:-translate-y-0.5 hover:border-emerald-400 hover:shadow-lg dark:border-white/10">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-bold">{tool.name}</h3>
-                    <ExternalLink className="h-4 w-4 shrink-0 text-slate-400 transition group-hover/tool:text-emerald-500" />
-                  </div>
-                  <p className="mt-2 flex-1 text-sm leading-6 text-slate-600 dark:text-white/55">{tool.desc}</p>
-                  <span className={`mt-4 w-fit rounded-full px-2.5 py-1 text-xs font-bold ${tool.tag === "Free" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300" : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/60"}`}>{tool.tag}</span>
-                </a>
-              ))}
-            </div>
+            {active.steps && (
+              <ol className="mt-5 space-y-3">
+                {active.steps.map((st, i) => (
+                  <li key={st.t} className="flex gap-3 rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">{i + 1}</span>
+                    <div><p className="text-sm font-bold">{st.t}</p><p className="mt-1 text-sm leading-6 text-slate-600 dark:text-white/55">{st.d}</p></div>
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            {active.copies && (
+              <div className="mt-5 space-y-4">
+                {active.copies.map((c) => <CopyCard key={c.title} item={c} />)}
+              </div>
+            )}
+
+            {active.tools && (
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {active.tools.map((tool) => (
+                  <a key={tool.name} href={tool.url} target="_blank" rel="noopener noreferrer"
+                    className="group/tool flex flex-col rounded-2xl border border-slate-200 p-5 transition hover:-translate-y-0.5 hover:border-emerald-400 hover:shadow-lg dark:border-white/10">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-bold">{tool.name}</h3>
+                      <ExternalLink className="h-4 w-4 shrink-0 text-slate-400 transition group-hover/tool:text-emerald-500" />
+                    </div>
+                    <p className="mt-2 flex-1 text-sm leading-6 text-slate-600 dark:text-white/55">{tool.desc}</p>
+                    <span className={`mt-4 w-fit rounded-full px-2.5 py-1 text-xs font-bold ${tool.tag === "Free" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300" : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/60"}`}>{tool.tag}</span>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
     </main>
+  );
+}
+async function copyText(text: string) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* try the fallback */ }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text; area.style.cssText = "position:fixed;opacity:0;top:0;left:0";
+    document.body.appendChild(area); area.select();
+    const ok = document.execCommand("copy"); document.body.removeChild(area); return ok;
+  } catch { return false; }
+}
+
+function CopyCard({ item }: { item: CopyItem }) {
+  const [done, setDone] = useState(false);
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold">{item.title}</p>
+          {item.note && <p className="text-xs text-slate-500 dark:text-white/45">{item.note}</p>}
+        </div>
+        <button
+          onClick={async () => {
+            const ok = await copyText(item.text);
+            if (ok) { setDone(true); window.setTimeout(() => setDone(false), 1800); } else toast.error("Could not copy. Select the text and copy it manually.");
+          }}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300"
+        >
+          {done ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {done ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-4 font-sans text-[13px] leading-6 text-slate-700 dark:text-white/70">{item.text}</pre>
+    </div>
   );
 }

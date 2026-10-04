@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { fetchJobs } from "../lib/jobs";
-import { ARTICLES } from "../data/articles";
+import { liveArticles } from "../data/articles";
 import { getJobDateState } from "../lib/job-dates";
 import { getJobPath } from "../lib/job-url";
 
@@ -48,11 +48,11 @@ export const Route = createFileRoute("/sitemap.xml")({
           { path: "/preparation/study-material", changefreq: "monthly", priority: "0.6" },
           { path: "/preparation/coding-practice", changefreq: "monthly", priority: "0.6" },
           { path: "/preparation/tools-resources", changefreq: "monthly", priority: "0.5" },
-          ...ARTICLES.map((a) => ({
+          ...liveArticles().map((a) => ({
             path: `/blog/${a.slug}`,
             changefreq: "monthly" as const,
             priority: "0.7",
-            lastModified: Date.parse(a.updated),
+            lastModified: Date.parse(a.updated ?? a.published),
           })),
         ];
 

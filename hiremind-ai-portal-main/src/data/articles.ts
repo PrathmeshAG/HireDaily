@@ -1,6 +1,12 @@
 export type Article = {
   slug: string; title: string; description: string; category: string;
-  published: string; updated: string; minutes: number; body: string;
+  /** Go-live date (YYYY-MM-DD). The article is hidden everywhere until this day, so releases can be spread over weeks. */
+  published: string;
+  /** Set ONLY when you really revised the article. Shown as "Updated ..." when it differs from published. */
+  updated?: string;
+  /** Optional first-hand note from the author (real examples or experience). Shown in its own box when present. */
+  authorNote?: string;
+  body: string;
 };
 
 /**
@@ -16,7 +22,7 @@ export const ARTICLES: Article[] = [
     title: "Data Analyst Fresher Interview Questions and How to Answer Them",
     description: "The SQL, Excel, statistics, Python and Power BI questions freshers get in data analyst interviews, with clear example answers and a one-week preparation plan.",
     category: "Interview preparation",
-    published: "2026-10-03", updated: "2026-10-03", minutes: 6,
+    published: "2026-10-03",
     body: `A data analyst interview for a fresher is rarely about clever tricks. Interviewers want to know three things: can you work with data using basic tools, can you think clearly about a business question, and can you explain your answer in simple words. This guide walks through the questions that come up most often and shows how to answer each one so that you sound prepared but natural.
 
 ## How the interview is usually structured
@@ -89,7 +95,7 @@ Confidence in a fresher interview comes from clarity, not from knowing everythin
     title: "ATS Resume Guide for Freshers: How to Get Past the Screening Software",
     description: "A practical guide for freshers on writing an ATS-friendly resume: format, keywords, sections, common mistakes and a simple checklist to use before you apply.",
     category: "Resume and career",
-    published: "2026-10-03", updated: "2026-10-03", minutes: 6,
+    published: "2026-10-03",
     body: `Many companies use an Applicant Tracking System, or ATS, to collect and organise job applications. For freshers, this software can feel like a locked door. The good news is that an ATS is not magic. It reads your resume as text, compares it with the job description, and helps a recruiter search and sort candidates. If your resume is clean and relevant, it works in your favour. This guide explains how to write one.
 
 ## What an ATS actually does
@@ -157,7 +163,7 @@ An ATS-friendly resume is simply a clear, honest and well-organised resume. Focu
     title: "How to Find Fresher Jobs in Pune: A Practical Guide for 2026",
     description: "A practical guide to finding fresher jobs in Pune: where the IT hubs are, which roles to target, how to search, how to prepare and how to avoid job scams.",
     category: "Job search guide",
-    published: "2026-10-03", updated: "2026-10-03", minutes: 6,
+    published: "2026-10-03",
     body: `Pune is one of the most popular cities in India for fresh graduates who want to start a career in technology, analytics, engineering and services. The city has a large student population, many colleges and a wide mix of companies, from established IT services firms to start-ups and product teams. That also means plenty of competition, so a planned search works far better than applying randomly. This guide explains how to approach a fresher job search in Pune step by step.
 
 ## Understand the job market first
@@ -226,7 +232,7 @@ Finding a fresher job in Pune is a mix of preparation, patience and smart search
     title: "SQL Interview Questions for Freshers With Simple Answers",
     description: "The SQL questions freshers are asked most often, from joins and GROUP BY to window functions, each with a clear answer, a small example and tips for explaining your thinking.",
     category: "Interview preparation",
-    published: "2026-10-03", updated: "2026-10-03", minutes: 6,
+    published: "2026-10-11",
     body: `SQL is the one skill that shows up in almost every analyst, developer and testing interview for freshers. The questions are rarely tricky, but interviewers pay close attention to how clearly you explain your approach. This guide covers the questions that appear again and again, with short answers you can adapt in your own words and small examples you can try on any practice database.
 
 ## Start with the basics
@@ -292,7 +298,7 @@ Practise writing queries by hand on a small dataset every day for two weeks, and
     title: "How to Answer \"Tell Me About Yourself\" in an Interview (With Examples for Freshers)",
     description: "A simple three-part structure for the most common interview opener, with examples for freshers, mistakes to avoid and a checklist to practise before your next HR round.",
     category: "Interview preparation",
-    published: "2026-10-03", updated: "2026-10-03", minutes: 6,
+    published: "2026-10-18",
     body: `Almost every interview begins with the same request: tell me about yourself. It sounds easy, yet many freshers either recite their resume or ramble for five minutes. The interviewer is not asking for your life story. They want a short, confident summary that shows who you are, what you can do and why you are right for this role. This guide gives you a simple structure, examples and a practice method so that your answer sounds natural.
 
 ## Why interviewers ask this question
@@ -352,7 +358,7 @@ Check that your answer fits within ninety seconds, includes one specific project
     title: "How to Spot Fake Job Offers and Scams: A Safety Guide for Job Seekers",
     description: "Learn the warning signs of fake job offers, how to verify a company and a recruiter, what to do if you already shared documents, and safe habits for every application.",
     category: "Job search guide",
-    published: "2026-10-03", updated: "2026-10-03", minutes: 6,
+    published: "2026-10-25",
     body: `Fake job offers have become a serious problem for students and freshers who are eager to start their careers. Scammers copy the names of real companies, send professional-looking messages and then ask for money or personal information. The good news is that most scams follow the same patterns, and once you know them you can protect yourself easily. This guide explains the warning signs, how to check whether an offer is real, and what to do if something goes wrong.
 
 ## Why freshers are targeted
@@ -410,7 +416,7 @@ Scammers rely on speed and secrecy. Slowing down, asking questions and verifying
     title: "Cyber Security Career Roadmap for Freshers in India",
     description: "A step-by-step roadmap to start a cyber security career as a fresher: skills to learn, free practice platforms, certifications, entry-level roles and how to build a portfolio.",
     category: "Career roadmap",
-    published: "2026-10-03", updated: "2026-10-03", minutes: 6,
+    published: "2026-11-01",
     body: `Cyber security is one of the fastest-growing fields in technology, and every company that uses the internet needs people who can protect its systems and data. The field can feel overwhelming at first because it covers so many areas, but you do not need to learn everything at once. This roadmap breaks the journey into clear steps for freshers in India, with realistic timelines, free resources and ideas for building proof of your skills.
 
 ## Understand what cyber security work looks like
@@ -471,4 +477,20 @@ Stay curious, stay ethical and keep a learning log. Security is a field where le
   },
 ];
 
-export const getArticle = (slug: string) => ARTICLES.find((a) => a.slug === slug);
+const DAY_MS = 86_400_000;
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+
+/** True when the article's go-live date has arrived. */
+export const isLive = (a: Article, now = Date.now()) => Date.parse(a.published) <= Math.max(now, startOfToday() + DAY_MS - 1);
+
+/** Articles that are live right now, newest first. */
+export const liveArticles = () => ARTICLES.filter((a) => isLive(a)).sort((a, b) => Date.parse(b.published) - Date.parse(a.published));
+
+/** Reading time from the real word count (about 200 words a minute). */
+export const readMinutes = (a: Article) => Math.max(1, Math.round(a.body.split(/\s+/).length / 200));
+
+/** Returns the article only if it is live. */
+export const getArticle = (slug: string) => {
+  const a = ARTICLES.find((x) => x.slug === slug);
+  return a && isLive(a) ? a : undefined;
+};

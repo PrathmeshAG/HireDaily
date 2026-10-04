@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SITE } from "../lib/site";
 
 export const Route = createFileRoute("/terms")({
   head: () => ({
@@ -24,7 +25,7 @@ function TermsPage() {
       </h1>
 
       <p className="mb-8 text-white/60">
-        Last Updated: August 2026
+        Last Updated: {SITE.lastPolicyUpdate}
       </p>
 
       <div className="glass space-y-8 rounded-3xl p-8">
@@ -113,6 +114,33 @@ function TermsPage() {
             Hire Daily shall not be liable for any direct or indirect loss,
             damages, or inconvenience arising from the use of this website or
             reliance on any job listing published on the platform.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-2xl font-semibold text-white">
+            Accounts
+          </h2>
+          <ul className="list-disc space-y-2 pl-6 leading-7 text-white/70">
+            <li>You must be at least 13 years old to create an account. If you are under 18, please use the site with a parent or guardian's knowledge.</li>
+            <li>Give accurate details and keep your sign-in credentials private. You are responsible for activity on your account.</li>
+            <li>One person should use one account. Do not create accounts to cheat, overload or misuse the service.</li>
+            <li>We may suspend or delete accounts that break these terms, and you may ask us to delete your account at any time. See our Privacy Policy for how your data is handled.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-2xl font-semibold text-white">
+            Coding Practice, Badges and Certificates
+          </h2>
+          <p className="leading-7 text-white/70">
+            The coding practice tool runs the code you write inside your own browser. Do not enter passwords, personal
+            data or confidential material in the code editor, and do not try to attack, disrupt or bypass the tool. Badges
+            and certificates are awarded automatically for finishing practice tasks on Hire Daily. They are practice
+            recognition only. They are not an accredited qualification, a professional licence or proof of employment
+            readiness, and they are not issued by any employer or university. You may share them, but you must not edit
+            them or present them as anything else. We may change, reset or remove badges, tasks and certificates if we
+            correct a mistake or improve the tool.
           </p>
         </section>
 
