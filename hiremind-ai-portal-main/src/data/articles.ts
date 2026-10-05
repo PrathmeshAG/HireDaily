@@ -232,7 +232,7 @@ Finding a fresher job in Pune is a mix of preparation, patience and smart search
     title: "SQL Interview Questions for Freshers With Simple Answers",
     description: "The SQL questions freshers are asked most often, from joins and GROUP BY to window functions, each with a clear answer, a small example and tips for explaining your thinking.",
     category: "Interview preparation",
-    published: "2026-10-11",
+    published: "2026-10-21",
     body: `SQL is the one skill that shows up in almost every analyst, developer and testing interview for freshers. The questions are rarely tricky, but interviewers pay close attention to how clearly you explain your approach. This guide covers the questions that appear again and again, with short answers you can adapt in your own words and small examples you can try on any practice database.
 
 ## Start with the basics
@@ -298,7 +298,7 @@ Practise writing queries by hand on a small dataset every day for two weeks, and
     title: "How to Answer \"Tell Me About Yourself\" in an Interview (With Examples for Freshers)",
     description: "A simple three-part structure for the most common interview opener, with examples for freshers, mistakes to avoid and a checklist to practise before your next HR round.",
     category: "Interview preparation",
-    published: "2026-10-18",
+    published: "2026-11-26",
     body: `Almost every interview begins with the same request: tell me about yourself. It sounds easy, yet many freshers either recite their resume or ramble for five minutes. The interviewer is not asking for your life story. They want a short, confident summary that shows who you are, what you can do and why you are right for this role. This guide gives you a simple structure, examples and a practice method so that your answer sounds natural.
 
 ## Why interviewers ask this question
@@ -358,7 +358,7 @@ Check that your answer fits within ninety seconds, includes one specific project
     title: "How to Spot Fake Job Offers and Scams: A Safety Guide for Job Seekers",
     description: "Learn the warning signs of fake job offers, how to verify a company and a recruiter, what to do if you already shared documents, and safe habits for every application.",
     category: "Job search guide",
-    published: "2026-10-25",
+    published: "2027-01-05",
     body: `Fake job offers have become a serious problem for students and freshers who are eager to start their careers. Scammers copy the names of real companies, send professional-looking messages and then ask for money or personal information. The good news is that most scams follow the same patterns, and once you know them you can protect yourself easily. This guide explains the warning signs, how to check whether an offer is real, and what to do if something goes wrong.
 
 ## Why freshers are targeted
@@ -412,68 +412,162 @@ Apply through official company career pages or trusted listing websites that sho
 Scammers rely on speed and secrecy. Slowing down, asking questions and verifying through official channels will protect you in almost every case. Share this guide with friends who are starting their job search.`,
   },
   {
-    slug: "cyber-security-career-roadmap-for-freshers",
-    title: "Cyber Security Career Roadmap for Freshers in India",
-    description: "A step-by-step roadmap to start a cyber security career as a fresher: skills to learn, free practice platforms, certifications, entry-level roles and how to build a portfolio.",
+    slug: "flutter-developer-fresher-interview-questions",
+    title: "Flutter Developer Fresher Interview Questions and Answers",
+    description: "The Dart, widget, state management, async and project questions asked in Flutter fresher interviews, with short answers, a code example and a practice plan.",
+    category: "Interview preparation",
+    published: "2026-11-09",
+    body: `Flutter has become a popular way to build mobile apps for Android and iOS from one codebase, and many companies and agencies now hire Flutter developers at entry level. A fresher interview for this role usually mixes Dart language questions, widget and layout questions, state management, working with APIs, and a detailed discussion of the apps you built. This guide walks through the questions that come up most often and shows how to answer each one clearly.
+
+## What interviewers want to see
+
+For a fresher, nobody expects you to know every package. Interviewers check three things: whether you understand how Flutter actually works instead of copying tutorials, whether you can reason about state and data flow, and whether you can explain your own project decisions. If you can say why you picked a widget or an approach, you already stand out.
+
+## Dart basics
+
+Expect a few questions on the language itself. Know the difference between final and const: a final variable is assigned once at runtime, while a const value is fixed at compile time. Explain null safety, which means a variable cannot hold null unless its type allows it with a question mark, and be able to describe the late keyword for variables that are initialised after declaration. Know the difference between var, dynamic and Object, and explain async and await as a way to write asynchronous code that reads like normal code.
+
+## StatelessWidget and StatefulWidget
+
+This is the most common Flutter question. A StatelessWidget describes a part of the UI that does not change after it is built, such as a label or an icon. A StatefulWidget has a State object that can change over time, and calling setState tells Flutter to rebuild the widget with the new values. A short example helps:
+
+~~~
+class CounterPage extends StatefulWidget {
+  const CounterPage({super.key});
+  @override
+  State<CounterPage> createState() => _CounterPageState();
+}
+class _CounterPageState extends State<CounterPage> {
+  int _count = 0;
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: () => setState(() => _count++),
+      child: Text('Count: $_count'),
+    );
+  }
+}
+~~~
+
+Add that setState should wrap only the change you need, and that heavy work should not run inside the build method because build can be called many times.
+
+## The widget lifecycle
+
+Be ready to explain the order of the main State methods. initState runs once when the State object is created and is the right place to set up controllers or start a request. didChangeDependencies runs when an inherited dependency changes. build describes the UI. dispose runs when the widget is removed and is where you release controllers, streams and listeners. Forgetting dispose is a common cause of memory leaks, and mentioning it shows care.
+
+## Layout questions
+
+Interviewers like practical layout questions. Explain Row and Column and their main and cross axes, the difference between Expanded and Flexible (Expanded forces a child to fill the space, Flexible lets it be smaller), and when to use Stack for overlapping widgets. Know why ListView.builder is better than a plain ListView for long lists: it builds only the items that are on screen. Mention MediaQuery and LayoutBuilder as ways to adapt a layout to different screen sizes, which matters on real devices.
+
+## BuildContext and keys
+
+BuildContext is a handle to a widget's location in the widget tree, and it is used to find inherited data such as the theme or a Navigator. Keys help Flutter decide which widgets to keep when a list changes, for example when you reorder items that hold their own state. You do not need deep detail, but a clear one-line explanation of each is enough for a fresher.
+
+## State management
+
+You will almost certainly be asked how you manage state beyond setState. Explain that setState is fine for local state in one widget, but larger apps need a shared approach. Popular choices include Provider, Riverpod and Bloc. Say honestly which one you have used, describe how data flows in it, and avoid claiming experience with all of them. A good answer is: I used Provider in my expense tracker to keep the list of expenses in one place and rebuild only the screens that depend on it.
+
+## Async code, APIs and JSON
+
+Know the difference between a Future, which delivers one value later, and a Stream, which delivers many values over time. Explain FutureBuilder and StreamBuilder as widgets that rebuild when the data arrives. For networking, describe how you call an API with the http or dio package, decode the JSON, convert it into model classes, and handle loading and error states so the screen never looks frozen. Interviewers also ask what you do when the network fails, so mention showing a message and a retry option.
+
+## Local storage and Firebase
+
+Be ready to compare options. shared_preferences suits small key-value settings, a local database such as SQLite or Hive suits structured data, and Firebase suits data that must sync across devices. If you used Firebase Authentication or Cloud Firestore, explain what you stored and how you secured it with rules.
+
+## Performance and good habits
+
+Mention using const constructors where possible so widgets are not rebuilt unnecessarily, using ListView.builder for long lists, splitting large build methods into smaller widgets, avoiding unnecessary setState calls, and disposing of controllers. If you have used Flutter DevTools to inspect the widget tree or check performance, say so.
+
+## Hot reload and hot restart
+
+Hot reload injects updated code into the running app and keeps its state, which makes UI changes fast. Hot restart rebuilds the app from the start and resets the state. A full restart is needed after some changes, such as native code or certain initialisation logic.
+
+## Questions about your projects
+
+This is where freshers win or lose. Pick your best app and be ready to explain what problem it solves, the screens, the state management approach, how data is stored, one bug that took you a long time to fix and what you learned, and what you would improve. Have it installed on a phone or ready to demonstrate on an emulator.
+
+## Common mistakes to avoid
+
+- Memorising answers without having built anything.
+- Listing many packages you have never used.
+- Putting API calls and business logic directly inside widgets.
+- Forgetting loading and error states in your demo.
+- Saying you know a topic and then being unable to explain it simply.
+
+## A practice plan
+
+Spend the first days revising Dart basics and writing small snippets. Then rebuild a counter, a to-do list and a simple API list screen from memory. Revise state management using the approach in your own project, write one-line answers for each question above in your own words, and finish with a mock interview where a friend asks follow-up questions about your app. Use the interview and study sections on Hire Daily to keep your practice steady.`,
+  },
+  {
+    slug: "flutter-roadmap-for-beginners",
+    title: "Flutter Roadmap for Beginners: From Dart Basics to Your First Published App",
+    description: "A step-by-step Flutter learning roadmap for beginners and freshers: what to learn in order, five portfolio projects, realistic timelines and how to present it on your resume.",
     category: "Career roadmap",
-    published: "2026-11-01",
-    body: `Cyber security is one of the fastest-growing fields in technology, and every company that uses the internet needs people who can protect its systems and data. The field can feel overwhelming at first because it covers so many areas, but you do not need to learn everything at once. This roadmap breaks the journey into clear steps for freshers in India, with realistic timelines, free resources and ideas for building proof of your skills.
+    published: "2026-12-16",
+    body: `Flutter lets you build mobile apps for Android and iOS, and also web and desktop apps, from a single codebase written in Dart. That makes it a practical choice for freshers who want to build real apps without learning two separate platforms from scratch. The difficulty is knowing what to learn first. This roadmap lays out a sensible order, with realistic timelines, projects that prove your skills and the mistakes to avoid.
 
-## Understand what cyber security work looks like
+## Before you start: what you need
 
-Security jobs fall into a few broad families. Defensive roles, often called blue team, monitor systems, detect attacks and respond to incidents, and a common starting point is a security operations centre analyst. Offensive roles, called red team or penetration testing, simulate attacks to find weaknesses. Other areas include application security, cloud security, governance and risk, and digital forensics. For most freshers, defensive and analyst roles offer the most openings, so they are a sensible first target.
+You need a computer that can run the Flutter tools, an editor such as VS Code or Android Studio, and ideally an Android phone for testing, although an emulator also works. Installing Flutter is simple, and the flutter doctor command checks your setup and tells you what is missing. If you want to build for iPhones you will also need a Mac, so many beginners start with Android and add iOS later. Set aside one to two hours a day and expect around four to six months to become job-ready. Your own pace will differ, and that is fine.
 
-## Step 1: Build strong foundations in networking and Linux
+## Step 1: Learn programming basics and Dart
 
-Almost everything in security rests on understanding how computers talk to each other. Spend your first month on networking basics such as IP addresses, ports, DNS, HTTP and HTTPS, and the difference between TCP and UDP. Learn the OSI model well enough to explain it simply. At the same time, get comfortable with the Linux command line, because most security tools run there. Practise moving around folders, reading files, checking permissions and viewing running processes.
+Spend the first two to three weeks on Dart itself. Learn variables, data types, conditions, loops and functions, then classes, objects, inheritance and collections such as lists, sets and maps. Understand null safety, final and const, and asynchronous code with Future, async and await. Do not skip this step. Beginners who jump straight into widgets often get stuck because they do not understand the language underneath.
 
-## Step 2: Learn security fundamentals
+## Step 2: Understand widgets and layouts
 
-Next, learn the core ideas that every interviewer expects you to know.
+Everything in Flutter is a widget. Spend about three weeks learning the basic building blocks: Text, Image, Container, Row, Column, Stack, ListView and GridView. Understand the difference between StatelessWidget and StatefulWidget and how setState works. Practise by rebuilding screens from apps you use every day, such as a login page, a profile page and a product list. This teaches layout far faster than reading.
 
-- The CIA triad of confidentiality, integrity and availability.
-- Symmetric and asymmetric encryption, hashing and digital signatures.
-- Authentication, authorisation and multi-factor authentication.
-- Common threats such as phishing, malware, ransomware and denial of service.
-- The difference between a vulnerability, a threat and a risk.
+## Step 3: Navigation, forms and theming
 
-Explaining these in simple language, with a real-life example for each, matters more than memorising definitions.
+Next, learn how to move between screens with the Navigator and a routing package such as go_router, how to pass data between screens, and how to build forms with validation. Learn to set a theme with colours and text styles so the whole app looks consistent. Make the app work well on different screen sizes using MediaQuery and LayoutBuilder.
 
-## Step 3: Study web application security
+## Step 4: State management
 
-The OWASP Top 10 is a list of the most common web security risks and a favourite topic in interviews. Learn what SQL injection, cross-site scripting, cross-site request forgery and broken access control are, how attackers exploit them and how developers prevent them. Practise on intentionally vulnerable applications that are made for learning, so that you stay within the law and test only on systems you have permission to use.
+This is the step that separates beginner apps from real ones. Start by understanding why setState is not enough once many screens share data. Then learn one approach well, such as Provider, Riverpod or Bloc. It is better to know one properly than to know the names of five. Apply it in a project where several screens use the same data, such as a shopping cart.
 
-## Step 4: Get hands-on with tools
+## Step 5: Networking and JSON
 
-Learn the standard tools one by one: Nmap for scanning networks, Wireshark for inspecting traffic, and Burp Suite for testing web applications. For defensive work, learn the idea of a SIEM, which collects logs from many systems and raises alerts, and practise reading logs to find suspicious activity. Each tool should be tied to a small exercise, such as scanning your own lab network and writing down what you found.
+Most apps talk to a server. Learn to call a REST API with the http or dio package, decode JSON, turn it into model classes and show it on screen. Always handle loading, success and error states, and show a retry option when the network fails. Practise with free public APIs for weather, movies or quotes.
 
-## Step 5: Practise on legal learning platforms
+## Step 6: Local storage and Firebase
 
-Hands-on practice is what separates candidates. Several platforms offer guided rooms and challenges that are safe and legal, including TryHackMe, Hack The Box, PortSwigger Web Security Academy and OverTheWire. Set a routine, for example five rooms a week, and keep notes. Beginner capture-the-flag competitions are also a fun way to learn under time pressure.
+Learn how to keep data on the device with shared_preferences for small settings and a local database such as SQLite or Hive for structured data. Then explore Firebase for sign-in and a cloud database, so your app can keep data across devices. Learn the basics of security rules and never put secret keys directly in the app code.
 
-## Step 6: Choose a certification wisely
+## Step 7: Testing, debugging and Git
 
-Certifications can help a fresher get past the first filter, but they are not a substitute for skills. A foundational certificate such as CompTIA Security Plus is widely recognised and a good first goal. Later you can consider analyst-focused or ethical hacking certificates depending on your direction. Always check the current exam details and fees on the official provider website, and avoid expensive courses that promise guaranteed jobs.
+Learn to read error messages, use the debugger and use Flutter DevTools to inspect the widget tree and check performance. Write a few simple widget tests to understand the idea. Use Git from the beginning and push every project to GitHub with a clear README, because recruiters will look at your repositories.
 
-## Step 7: Build a portfolio that proves your skills
+## Step 8: Build and publish
 
-Recruiters want evidence. Create a simple public page or repository where you publish short write-ups of labs you completed, explaining what the problem was, the steps you took and what you learned. A small home lab project, such as a virtual network with logging enabled and a few simulated attacks that you detect, is a strong talking point. Never publish sensitive details or test on systems you do not own.
+Finish by building a release version of your app. For Android this means building an app bundle and uploading it to the Google Play Console, which requires a developer account and a registration fee. Publishing even a small app teaches you about app icons, versions, permissions, privacy policies and store listings. If publishing is not possible, share a signed APK or a demo video along with your code.
 
-## Entry-level roles to apply for
+## Five portfolio projects, in order
 
-Look for titles such as SOC analyst, security analyst trainee, junior penetration tester, vulnerability analyst, IT security associate and cloud security associate. Read each description carefully and adjust your resume so that the tools and topics mentioned appear in your skills and project sections.
+- A to-do app with local storage. It proves you understand widgets, forms and saving data.
+- A weather or movie app using a public API. It proves you can handle networking, JSON and loading and error states.
+- An expense tracker with a chart. It proves you can manage state and present data clearly.
+- A shopping app interface with a cart. It proves you can share state across several screens and design a good layout.
+- A chat or notes app with Firebase sign-in. It proves you can build a complete product with authentication and a cloud database.
 
-## Interview preparation
+For each project write a short README with screenshots, the features, the packages you used and what you learned. Quality matters more than quantity.
 
-Expect questions on networking, the CIA triad, encryption, common attacks, how you would respond to a phishing email or a suspected breach, and what you did in your labs. Practise explaining incident response steps in order: preparation, detection, containment, eradication, recovery and lessons learned. Use the cyber security practice problems and study material on Hire Daily to test yourself regularly.
+## How to show Flutter on your resume
 
-## A realistic timeline
+List Flutter and Dart in your skills, then describe each project with the tools used and the outcome. For example: Built an expense tracker in Flutter with Provider for state management and SQLite for local storage, with charts showing monthly spending. Include links to GitHub and, if possible, the store listing or a demo video. Avoid listing packages you have not used.
 
-With steady effort of a couple of hours a day, many learners spend roughly six to eight months moving from beginner to job-ready. Your own pace will differ, and that is fine. Consistency matters more than speed.
+## Common mistakes to avoid
 
-## Final advice
+- Watching endless tutorials without building anything alone.
+- Copying a complete tutorial project and calling it your own without understanding it.
+- Putting all the code in one huge file instead of splitting widgets and logic.
+- Ignoring state management until the app becomes a mess.
+- Never testing on a real device or on different screen sizes.
 
-Stay curious, stay ethical and keep a learning log. Security is a field where learning never stops, but each small skill you add makes you more valuable. Start with networking this week, and take the next step the week after.`,
+## Keep improving after your first job search begins
+
+While you apply, keep adding one small feature to a project every week, read the official Flutter documentation and practise explaining your app aloud. Prepare with the Flutter interview questions guide and the coding practice on Hire Daily, and check job listings that mention Flutter or mobile app development. Steady progress for a few months is enough to build a portfolio that gets interviews.`,
   },
 ];
 

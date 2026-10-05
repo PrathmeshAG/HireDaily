@@ -4,7 +4,7 @@ import { liveArticles, readMinutes } from "../data/articles";
 import { ArticleCover } from "../components/article-cover";
 import { SITE } from "../lib/site";
 
-const TITLE = "Career Guides for Freshers — Interviews, Resumes and Job Search | Hire Daily";
+const TITLE = "Career Guides for Freshers — Data Analyst, Flutter and Job Search | Hire Daily";
 const DESC = "Practical, original career guides for students and freshers: interview questions, ATS resume tips and city-wise job search advice written by the founder of Hire Daily.";
 
 export const Route = createFileRoute("/blog/")({
@@ -31,7 +31,7 @@ function BlogIndex() {
         <p className="text-sm font-semibold text-cyan-700 dark:text-[#00e5ff]">Career guides</p>
         <h1 className="mt-1 text-balance text-4xl font-black tracking-tight text-slate-900 sm:text-5xl dark:text-white">Guides for freshers and job seekers</h1>
         <p className="mt-4 text-base leading-7 text-slate-600 dark:text-white/55">
-          Original, practical articles on interviews, resumes and job searching, written by {SITE.owner.name}{SITE.hasTeam ? ` and the ${SITE.name} team` : ""}.
+          Original, practical articles on data analyst and Flutter developer careers, interviews, resumes and job searching, written by {SITE.owner.name}{SITE.hasTeam ? ` and the ${SITE.name} team` : ""}.
         </p>
       </header>
 

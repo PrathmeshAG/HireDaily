@@ -13,7 +13,7 @@ export const SITE = {
     name: "Prathmesh Bobade",
     role: "Founder and Editor",
     location: "Pune, Maharashtra, India",
-    bio: "Prathmesh started Hire Daily to make job hunting clearer for students and freshers. He personally reviews every listing for its source and application link before it is published, and writes the career guides on this site.",
+    bio: "Prathmesh has worked as a data analyst and as a Flutter mobile app developer. He started Hire Daily to make job hunting clearer for students and freshers, and writes the career guides on this site, mainly about data analytics and mobile app development.",
     /** Put a photo at /public/owner.jpg and set this to "/owner.jpg". Leave empty to show initials. */
     photo: "/owner.jpg",
     linkedin: "",
@@ -28,7 +28,7 @@ export const SITE = {
 
   /** Add a real URL to show an icon in the footer. Empty values are not rendered. */
   social: {
-    instagram: "https://www.instagram.com/hire_daily/",
+    instagram: "",
     linkedin: "",
     x: "",
     github: "",
