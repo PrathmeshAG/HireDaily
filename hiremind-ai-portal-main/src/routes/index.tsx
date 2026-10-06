@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { HeroLogo } from "../components/hero-logo";
+import { RiseTrail, SparkleCursor, SwooshDivider } from "../components/rise-motion";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as RPE, type ReactNode } from "react";
 import {
   ArrowRight,
@@ -801,13 +803,13 @@ function Home() {
     el.style.setProperty("--py", String(y / r.height - 0.5));
   };
 
-  const tile = (i: number, speed: number, span: string, src: string, alt: string, extra = "") => (
-    <div className={`hd-par ${span}`} style={cv({ "--ps": speed })}>
-      <div className="hd-tile h-full overflow-hidden rounded-3xl border border-white/10 shadow-2xl" style={cv({ "--i": i })}>
-        <Photo src={src} alt={alt} className={`h-full w-full ${extra}`} />
-      </div>
-    </div>
-  );
+  // const tile = (i: number, speed: number, span: string, src: string, alt: string, extra = "") => (
+  //   <div className={`hd-par ${span}`} style={cv({ "--ps": speed })}>
+  //     <div className="hd-tile h-full overflow-hidden rounded-3xl border border-white/10 shadow-2xl" style={cv({ "--i": i })}>
+  //       <Photo src={src} alt={alt} className={`h-full w-full ${extra}`} />
+  //     </div>
+  //   </div>
+  // );
 
   return (
     <>
@@ -958,6 +960,7 @@ function Home() {
 
       <div ref={rootRef} className="relative mx-auto max-w-7xl overflow-x-clip px-4 sm:px-6">
         <div className="hd-progress" aria-hidden />
+        <RiseTrail />
         <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[760px] hd-grid [-webkit-mask-image:radial-gradient(ellipse_75%_65%_at_50%_0%,black_35%,transparent_100%)] [mask-image:radial-gradient(ellipse_75%_65%_at_50%_0%,black_35%,transparent_100%)]" aria-hidden />
         <div className="pointer-events-none absolute left-[6%] top-[180px] -z-10 h-44 w-44 rounded-full bg-[#00e5ff]/10 blur-3xl hd-pulse-orb" />
         <div className="pointer-events-none absolute right-[6%] top-[360px] -z-10 h-56 w-56 rounded-full bg-[#7c3aed]/10 blur-3xl hd-pulse-orb" />
@@ -965,6 +968,7 @@ function Home() {
         {/* HERO */}
         <section onPointerMove={onHeroMove} className="relative overflow-hidden py-8 md:py-20">
           <Particles count={isNarrow ? 14 : 34} />
+          <SparkleCursor />
           <div className="pointer-events-none absolute inset-0 [-webkit-mask-image:radial-gradient(ellipse_closest-side,black_55%,transparent_100%)] [mask-image:radial-gradient(ellipse_closest-side,black_55%,transparent_100%)]" aria-hidden>
             <div className="hd-spot absolute inset-0" />
             <div className="hd-orb left-0 top-10 h-72 w-72 bg-[#00e5ff]/15" />
@@ -1026,9 +1030,10 @@ function Home() {
                 ))}
               </div>
             </div>
+        
 
             {/* collage */}
-            <div className="relative mx-auto w-full max-w-lg">
+            {/* <div className="relative mx-auto w-full max-w-lg">
               <div className="hd-stage">
                 <div className="grid grid-cols-5 grid-rows-6 gap-3">
                   {tile(0, -0.05, "col-span-3 row-span-4", IMG("photo-1522071820081-009f0129c71c", 900), "Team collaborating in a modern office", "min-h-[16rem]")}
@@ -1056,7 +1061,8 @@ function Home() {
                   </div>
                 </div>
               </div>
-            </div>
+            </div> */}
+            <HeroLogo />
           </div>
         </section>
 
@@ -1069,6 +1075,7 @@ function Home() {
         <p className="mx-auto max-w-3xl text-center text-xs leading-5 text-white/35">
           Counts are generated from the current Hire Daily listing data and can change as jobs are added, updated or removed.
         </p>
+        <SwooshDivider />
 
         {/* BROWSE */}
         <section className="py-4 md:py-8">
@@ -1121,6 +1128,7 @@ function Home() {
             </div>
           )}
         </section>
+        <SwooshDivider />
 
         {/* STATEMENT */}
         <section aria-label="Our approach">
@@ -1167,6 +1175,7 @@ function Home() {
         </section>
 
         {/* CANDIDATE GUIDE */}
+        <SwooshDivider />
         <section className="py-10 md:py-16">
           <SectionHead
             center
@@ -1337,6 +1346,7 @@ function Home() {
         </section>
 
         {/* FAQ */}
+        <SwooshDivider />
         <section id="faq" className="py-10 md:py-16">
           <div className="mx-auto max-w-3xl">
             <SectionHead center icon={MessageCircle} eyebrow="Help" title="Frequently asked questions" />
