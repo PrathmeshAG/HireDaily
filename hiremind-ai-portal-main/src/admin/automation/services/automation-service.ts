@@ -18,6 +18,7 @@ AutomationUser,
   LogEntry,
   LogType,
   PostMapping,
+  ExtraLink,
   Template,
 } from "../types";
 
@@ -118,6 +119,7 @@ export async function getPostMappings(): Promise<PostMapping[]> {
       mappedAt: number | null;
       updatedAt: number | null;
       status: "active" | "archived";
+      extraLinks?: ExtraLink[];
     }[];
   }>("/api/automation/post-mappings");
 
@@ -132,6 +134,7 @@ export async function getPostMappings(): Promise<PostMapping[]> {
     jobId: m.jobId,
     status: m.status,
     createdAt: m.mappedAt ?? 0,
+    extraLinks: m.extraLinks ?? [],
   }));
 }
 
@@ -147,6 +150,7 @@ export async function createPostMapping(
         instagramPostUrl: data.instagramPostUrl,
         jobId: data.jobId,
         jobTitleCache: data.jobTitle || null,
+        extraLinks: data.extraLinks ?? [],
       }),
     },
   );
@@ -170,6 +174,9 @@ export async function updatePostMapping(
       jobId: data.jobId,
       jobTitleCache:
         typeof data.jobTitle === "string" ? data.jobTitle : undefined,
+      // Sent only when provided: an empty array clears the extra links,
+      // omitting the field keeps the existing ones.
+      extraLinks: data.extraLinks,
     }),
   });
 }
@@ -357,7 +364,11 @@ export async function getAnalytics(): Promise<AutomationAnalytics> {
       commentsFailed: d.commentsFailed,
       dmsFailed: d.dmsFailed,
       automationErrors: d.automationErrors,
+      followVerified: d.followVerified ?? 0,
+      followNotVerified: d.followNotVerified ?? 0,
+      followUnsupported: d.followUnsupported ?? 0,
     })),
+    users: data.users,
     topKeywords: data.topKeywords,
     topPosts: data.topPosts,
   };
@@ -405,6 +416,12 @@ export async function getSettings(): Promise<AutomationSettings> {
       ok: data.api?.ok ?? data.serviceStatus === "operational",
       latencyMs: data.api?.latencyMs ?? null,
       lastCheckedAt: data.api?.lastCheckedAt ?? Date.now(),
+    },
+    system: {
+      dryRun: !!data.dryRun,
+      firebaseConfigured: !!data.firebaseConfigured,
+      metaConfigured: !!data.metaConfigured,
+      webhookConfigured: !!data.webhookConfigured,
     },
   };
 }

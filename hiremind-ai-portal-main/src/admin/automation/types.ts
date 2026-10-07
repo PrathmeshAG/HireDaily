@@ -6,6 +6,16 @@ export type Channel = "instagram" | "whatsapp" | "telegram" | "hiremind";
 
 export type MappingStatus = "active" | "archived";
 
+/**
+ * Extra links delivered in the SAME DM as the primary job (max 4, so 5 total).
+ * "job" = another Hire Daily job, "external" = any pasted http(s) link.
+ */
+export type ExtraLink =
+  | { type: "job"; jobId: string; label: string | null }
+  | { type: "external"; url: string; label: string };
+
+export const MAX_TOTAL_LINKS = 5;
+
 export interface PostMapping {
   id: string;
   channel: Channel;
@@ -17,6 +27,8 @@ export interface PostMapping {
   jobId: string;
   status: MappingStatus;
   createdAt: number;
+  /** Optional additional links; absent on legacy single-job mappings. */
+  extraLinks?: ExtraLink[];
 }
 
 export type MatchType = "exact" | "contains";
@@ -96,6 +108,10 @@ export interface DailyAnalytics {
   commentsFailed: number;
   dmsFailed: number;
   automationErrors: number;
+  /** Follow-gate outcomes (already returned by the backend). */
+  followVerified: number;
+  followNotVerified: number;
+  followUnsupported: number;
 }
 
 export interface KeywordStat {
@@ -111,6 +127,8 @@ export interface PostStat {
 }
 
 export interface AutomationAnalytics {
+  /** Unique users who triggered an automation. */
+  users?: number;
   daily: DailyAnalytics[];
   topKeywords: KeywordStat[];
   topPosts: PostStat[];
@@ -135,10 +153,19 @@ export interface ApiStatus {
   lastCheckedAt: number | null;
 }
 
+/** Safe status flags reported by the backend (never secrets). */
+export interface SystemStatus {
+  dryRun: boolean;
+  firebaseConfigured: boolean;
+  metaConfigured: boolean;
+  webhookConfigured: boolean;
+}
+
 export interface AutomationSettings {
   instagram: InstagramConnection;
   webhook: WebhookStatus;
   api: ApiStatus;
+  system?: SystemStatus;
 }
 
 export interface DashboardSummary {

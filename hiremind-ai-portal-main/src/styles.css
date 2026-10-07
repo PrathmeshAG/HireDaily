@@ -461,3 +461,28 @@ html:not(.dark) [class~="bg-[#050816]"] {
 html:not(.dark) [class~="bg-[#050816]/60"] {
   background-color: color-mix(in oklab, var(--background) 94%, transparent) !important;
 }
+
+/* ============ Automation admin motion (additive, prefixed hd-) ============ */
+@keyframes hd-page-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes hd-ring-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+@keyframes hd-draw { to { stroke-dashoffset: 0; } }
+@keyframes hd-drift { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes hd-bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes hd-pop { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+
+.hd-page-in { animation: hd-page-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hd-ring-pulse { animation: hd-ring-pulse 2s ease-out infinite; }
+.hd-drift { animation: hd-drift 5s ease-in-out infinite; }
+.hd-drift-slow { animation: hd-drift 7s ease-in-out infinite; animation-delay: -2s; }
+.hd-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: hd-draw 1.4s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards; }
+.hd-bar-grow { transform-origin: left center; animation: hd-bar-grow 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hd-pop { animation: hd-pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hd-page-in, .hd-ring-pulse, .hd-drift, .hd-drift-slow, .hd-bar-grow, .hd-pop { animation: none !important; }
+  .hd-draw { animation: none !important; stroke-dashoffset: 0; }
+}

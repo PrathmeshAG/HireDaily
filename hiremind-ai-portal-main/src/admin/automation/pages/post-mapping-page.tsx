@@ -7,9 +7,14 @@ import {
 } from "../services/automation-service";
 import { fetchJobs } from "../../../lib/jobs";
 import type { Job } from "../../../lib/firebase";
-import type { PostMapping } from "../types";
+import type { PostMapping, ExtraLink } from "../types";
+import { MAX_TOTAL_LINKS } from "../types";
+import { SearchablePicker } from "../components/searchable-picker";
 import { TableToolbar } from "../components/table-toolbar";
 import { EmptyState } from "../components/empty-state";
+import { PageHeader } from "../components/page-header";
+import { DmPreview, namesBlock } from "../components/dm-preview";
+import { MappingArt, EmptyArt } from "../components/illustrations";
 import { TableSkeleton } from "../components/table-skeleton";
 import { PaginationBar } from "../components/pagination-bar";
 import { StatusBadge } from "../components/status-badge";
@@ -91,20 +96,21 @@ export function PostMappingPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>Post Mapping</h1>
-          <p className="mt-1 text-sm text-white/50">Link each Instagram post to the job it should deliver.</p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={refreshInstagramMedia} className="btn-ghost-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
-            <RefreshCw className="h-4 w-4" /> Refresh Posts
-          </button>
-          <button onClick={() => setEditing("new")} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
-            <Plus className="h-4 w-4" /> Create
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Post Mapping"
+        subtitle="Link each Instagram post to the job (or up to 5 links) it should deliver in the DM."
+        art={<MappingArt />}
+        actions={
+          <>
+            <button onClick={refreshInstagramMedia} className="btn-ghost-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+              <RefreshCw className="h-4 w-4" /> Refresh Posts
+            </button>
+            <button onClick={() => setEditing("new")} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+              <Plus className="h-4 w-4" /> Create
+            </button>
+          </>
+        }
+      />
 
       <div className="glass mt-6 rounded-2xl">
         <TableToolbar
@@ -134,6 +140,7 @@ export function PostMappingPage() {
         ) : paged.length === 0 ? (
           <EmptyState
             icon={Link2}
+            art={<EmptyArt kind="link" />}
             title="No post mappings yet"
             description="Create one to link an Instagram post to a job."
             action={
@@ -184,7 +191,14 @@ export function PostMappingPage() {
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-white/60">{m.mediaId}</td>
                     <td className="px-4 py-3 text-white/80">{jobs?.find((j) => j.id === m.jobId)?.companyName || m.companyName || "—"}</td>
-                    <td className="px-4 py-3 text-white/80">{jobs?.find((j) => j.id === m.jobId)?.role || m.jobTitle || "—"}</td>
+                    <td className="px-4 py-3 text-white/80">
+                      {jobs?.find((j) => j.id === m.jobId)?.role || m.jobTitle || "—"}
+                      {m.extraLinks && m.extraLinks.length > 0 && (
+                        <span className="ml-2 rounded-full bg-[#7c3aed]/20 px-2 py-0.5 text-[10px] text-[#c4b5fd]" title="Extra links sent in the same DM">
+                          +{m.extraLinks.length} {m.extraLinks.length === 1 ? "link" : "links"}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-white/60 ring-1 ring-white/10">{m.jobId}</span>
                     </td>
@@ -308,6 +322,9 @@ function MappingDialog({
   const [mediaId, setMediaId] = useState(mapping?.mediaId ?? "");
   const [instagramPostUrl, setInstagramPostUrl] = useState(mapping?.instagramPostUrl ?? "");
   const [jobId, setJobId] = useState(mapping?.jobId ?? "");
+  const [extraLinks, setExtraLinks] = useState<ExtraLink[]>(mapping?.extraLinks ?? []);
+  const [extLabel, setExtLabel] = useState("");
+  const [extUrl, setExtUrl] = useState("");
   const [mediaSearch, setMediaSearch] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -315,6 +332,56 @@ function MappingDialog({
   const selectedMedia = media.find((item) => item.id === mediaId);
   const jobDetailUrl = jobId && typeof window !== "undefined" ? `${window.location.origin}${selectedJob ? getJobPath(selectedJob) : `/jobs/${encodeURIComponent(jobId)}`}` : "";
   const officialApplyUrl = selectedJob?.applyLink ?? "";
+
+  // Latest jobs first; the picker puts the search box on top of this list.
+  const sortedJobs = useMemo(
+    () => [...jobs].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+    [jobs],
+  );
+  const jobItems = useMemo(
+    () => sortedJobs.map((j, i) => ({
+      id: j.id,
+      title: `${j.role} — ${j.companyName}`,
+      subtitle: j.location || undefined,
+      searchText: `${j.id} ${j.location ?? ""}`,
+      badge: i < 3 ? "Latest" : undefined,
+    })),
+    [sortedJobs],
+  );
+  const jobLabel = (id: string) => {
+    const j = jobs.find((x) => x.id === id);
+    return j ? `${j.role} - ${j.companyName}` : id;
+  };
+  const totalLinks = 1 + extraLinks.length;
+  const canAddMore = totalLinks < MAX_TOTAL_LINKS;
+
+  const addExtraJob = (id: string) => {
+    if (!id || !canAddMore) return;
+    if (id === jobId || extraLinks.some((l) => l.type === "job" && l.jobId === id)) {
+      toast.error("This job is already added");
+      return;
+    }
+    setExtraLinks((l) => [...l, { type: "job", jobId: id, label: null }]);
+  };
+
+  const addExternal = () => {
+    if (!canAddMore) return;
+    const label = extLabel.trim();
+    const raw = extUrl.trim();
+    let url = "";
+    try {
+      const u = new URL(raw);
+      if ((u.protocol === "https:" || u.protocol === "http:") && !u.username && !u.password) url = u.toString();
+    } catch { /* invalid */ }
+    if (!label) { toast.error("Give the link a name (shown in the DM)"); return; }
+    if (!url) { toast.error("Enter a valid http(s) link"); return; }
+    if (extraLinks.some((l) => l.type === "external" && l.url === url)) { toast.error("This link is already added"); return; }
+    setExtraLinks((l) => [...l, { type: "external", url, label: label.slice(0, 60) }]);
+    setExtLabel("");
+    setExtUrl("");
+  };
+
+  const removeExtra = (index: number) => setExtraLinks((l) => l.filter((_, i) => i !== index));
 
   const availableMedia = media.filter((item) => {
     if (!mediaSearch.trim()) return true;
@@ -349,6 +416,7 @@ function MappingDialog({
           jobId,
           jobTitle: jobRef.role,
           companyName: jobRef.companyName,
+          extraLinks,
         });
         toast.success("Mapping updated");
       } else {
@@ -360,6 +428,7 @@ function MappingDialog({
           jobId,
           jobTitle: jobRef.role,
           companyName: jobRef.companyName,
+          extraLinks,
         });
         toast.success("Mapping created");
       }
@@ -464,10 +533,18 @@ function MappingDialog({
 
             <div className="mt-4">
               <label className="mb-1.5 block text-xs text-white/50">Linked job</label>
-              <select value={jobId} onChange={(e) => setJobId(e.target.value)} className={input}>
-                <option value="" className="bg-[#111827]">Select a job</option>
-                {jobs.map((j) => <option key={j.id} value={j.id} className="bg-[#111827]">{j.role} — {j.companyName}</option>)}
-              </select>
+              <SearchablePicker
+                items={jobItems}
+                value={jobId}
+                onChange={(id) => {
+                  setJobId(id);
+                  // The primary job can't also be an extra link.
+                  setExtraLinks((l) => l.filter((x) => !(x.type === "job" && x.jobId === id)));
+                }}
+                placeholder="Select a job"
+                searchPlaceholder="Search role, company, location…"
+                emptyText="No job matches your search"
+              />
             </div>
 
             {selectedJob && (
@@ -477,6 +554,74 @@ function MappingDialog({
                 <p className="mt-0.5 text-xs text-white/55">{selectedJob.companyName}{selectedJob.location ? ` · ${selectedJob.location}` : ""}</p>
               </div>
             )}
+
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-white/80">More links in the same DM</p>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] ${canAddMore ? "bg-white/5 text-white/50" : "bg-amber-500/15 text-amber-300"}`}>{totalLinks}/{MAX_TOTAL_LINKS} links</span>
+              </div>
+              <p className="mt-1 text-xs text-white/40">Add other Hire Daily jobs or paste any external link. All links go in one DM, one below another, each with its name.</p>
+
+              {extraLinks.length > 0 && (
+                <ul className="mt-3 space-y-2">
+                  {extraLinks.map((l, i) => (
+                    <li key={`${l.type}-${l.type === "job" ? l.jobId : l.url}`} className="flex items-center gap-2 rounded-lg bg-white/[0.03] p-2 ring-1 ring-white/5 animate-scale-in">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-[11px] text-white/60">{i + 2}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-white">{l.type === "job" ? (l.label || jobLabel(l.jobId)) : l.label}</p>
+                        <p className="truncate text-[11px] text-white/40">{l.type === "job" ? "Hire Daily job" : l.url}</p>
+                      </div>
+                      <button type="button" onClick={() => removeExtra(i)} aria-label="Remove link" className="btn-ghost-glow rounded-lg p-1.5 hover:!border-red-500/30 hover:!bg-red-500/10 hover:!text-red-300">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {canAddMore ? (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs text-white/50">Add another job</label>
+                    <SearchablePicker
+                      items={jobItems.map((it) => ({ ...it, disabled: it.id === jobId || extraLinks.some((l) => l.type === "job" && l.jobId === it.id) }))}
+                      value=""
+                      onChange={addExtraJob}
+                      placeholder="Search and add a job"
+                      searchPlaceholder="Search role, company, location…"
+                      emptyText="No job matches your search"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs text-white/50">Or paste an external link</label>
+                    <div className="grid gap-2 sm:grid-cols-[0.8fr_1.2fr_auto]">
+                      <input value={extLabel} onChange={(e) => setExtLabel(e.target.value)} maxLength={60} placeholder="Name, e.g. Company careers" className={input} />
+                      <input value={extUrl} onChange={(e) => setExtUrl(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExternal(); } }} placeholder="https://…" className={input} />
+                      <button type="button" onClick={addExternal} className="btn-ghost-glow flex items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-sm"><Plus className="h-4 w-4" /> Add</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-amber-300/80">Maximum of {MAX_TOTAL_LINKS} links reached. Remove one to add another.</p>
+              )}
+
+              {totalLinks > 1 && (() => {
+                const labels = [
+                  selectedJob ? `${selectedJob.role} - ${selectedJob.companyName}` : "Primary job",
+                  ...extraLinks.map((l) => (l.type === "job" ? (l.label || jobLabel(l.jobId)) : l.label)),
+                ];
+                const intro = "Hi @username! 🙌 Here are your links 👇";
+                return (
+                  <div className="mt-4">
+                    <p className="mb-2 text-[11px] text-white/40">How it looks in the DM (names come from your links)</p>
+                    <DmPreview text={`${intro}\n\n${namesBlock(labels)}`} labels={labels} />
+                    <p className="mt-2 text-[11px] text-white/35">
+                      {totalLinks >= 4 ? "4-5 links go as swipeable cards, one per job." : "Each link gets its own button. Tapping a button opens that link."}
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
 
             <div className="mt-4 rounded-xl border border-dashed border-white/10 p-3">
               <p className="mb-3 text-[11px] uppercase tracking-wider text-white/40">Link verification</p>

@@ -28,6 +28,16 @@ import { isTransientHttpStatus, retryTransient } from "../utils/retry.js";
 import { logger } from "../utils/logger.js";
 import type { RuleEngineRule } from "../types/rule-engine.js";
 import type { PostJobResolution } from "./post-mapping.service.js";
+import {
+  buildLinksBlock,
+  buildNamesBlock,
+  buttonTitle,
+  clipText,
+  BUTTON_TEXT_MAX,
+  BUTTON_TITLE_MAX,
+  MAX_BUTTON_TEMPLATE_LINKS,
+  type ResolvedLink,
+} from "./job-links.js";
 
 /** Meta Graph API version used by this backend for comment replies. */
 export const META_GRAPH_VERSION = "v24.0";
@@ -91,6 +101,17 @@ export function renderCommentReply(
   }
 
   return { rendered, ok: true, error: null };
+}
+
+/**
+ * Value for the {{jobLink}} template variable. Single-link posts keep the
+ * exact job URL (legacy behavior). Multi-link posts render a named list,
+ * one link below another, so the person can tell which link is which.
+ */
+export function jobLinkValue(resolution: { jobUrl: string | null; links?: { label: string; url: string }[] }): string {
+  const links = resolution.links ?? [];
+  if (links.length > 1) return buildLinksBlock(links);
+  return resolution.jobUrl ?? "";
 }
 
 /** Structured result of a Meta reply attempt. */
@@ -322,7 +343,7 @@ export async function processCommentReply(
     company: input.resolution.company ?? "",
     title: input.resolution.jobTitle ?? input.resolution.title ?? "",
     location: input.resolution.location ?? "",
-    jobLink: input.resolution.jobUrl ?? "",
+    jobLink: jobLinkValue(input.resolution),
   });
 
   if (!render.ok) {
@@ -569,6 +590,16 @@ export async function sendDirectMessage(
     ctaLabel?: string | null;
     commentId?: string | null;
     instagramBusinessId?: string | null;
+    /** Plain-text DM may fall back to recipient.id when no comment id exists (multi-link DMs after the follow gate). */
+    allowDirectRecipient?: boolean;
+    /**
+     * 2-5 links to deliver as native buttons in ONE message: up to 3 as a
+     * button template, 4-5 as a carousel. `message` is then the plain-text
+     * fallback (names + URLs) used if Meta rejects the structured message.
+     */
+    linkButtons?: ResolvedLink[];
+    /** Text shown above the buttons (names only, no URLs). */
+    buttonText?: string;
   } = {},
 ): Promise<ReplyResult> {
   const dryRun = opts.dryRun ?? false;
@@ -613,6 +644,77 @@ export async function sendDirectMessage(
     `https://graph.instagram.com/${META_GRAPH_VERSION}/` +
     `${encodeURIComponent(instagramBusinessId)}/messages`;
 
+  // Multi-link: ONE message with native buttons (one per link), falling back
+  // to a plain-text list if Meta rejects the structured message.
+  if (opts.linkButtons && opts.linkButtons.length > 1) {
+    const links = opts.linkButtons.slice(0, 5);
+    const recipient = opts.commentId ? { comment_id: opts.commentId } : { id: recipientId };
+    const attachment =
+      links.length <= MAX_BUTTON_TEMPLATE_LINKS
+        ? {
+            type: "template",
+            payload: {
+              template_type: "button",
+              text: clipText(opts.buttonText?.trim() || buildNamesBlock(links), BUTTON_TEXT_MAX),
+              buttons: links.map((l, i) => ({
+                type: "web_url",
+                url: l.url,
+                title: buttonTitle(i, l.label),
+              })),
+            },
+          }
+        : {
+            type: "template",
+            payload: {
+              template_type: "generic",
+              elements: links.map((l, i) => ({
+                title: clipText(l.label, 80),
+                subtitle: `Option ${i + 1} of ${links.length} · tap to view & apply`,
+                buttons: [{ type: "web_url", url: l.url, title: clipText("View & Apply", BUTTON_TITLE_MAX) }],
+              })),
+            },
+          };
+
+    try {
+      const structured = await sendInstagramJson(fetchImpl, messagesUrl, accessToken, {
+        recipient,
+        message: { attachment },
+      });
+      if (structured.ok) {
+        const id = (structured.json as { message_id?: string } | null)?.message_id ?? null;
+        return { success: true, externalId: id, error: null, dryRun: false };
+      }
+
+      const structuredError = safeMetaError(structured.json, accessToken, `meta_http_${structured.status}`);
+
+      // Preserve delivery: retry as plain text (names + URLs). A rejected
+      // request does not consume the private reply.
+      if (opts.commentId || opts.allowDirectRecipient) {
+        try {
+          const fallback = await sendInstagramJson(fetchImpl, messagesUrl, accessToken, {
+            recipient,
+            message: { text: cta.text },
+          });
+          if (fallback.ok) {
+            const id = (fallback.json as { message_id?: string } | null)?.message_id ?? null;
+            return { success: true, externalId: id, error: null, dryRun: false };
+          }
+        } catch {
+          // report the original structured-message error below
+        }
+      }
+      return {
+        success: false,
+        externalId: null,
+        error: `multi_link_template_rejected_${structured.status}:${structuredError}`,
+        dryRun: false,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown_network_error";
+      return { success: false, externalId: null, error: msg, dryRun: false };
+    }
+  }
+
   // Native URL button: one structured message. Meta documents Button Template
   // for the Instagram Send API at /{ig_user_id}/messages with recipient.id.
   if (cta.label && ctaUrl) {
@@ -637,7 +739,7 @@ export async function sendDirectMessage(
               {
                 type: "web_url",
                 url: ctaUrl,
-                title: ctaLabel.slice(0, 20),
+                title: clipText(ctaLabel, BUTTON_TITLE_MAX),
               },
             ],
           },
@@ -717,12 +819,12 @@ export async function sendDirectMessage(
 
   // No CTA marker: send a documented Private Reply using the originating
   // comment id. This is the safe comment-to-DM path.
-  if (!opts.commentId) {
+  if (!opts.commentId && !opts.allowDirectRecipient) {
     return { success: false, externalId: null, error: "comment_id_missing", dryRun: false };
   }
 
   const privateReplyPayload = {
-    recipient: { comment_id: opts.commentId },
+    recipient: opts.commentId ? { comment_id: opts.commentId } : { id: recipientId },
     message: { text: cta.text },
   };
 
@@ -1031,13 +1133,19 @@ export async function processDirectMessage(
     };
   }
 
+  // Multi-link posts (2-5 links) go out as ONE plain-text message: each link
+  // is preceded by its name, one below another. Native URL buttons only
+  // support a single link here, so the legacy button path is used only when
+  // the post has exactly one link.
+  const multiLink = (input.resolution.links?.length ?? 0) > 1;
+
   const render = renderCommentReply(dmText, {
     commentReplyText: dmText,
     username: input.username ?? "",
     company: input.resolution.company ?? "",
     title: input.resolution.jobTitle ?? input.resolution.title ?? "",
     location: input.resolution.location ?? "",
-    jobLink: input.resolution.jobUrl,
+    jobLink: multiLink ? buildLinksBlock(input.resolution.links ?? []) : input.resolution.jobUrl,
   });
 
   if (!render.ok) {
@@ -1057,12 +1165,40 @@ export async function processDirectMessage(
     };
   }
 
-  const dm = await sendDirectMessage(input.recipientId, render.rendered, input.accessToken, {
+  let dmMessage = render.rendered;
+  let buttonText: string | undefined;
+  if (multiLink) {
+    const links = input.resolution.links ?? [];
+    // Plain-text fallback: template text with the full "name + URL" list.
+    dmMessage = extractDmCta(dmMessage).text;
+    if (!dmText.includes("{{jobLink}}")) {
+      dmMessage = `${dmMessage}\n\n${buildLinksBlock(links)}`.trim();
+    }
+    // Text above the buttons: same template, but names only (the URLs live
+    // in the buttons themselves).
+    const namesRender = renderCommentReply(dmText, {
+      commentReplyText: dmText,
+      username: input.username ?? "",
+      company: input.resolution.company ?? "",
+      title: input.resolution.jobTitle ?? input.resolution.title ?? "",
+      location: input.resolution.location ?? "",
+      jobLink: buildNamesBlock(links),
+    });
+    buttonText = extractDmCta(namesRender.ok ? namesRender.rendered : dmMessage).text;
+    if (!dmText.includes("{{jobLink}}")) {
+      buttonText = `${buttonText}\n\n${buildNamesBlock(links)}`.trim();
+    }
+  }
+
+  const dm = await sendDirectMessage(input.recipientId, dmMessage, input.accessToken, {
     dryRun: input.dryRun,
     fetchImpl: deps.fetchImpl,
-    ctaUrl: input.resolution.jobUrl,
+    ctaUrl: multiLink ? null : input.resolution.jobUrl,
     commentId: input.commentId,
     instagramBusinessId: env.meta.instagramBusinessId,
+    allowDirectRecipient: multiLink,
+    linkButtons: multiLink ? input.resolution.links : undefined,
+    buttonText,
   });
 
   if (dm.success) {

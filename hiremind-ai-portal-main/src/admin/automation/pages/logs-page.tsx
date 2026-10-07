@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  MessageCircle, Sparkles, Reply, Send, AlertTriangle, RotateCcw, ScrollText,
+  MessageCircle, Sparkles, Reply, Send, AlertTriangle, RotateCcw, ScrollText, RefreshCw,
 } from "lucide-react";
 import { getLogs } from "../services/automation-service";
 import type { LogEntry, LogType } from "../types";
@@ -9,6 +9,8 @@ import { TableToolbar } from "../components/table-toolbar";
 import { EmptyState } from "../components/empty-state";
 import { TableSkeleton } from "../components/table-skeleton";
 import { PaginationBar } from "../components/pagination-bar";
+import { PageHeader } from "../components/page-header";
+import { LogsArt, EmptyArt } from "../components/illustrations";
 
 const LOG_ICON: Record<LogType, typeof MessageCircle> = {
   comment_received: MessageCircle,
@@ -55,6 +57,23 @@ export function timeAgo(ts: number): string {
   return `${d}d ago`;
 }
 
+function dayLabel(ts: number): string {
+  const d = new Date(ts);
+  const today = new Date();
+  const y = new Date();
+  y.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === y.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function matchesFilter(l: LogEntry, f: LogType | "all"): boolean {
+  if (f === "all") return true;
+  if (f === "comment_received") return l.type === "comment_received" || l.type === "comment_sent";
+  if (f === "dm_sent") return l.type === "dm_sent";
+  return l.type === "error" || l.type === "retry";
+}
+
 const FILTERS: { id: LogType | "all"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "comment_received", label: "Comments" },
@@ -63,7 +82,12 @@ const FILTERS: { id: LogType | "all"; label: string }[] = [
 ];
 
 export function LogsPage() {
-  const { data: logs, isLoading } = useQuery({ queryKey: ["automation", "logs"], queryFn: getLogs });
+  const [live, setLive] = useState(true);
+  const { data: logs, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["automation", "logs"],
+    queryFn: getLogs,
+    refetchInterval: live ? 15_000 : false,
+  });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<LogType | "all">("all");
   const [page, setPage] = useState(1);
@@ -72,11 +96,7 @@ export function LogsPage() {
   const filtered = useMemo(() => {
     let list = logs ?? [];
     if (filter !== "all") {
-      list = filter === "comment_received"
-        ? list.filter((l) => l.type === "comment_received" || l.type === "comment_sent")
-        : filter === "dm_sent"
-          ? list.filter((l) => l.type === "dm_sent")
-          : list.filter((l) => l.type === "error" || l.type === "retry");
+      list = list.filter((l) => matchesFilter(l, filter));
     }
     if (search) {
       const t = search.toLowerCase();
@@ -90,8 +110,31 @@ export function LogsPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>Logs</h1>
-      <p className="mt-1 text-sm text-white/50">Every webhook event, reply, DM, and error — in order.</p>
+      <PageHeader
+        title="Logs"
+        subtitle="Every webhook event, reply, DM, and error — in order."
+        art={<LogsArt />}
+        actions={
+          <>
+            <button
+              onClick={() => refetch()}
+              className="btn-ghost-glow flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+            </button>
+            <button
+              onClick={() => setLive((v) => !v)}
+              aria-pressed={live}
+              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs ring-1 transition ${
+                live ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/25" : "text-white/60 ring-white/10 hover:bg-white/5"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-emerald-300 hd-ring-pulse" : "bg-white/30"}`} />
+              {live ? "Live · every 15s" : "Auto-refresh off"}
+            </button>
+          </>
+        }
+      />
 
       <div className="glass mt-6 rounded-2xl">
         <TableToolbar
@@ -111,6 +154,7 @@ export function LogsPage() {
                   }`}
                 >
                   {f.label}
+                  {logs && <span className="ml-1.5 text-[10px] text-white/40">{logs.filter((l) => matchesFilter(l, f.id)).length}</span>}
                 </button>
               ))}
             </div>
@@ -119,11 +163,22 @@ export function LogsPage() {
         {isLoading ? (
           <TableSkeleton rows={8} cols={4} />
         ) : paged.length === 0 ? (
-          <EmptyState icon={ScrollText} title="No logs found" description="Try a different search or filter." />
+          <EmptyState
+            icon={ScrollText}
+            art={<EmptyArt kind="search" />}
+            title="No logs found"
+            description="Try a different search or filter."
+          />
         ) : (
           <ol className="divide-y divide-white/5">
             {paged.map((log: LogEntry) => (
-              <li key={log.id} className="flex items-start gap-3 px-4 py-3.5">
+              <li
+                key={log.id}
+                className={`flex items-start gap-3 px-4 py-3.5 transition hover:bg-white/[0.03] ${
+                  log.type === "error" ? "border-l-2 border-rose-400/60" : "border-l-2 border-transparent"
+                }`}
+              >
+
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
                   <LogTypeIcon type={log.type} className="h-3.5 w-3.5" />
                 </span>
@@ -139,7 +194,10 @@ export function LogsPage() {
                   </div>
                   <p className="mt-0.5 truncate text-sm text-white/60">{log.detail}</p>
                 </div>
-                <span className="shrink-0 text-xs text-white/40">{timeAgo(log.timestamp)}</span>
+                <span className="shrink-0 text-right text-xs text-white/40" title={new Date(log.timestamp).toLocaleString()}>
+                  {timeAgo(log.timestamp)}
+                  <span className="block text-[10px] text-white/25">{dayLabel(log.timestamp)}</span>
+                </span>
               </li>
             ))}
           </ol>

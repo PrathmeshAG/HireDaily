@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { signOut } from "firebase/auth";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import {
 import { auth } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth-context";
 import { LoginCard, AccessDenied } from "../../routes/admin.index";
+import { getSettings } from "./services/automation-service";
 
 import { DashboardPage } from "./pages/dashboard-page";
 import { PostMappingPage } from "./pages/post-mapping-page";
@@ -43,6 +45,15 @@ export function AutomationApp() {
 function AutomationDashboard() {
   const [page, setPage] = useState<PageId>("dashboard");
   const { user } = useAuth();
+  // Shared with the Settings page (same query key). Used for the Live/Dry-run
+  // indicator so it is always obvious whether real messages are being sent.
+  const { data: settings } = useQuery({
+    queryKey: ["automation", "settings"],
+    queryFn: getSettings,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const dryRun = settings?.system?.dryRun ?? null;
 
   const nav: { id: PageId; label: string; icon: typeof LayoutDashboard }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -64,12 +75,24 @@ function AutomationDashboard() {
               <Instagram className="h-3.5 w-3.5 text-[#00e5ff]" /> Automation
             </div>
             <div className="mt-0.5 truncate text-sm text-white">{user?.email}</div>
+            {dryRun !== null && (
+              <div
+                className={`mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] ring-1 ${
+                  dryRun ? "bg-amber-500/15 text-amber-300 ring-amber-500/30" : "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+                }`}
+                title={dryRun ? "Dry-run: replies and DMs are simulated, nothing is sent to Instagram" : "Live: replies and DMs are sent to Instagram"}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${dryRun ? "bg-amber-300" : "bg-emerald-300 hd-ring-pulse"}`} />
+                {dryRun ? "Dry-run mode" : "Live"}
+              </div>
+            )}
           </div>
           <nav className="flex flex-row flex-wrap gap-1 md:flex-col md:flex-nowrap">
             {nav.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setPage(t.id)}
+                aria-current={page === t.id ? "page" : undefined}
                 className={`flex flex-1 items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition md:flex-none ${
                   page === t.id
                     ? "bg-gradient-to-r from-[#00e5ff]/20 to-[#7c3aed]/20 text-white ring-1 ring-[#00e5ff]/30"
@@ -97,7 +120,7 @@ function AutomationDashboard() {
           </nav>
         </aside>
 
-        <div>
+        <div key={page} className="hd-page-in min-w-0">
           {page === "dashboard" && <DashboardPage onNavigate={setPage} />}
           {page === "mappings" && <PostMappingPage />}
           {page === "rules" && <RulesPage />}

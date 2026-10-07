@@ -9,14 +9,37 @@ import { fetchJobs } from "../../../lib/jobs";
 import type { AutomationRule, MatchType, ReplyMode, RuleMode } from "../types";
 import { TableToolbar } from "../components/table-toolbar";
 import { EmptyState } from "../components/empty-state";
+import { PageHeader } from "../components/page-header";
+import { RulesArt, EmptyArt } from "../components/illustrations";
 import { StatusBadge } from "../components/status-badge";
 import { ConfirmDialog } from "./post-mapping-page";
+import { SearchablePicker } from "../components/searchable-picker";
 
 const REPLY_MODE_LABEL: Record<ReplyMode, string> = {
   comment_only: "Comment Only",
   dm_only: "DM Only",
   comment_and_dm: "Comment + DM",
 };
+
+const REPLY_MODE_HELP: Record<ReplyMode, string> = {
+  comment_only: "Public reply under the comment. No DM.",
+  dm_only: "Private DM only. No public reply.",
+  comment_and_dm: "Public reply and a private DM.",
+};
+
+const COOLDOWN_PRESETS = [
+  { label: "None", minutes: 0 },
+  { label: "1 hour", minutes: 60 },
+  { label: "24 hours", minutes: 1440 },
+  { label: "7 days", minutes: 10080 },
+];
+
+function cooldownText(m: number): string {
+  if (m <= 0) return "with no cooldown";
+  if (m % 1440 === 0) return `once every ${m / 1440} day${m === 1440 ? "" : "s"} per person`;
+  if (m % 60 === 0) return `once every ${m / 60} hour${m === 60 ? "" : "s"} per person`;
+  return `once every ${m} minutes per person`;
+}
 
 export function RulesPage() {
   const qc = useQueryClient();
@@ -66,15 +89,16 @@ export function RulesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>Automation Rules</h1>
-          <p className="mt-1 text-sm text-white/50">Keyword triggers that fire a comment reply and/or DM.</p>
-        </div>
-        <button onClick={() => setEditing("new")} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
-          <Plus className="h-4 w-4" /> Create rule
-        </button>
-      </div>
+      <PageHeader
+        title="Automation Rules"
+        subtitle="Keyword triggers that fire a comment reply and/or a DM with the mapped job links."
+        art={<RulesArt />}
+        actions={
+          <button onClick={() => setEditing("new")} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+            <Plus className="h-4 w-4" /> Create rule
+          </button>
+        }
+      />
 
       <div className="glass mt-6 rounded-2xl">
         <TableToolbar search={search} onSearchChange={setSearch} placeholder="Search by keyword…" />
@@ -84,7 +108,7 @@ export function RulesPage() {
             {Array.from({ length: 4 }, (_, i) => <div key={i} className="shimmer-loading h-40 rounded-2xl" />)}
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyState icon={ListChecks} title="No rules yet" description="Create a rule to start auto-replying to comments." />
+          <EmptyState icon={ListChecks} art={<EmptyArt kind="rules" />} title="No rules yet" description="Create a rule to start auto-replying to comments." action={<button onClick={() => setEditing("new")} className="btn-ghost-glow mt-2 rounded-xl px-4 py-2 text-sm">Create rule</button>} />
         ) : (
           <div className="grid gap-3 p-4 md:grid-cols-2">
             {filtered.map((rule) => (
@@ -186,7 +210,7 @@ function RuleDialog({
   onSaved,
 }: {
   rule: AutomationRule | null;
-  mappings: { id: string; jobTitle: string; companyName: string }[];
+  mappings: { id: string; jobTitle: string; companyName: string; createdAt?: number; status?: string; extraLinks?: unknown[] }[];
   templates: { id: string; kind: "comment" | "dm"; name: string }[];
   onClose: () => void;
   onSaved: () => void;
@@ -203,6 +227,23 @@ const [mode, setMode] = useState<RuleMode>(rule?.mode ?? "keyword");
   const [active, setActive] = useState(rule?.active ?? true);
   const [busy, setBusy] = useState(false);
 
+  // Latest mapped posts first; archived ones are hidden unless already selected.
+  const postItems = [...mappings]
+    .filter((m) => m.status !== "archived" || m.id === postId)
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .map((m, i) => ({
+      id: m.id,
+      title: `${m.jobTitle || "Untitled job"} — ${m.companyName || "Unknown company"}`,
+      subtitle: m.extraLinks && m.extraLinks.length > 0 ? `${m.extraLinks.length + 1} links in DM` : undefined,
+      searchText: m.id,
+      badge: i < 3 ? "Latest" : undefined,
+    }));
+  const kwPreview = keywords.split(",").map((k) => k.trim().toUpperCase()).filter(Boolean);
+  const summary =
+    `When someone comments ${mode === "keyword" ? (kwPreview.length ? kwPreview.join(" or ") : "a keyword") : "anything"} ` +
+    `${scope === "specific_post" ? "on the selected post" : "on any mapped post"}, ` +
+    `${replyMode === "comment_only" ? "reply publicly" : replyMode === "dm_only" ? "send a DM" : "reply publicly and send a DM"} ` +
+    `${cooldownText(cooldownMinutes)}.`;
   const commentTemplates = templates.filter((t) => t.kind === "comment");
   const dmTemplates = templates.filter((t) => t.kind === "dm");
 
@@ -210,6 +251,18 @@ const submit = async () => {
     const kws = keywords.split(",").map((k) => k.trim().toUpperCase()).filter(Boolean);
     if (mode === "keyword" && kws.length === 0) {
       toast.error("Add at least one keyword");
+      return;
+    }
+    if (scope === "specific_post" && !postId) {
+      toast.error("Pick the post this rule should apply to");
+      return;
+    }
+    if (replyMode !== "dm_only" && !commentTemplateId) {
+      toast.error("This reply type posts a public comment. Choose a comment template.");
+      return;
+    }
+    if (replyMode !== "comment_only" && !dmTemplateId) {
+      toast.error("This reply type sends a DM. Choose a DM template.");
       return;
     }
     setBusy(true);
@@ -314,12 +367,14 @@ const submit = async () => {
           {scope === "specific_post" && (
             <div>
               <label className={label}>Post</label>
-              <select value={postId} onChange={(e) => setPostId(e.target.value)} className={input}>
-                <option value="" className="bg-[#111827]">Select a mapped post</option>
-                {mappings.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-[#111827]">{m.jobTitle} — {m.companyName}</option>
-                ))}
-              </select>
+              <SearchablePicker
+                items={postItems}
+                value={postId}
+                onChange={setPostId}
+                placeholder="Select a mapped post"
+                searchPlaceholder="Search job, company or media ID…"
+                emptyText="No mapped post matches. Create one in Post Mapping first."
+              />
             </div>
           )}
 
@@ -346,7 +401,7 @@ const submit = async () => {
 
           <div>
             <label className={label}>Reply Type</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {(["comment_only", "dm_only", "comment_and_dm"] as ReplyMode[]).map((rm) => (
                 <label
                   key={rm}
@@ -364,7 +419,10 @@ const submit = async () => {
                     onChange={() => setReplyMode(rm)}
                     className="h-3.5 w-3.5 accent-[#00e5ff]"
                   />
-                  {REPLY_MODE_LABEL[rm]}
+                  <span>
+                    <span className="block">{REPLY_MODE_LABEL[rm]}</span>
+                    <span className="block text-[10px] font-normal text-white/40">{REPLY_MODE_HELP[rm]}</span>
+                  </span>
                 </label>
               ))}
             </div>
@@ -375,9 +433,23 @@ const submit = async () => {
               <label className={label}>Cooldown (minutes)</label>
               <input
                 type="number" min={0} value={cooldownMinutes}
-                onChange={(e) => setCooldownMinutes(Number(e.target.value))}
+                onChange={(e) => setCooldownMinutes(Math.max(0, Number(e.target.value) || 0))}
                 className={input}
               />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {COOLDOWN_PRESETS.map((c) => (
+                  <button
+                    key={c.label}
+                    type="button"
+                    onClick={() => setCooldownMinutes(c.minutes)}
+                    className={`rounded-md px-2 py-1 text-[11px] ring-1 transition ${
+                      cooldownMinutes === c.minutes ? "bg-[#00e5ff]/15 text-white ring-[#00e5ff]/30" : "text-white/55 ring-white/10 hover:text-white"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <label className="flex min-h-11 items-center gap-2.5 rounded-xl bg-white/[0.025] px-3.5 text-sm text-white/80 ring-1 ring-white/10">
@@ -392,6 +464,10 @@ const submit = async () => {
             Rule active
           </label>
           </div>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-[#00e5ff]/15 bg-[#00e5ff]/[0.04] px-4 py-3 text-xs leading-relaxed text-white/70">
+          <span className="mr-1.5 font-medium text-[#7DF9FF]">In plain words:</span>{summary}
         </div>
 
         <div className="mt-6 flex justify-end gap-2">

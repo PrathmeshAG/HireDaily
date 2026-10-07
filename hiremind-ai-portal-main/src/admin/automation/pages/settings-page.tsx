@@ -2,10 +2,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
-  Instagram, Webhook, Activity, ShieldCheck, CheckCircle2, XCircle, KeyRound, Eye, EyeOff, RefreshCw, ScrollText,
+  Instagram, Webhook, Activity, ShieldCheck, CheckCircle2, XCircle, KeyRound, RefreshCw, ScrollText, FlaskConical,
 } from "lucide-react";
 import { checkBackendHealth, getSettings } from "../services/automation-service";
 import { StatusBadge } from "../components/status-badge";
+import { PageHeader } from "../components/page-header";
+import { SettingsArt } from "../components/illustrations";
 
 export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => void }) {
   const qc = useQueryClient();
@@ -48,8 +50,20 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>Settings</h1>
-      <p className="mt-1 text-sm text-white/50">Connection and system health for the automation module.</p>
+      <PageHeader
+        title="Settings"
+        subtitle="Connection and system health for the automation module."
+        art={<SettingsArt />}
+      />
+
+      {data?.system?.dryRun && (
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <FlaskConical className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <span className="font-medium">Dry-run mode is ON.</span> Comment replies and DMs are simulated and logged, but nothing is sent to Instagram. Set <code className="rounded bg-black/30 px-1">META_DRY_RUN=false</code> on the backend to go live.
+          </p>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -142,37 +156,47 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
             <KeyRound className="h-[18px] w-[18px] text-[#7c3aed]" />
           </span>
           <div>
-            <h2 className="font-semibold text-white">API Credentials</h2>
-            <p className="text-xs text-white/40">Credentials stay server-side. This panel only reports safe configuration status.</p>
+            <h2 className="font-semibold text-white">Configuration checklist</h2>
+            <p className="text-xs text-white/40">Credentials stay server-side. This panel only reports whether each one is configured.</p>
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <CredentialField label="Meta App ID" placeholder="e.g. 1234567890123456" />
-          <CredentialField label="Instagram Business ID" placeholder="e.g. 17841400000000000" />
-          <CredentialField label="Facebook Page ID" placeholder="e.g. 102938475610283" />
-          <CredentialField label="Webhook Verify Token" placeholder="e.g. hiredaily_verify_token" secret />
-        </div>
+        <ul className="mt-5 grid gap-2 md:grid-cols-2">
+          {[
+            { label: "Firebase Admin", ok: data?.system?.firebaseConfigured, help: "Needed to read and write rules, mappings and logs." },
+            { label: "Meta access token", ok: data?.system?.metaConfigured, help: "Needed to reply to comments and send DMs." },
+            { label: "Webhook verify token", ok: data?.system?.webhookConfigured, help: "Needed for Instagram to deliver comment events." },
+            { label: "Instagram account reachable", ok: data?.instagram.connected, help: "Backend can read your Instagram account from Meta." },
+          ].map((item) => (
+            <li key={item.label} className="flex items-start gap-3 rounded-xl bg-white/[0.03] p-3.5 ring-1 ring-white/5">
+              {isLoading ? (
+                <div className="shimmer-loading h-5 w-5 rounded-full" />
+              ) : item.ok ? (
+                <CheckCircle2 className="hd-pop mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+              ) : (
+                <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-400" />
+              )}
+              <div>
+                <p className="text-sm text-white">{item.label}</p>
+                <p className="text-xs text-white/40">{item.help}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-5">
           <div>
-            <p className="text-xs text-white/50">Access Token Status</p>
+            <p className="text-xs text-white/50">Delivery mode</p>
             <div className="mt-1.5">
               {isLoading ? (
                 <div className="shimmer-loading h-5 w-24 rounded-full" />
               ) : (
-                <StatusBadge
-                  label={tokenStatus(data?.instagram.tokenExpiresAt ?? null)}
-                  tone={tokenStatusTone(data?.instagram.tokenExpiresAt ?? null)}
-                />
+                <StatusBadge label={data?.system?.dryRun ? "dry-run" : "live"} tone={data?.system?.dryRun ? "warning" : "success"} />
               )}
             </div>
           </div>
-          <button
-            onClick={refreshConnection}
-            className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Reconnect
+          <button onClick={refreshConnection} disabled={healthBusy} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm disabled:opacity-60">
+            <RefreshCw className={`h-3.5 w-3.5 ${healthBusy ? "animate-spin" : ""}`} /> Re-check everything
           </button>
         </div>
       </div>
@@ -212,58 +236,4 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </div>
   );
-}
-
-function CredentialField({
-  label,
-  placeholder,
-  secret,
-}: {
-  label: string;
-  placeholder: string;
-  secret?: boolean;
-}) {
-  const [value, setValue] = useState("");
-  const [reveal, setReveal] = useState(!secret);
-
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs text-white/50">{label}</label>
-      <div className="relative">
-        <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={placeholder}
-          type={secret && !reveal ? "password" : "text"}
-          className="w-full rounded-xl bg-white/5 px-4 py-2.5 pr-10 text-sm text-white placeholder:text-white/30 ring-1 ring-white/10 focus:outline-none focus:ring-[#00e5ff]/40"
-        />
-        {secret && (
-          <button
-            type="button"
-            onClick={() => setReveal((r) => !r)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70"
-            aria-label={reveal ? "Hide" : "Reveal"}
-          >
-            {reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function tokenStatus(expiresAt: number | null): string {
-  if (!expiresAt) return "Not configured";
-  const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
-  if (daysLeft <= 0) return "Expired";
-  if (daysLeft <= 7) return "Expiring soon";
-  return "Valid";
-}
-
-function tokenStatusTone(expiresAt: number | null): "success" | "warning" | "danger" | "neutral" {
-  if (!expiresAt) return "neutral";
-  const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
-  if (daysLeft <= 0) return "danger";
-  if (daysLeft <= 7) return "warning";
-  return "success";
 }

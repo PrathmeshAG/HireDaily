@@ -14,6 +14,7 @@ import { logger } from "../utils/logger.js";
 import type { NormalizedWebhookEvent } from "../types/instagram.js";
 import type { RuleEngineRule, RuleMatchResult } from "../types/rule-engine.js";
 import { loadActiveRules } from "./rule-engine.service.js";
+import { sanitizeExtraLinks, type MappingExtraLink } from "./job-links.js";
 
 // Same Firebase project the frontend already uses (see src/lib/firebase.ts
 // in the main app) — this service only ever touches `automation/*`, never
@@ -302,6 +303,7 @@ export async function readPostMapping(mediaId: string): Promise<{
   mappedAt: number | null;
   updatedAt: number | null;
   status: "active" | "archived";
+  extraLinks: MappingExtraLink[];
 } | null> {
   if (!mediaId) return null;
 
@@ -341,6 +343,7 @@ export async function readPostMapping(mediaId: string): Promise<{
         ? val.updatedAt
         : null,
     status: val.status === "archived" ? "archived" : "active",
+    extraLinks: sanitizeExtraLinks(val.extraLinks, typeof val.jobId === "string" ? val.jobId : null),
   };
 }
 /**
@@ -900,6 +903,7 @@ export async function readAllPostMappings(): Promise<
     mappedAt: number | null;
     updatedAt: number | null;
     status: "active" | "archived";
+    extraLinks: MappingExtraLink[];
   }[]
 > {
   const snap = await db()
@@ -919,6 +923,7 @@ export async function readAllPostMappings(): Promise<
     mappedAt: number | null;
     updatedAt: number | null;
     status: "active" | "archived";
+    extraLinks: MappingExtraLink[];
   }[] = [];
 
   for (const [mediaId, value] of Object.entries(raw)) {
@@ -957,6 +962,7 @@ export async function readAllPostMappings(): Promise<
           ? m.updatedAt
           : null,
       status: m.status === "archived" ? "archived" : "active",
+      extraLinks: sanitizeExtraLinks(m.extraLinks, typeof m.jobId === "string" ? m.jobId : null),
     });
   }
 
@@ -976,11 +982,17 @@ export async function writePostMapping(
     mappedAt: number;
     updatedAt?: number;
     status?: "active" | "archived";
+    extraLinks?: MappingExtraLink[];
   },
 ): Promise<void> {
+  // RTDB rejects `undefined`; only persist extraLinks when there are any so
+  // legacy single-job mappings keep their exact original node shape.
+  const { extraLinks, ...rest } = mapping;
+  const node: Record<string, unknown> = { ...rest };
+  if (extraLinks && extraLinks.length > 0) node.extraLinks = extraLinks;
   await db()
     .ref(`automation/postMappings/${mediaId}`)
-    .set(mapping);
+    .set(node);
 }
 
 /** Deletes a post mapping under automation/postMappings/{mediaId}. */

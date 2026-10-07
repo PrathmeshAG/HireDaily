@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Instagram, Link2, ListChecks, MessageCircle, Send, AlertTriangle,
-  MessageSquareText, FileText, Users, ArrowRight,
+  MessageSquareText, FileText, Users, ArrowRight, CheckCircle2, Circle, ScrollText,
 } from "lucide-react";
 import { getDashboardSummary, getRecentLogs } from "../services/automation-service";
 import { StatCard } from "../components/stat-card";
+import { PageHeader } from "../components/page-header";
+import { HeroArt, EmptyArt } from "../components/illustrations";
+import { EmptyState } from "../components/empty-state";
 import { LogTypeIcon, logTypeLabel, timeAgo } from "./logs-page";
 import type { PageId } from "../automation-app";
 
@@ -18,47 +21,114 @@ export function DashboardPage({ onNavigate }: { onNavigate: (page: PageId) => vo
     queryFn: () => getRecentLogs(6),
   });
 
+  const failed = summary?.failedAutomations ?? 0;
+
   const cards = [
     {
-      label: "Connected Instagram",
+      label: "Instagram",
       value: summary ? (summary.connected ? "Connected" : "Not connected") : "—",
       icon: Instagram,
       color: "from-[#00e5ff]/20 to-[#22d3ee]/20",
+      tone: summary ? (summary.connected ? ("good" as const) : ("bad" as const)) : ("default" as const),
     },
-    { label: "Total Post Mappings", value: summary?.totalMappings ?? "—", icon: Link2, color: "from-[#7c3aed]/20 to-[#00e5ff]/20" },
-    { label: "Active Rules", value: summary?.activeRules ?? "—", icon: ListChecks, color: "from-[#22d3ee]/20 to-[#7c3aed]/20" },
-    { label: "Today's Comments", value: summary?.todaysComments ?? "—", icon: MessageCircle, color: "from-[#00e5ff]/20 to-[#22d3ee]/20" },
-    { label: "Today's DMs", value: summary?.todaysDMs ?? "—", icon: Send, color: "from-[#7c3aed]/20 to-[#00e5ff]/20" },
-    { label: "Failed Automations", value: summary?.failedAutomations ?? "—", icon: AlertTriangle, color: "from-rose-500/20 to-[#7c3aed]/20" },
+    { label: "Post mappings", value: summary?.totalMappings ?? "—", icon: Link2, color: "from-[#7c3aed]/20 to-[#00e5ff]/20" },
+    { label: "Active rules", value: summary?.activeRules ?? "—", icon: ListChecks, color: "from-[#22d3ee]/20 to-[#7c3aed]/20" },
+    { label: "Comments today", value: summary?.todaysComments ?? "—", icon: MessageCircle, color: "from-[#00e5ff]/20 to-[#22d3ee]/20" },
+    { label: "DMs today", value: summary?.todaysDMs ?? "—", icon: Send, color: "from-[#7c3aed]/20 to-[#00e5ff]/20" },
+    {
+      label: "Failed automations",
+      value: summary?.failedAutomations ?? "—",
+      icon: AlertTriangle,
+      color: "from-rose-500/20 to-[#7c3aed]/20",
+      tone: failed > 0 ? ("bad" as const) : ("default" as const),
+      hint: failed > 0 ? "Check the logs" : undefined,
+    },
   ];
 
   const quickActions: { label: string; page: PageId; icon: typeof Link2 }[] = [
     { label: "Map a new post", page: "mappings", icon: Link2 },
     { label: "Create a rule", page: "rules", icon: ListChecks },
     { label: "Edit templates", page: "templates", icon: MessageSquareText },
+    { label: "View users", page: "users", icon: Users },
+    { label: "Open analytics", page: "analytics", icon: FileText },
   ];
+
+  // Setup checklist: derived only from the existing summary numbers.
+  const steps = summary
+    ? [
+        { label: "Connect Instagram", done: summary.connected, page: "settings" as PageId },
+        { label: "Map a post to a job", done: summary.totalMappings > 0, page: "mappings" as PageId },
+        { label: "Create an active rule", done: summary.activeRules > 0, page: "rules" as PageId },
+      ]
+    : [];
+  const doneCount = steps.filter((s) => s.done).length;
+  const showChecklist = steps.length > 0 && doneCount < steps.length;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>
-          Automation Dashboard
-        </h1>
-        <p className="mt-1 text-sm text-white/50">Instagram engagement automation — overview.</p>
-      </div>
+      <PageHeader
+        title="Automation Dashboard"
+        subtitle="Comments in, job links out. Watch what your Instagram automation did today."
+        art={<HeroArt />}
+      >
+        {summary && (
+          <span
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ring-1 ${
+              summary.connected ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/25" : "bg-rose-500/10 text-rose-300 ring-rose-500/25"
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${summary.connected ? "bg-emerald-300 hd-ring-pulse" : "bg-rose-300"}`} />
+            {summary.connected ? "Instagram connected" : "Instagram not connected"}
+          </span>
+        )}
+      </PageHeader>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         {isLoading
           ? Array.from({ length: 6 }, (_, i) => (
-              <div key={i} className="glass shimmer-loading h-[104px] rounded-2xl" />
+              <div key={i} className="glass shimmer-loading h-[124px] rounded-2xl" />
             ))
           : cards.map((c, i) => <StatCard key={c.label} {...c} index={i} />)}
       </div>
 
+      {showChecklist && (
+        <section className="glass rounded-2xl p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-white">Finish setting up</h2>
+              <p className="mt-0.5 text-xs text-white/45">{doneCount} of {steps.length} steps done</p>
+            </div>
+            <div className="h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="hd-bar-grow h-full rounded-full bg-gradient-to-r from-[#00e5ff] to-[#7c3aed]"
+                style={{ width: `${(doneCount / steps.length) * 100}%` }}
+              />
+            </div>
+          </div>
+          <ul className="mt-4 grid gap-2 md:grid-cols-3">
+            {steps.map((s) => (
+              <li key={s.label}>
+                <button
+                  onClick={() => onNavigate(s.page)}
+                  disabled={s.done}
+                  className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-3 text-left text-sm ring-1 transition ${
+                    s.done ? "bg-emerald-500/5 text-white/50 ring-emerald-500/20" : "bg-white/[0.03] text-white ring-white/10 hover:bg-white/[0.06]"
+                  }`}
+                >
+                  {s.done ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Circle className="h-4 w-4 text-white/40" />}
+                  <span className={s.done ? "line-through decoration-white/20" : ""}>{s.label}</span>
+                  {!s.done && <ArrowRight className="ml-auto h-3.5 w-3.5 text-white/40" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="glass rounded-2xl p-6 lg:col-span-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">Recent Activity</h2>
+            <h2 className="text-lg font-semibold text-white">Recent activity</h2>
             <button onClick={() => onNavigate("logs")} className="flex items-center gap-1 text-xs text-white/50 hover:text-[#00e5ff]">
               View all <ArrowRight className="h-3 w-3" />
             </button>
@@ -68,7 +138,7 @@ export function DashboardPage({ onNavigate }: { onNavigate: (page: PageId) => vo
               Array.from({ length: 5 }, (_, i) => <div key={i} className="shimmer-loading h-12 rounded-xl" />)
             ) : recentLogs && recentLogs.length > 0 ? (
               recentLogs.map((log) => (
-                <div key={log.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-white/[0.02]">
+                <div key={log.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-white/[0.04]">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10">
                     <LogTypeIcon type={log.type} className="h-3.5 w-3.5" />
                   </span>
@@ -82,38 +152,30 @@ export function DashboardPage({ onNavigate }: { onNavigate: (page: PageId) => vo
                 </div>
               ))
             ) : (
-              <p className="px-3 py-6 text-center text-sm text-white/50">No activity yet.</p>
+              <EmptyState
+                icon={ScrollText}
+                art={<EmptyArt kind="inbox" />}
+                title="No activity yet"
+                description="When someone comments a keyword on a mapped post, it shows up here."
+              />
             )}
           </div>
         </div>
 
         <div className="glass rounded-2xl p-6">
-          <h2 className="text-lg font-semibold text-white">Quick Actions</h2>
+          <h2 className="text-lg font-semibold text-white">Quick actions</h2>
           <div className="mt-4 space-y-2">
             {quickActions.map((a) => (
               <button
                 key={a.page}
                 onClick={() => onNavigate(a.page)}
-                className="btn-ghost-glow flex w-full items-center gap-2.5 rounded-xl px-4 py-3 text-left text-sm"
+                className="btn-ghost-glow group flex w-full items-center gap-2.5 rounded-xl px-4 py-3 text-left text-sm"
               >
                 <a.icon className="h-4 w-4 text-[#00e5ff]" />
                 {a.label}
+                <ArrowRight className="ml-auto h-3.5 w-3.5 text-white/30 transition group-hover:translate-x-0.5 group-hover:text-[#00e5ff]" />
               </button>
             ))}
-            <button
-              onClick={() => onNavigate("users")}
-              className="btn-ghost-glow flex w-full items-center gap-2.5 rounded-xl px-4 py-3 text-left text-sm"
-            >
-              <Users className="h-4 w-4 text-[#00e5ff]" />
-              View users
-            </button>
-            <button
-              onClick={() => onNavigate("analytics")}
-              className="btn-ghost-glow flex w-full items-center gap-2.5 rounded-xl px-4 py-3 text-left text-sm"
-            >
-              <FileText className="h-4 w-4 text-[#00e5ff]" />
-              Open analytics
-            </button>
           </div>
         </div>
       </div>

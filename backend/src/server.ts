@@ -61,6 +61,7 @@ import {
   handleFollowGateInteraction,
   processCommentWithFollowGate,
 } from "./services/follow-gate.service.js";
+import { sanitizeExtraLinks } from "./services/job-links.js";
 
 validateEnvironment();
 
@@ -484,7 +485,14 @@ console.log(
           if (event.eventType === "comment" && event.commentId) {
             let commentStatus: "pending" | "success" | "failed" | "skipped" = "pending";
             let dmStatus: "pending" | "success" | "failed" | "skipped" = "pending";
-            try {
+            // Honor the rule's replyMode: comment_only never DMs, dm_only
+            // never posts a public reply, comment_and_dm (default) does both.
+            const ruleReplyMode = result.rule.replyMode ?? "comment_and_dm";
+            const wantsComment = ruleReplyMode !== "dm_only";
+            const wantsDm = ruleReplyMode !== "comment_only";
+            if (!wantsComment) {
+              commentStatus = "skipped";
+            } else try {
               const claimed = await claimInstagramActionOnce(event.commentId, "comment_reply");
               if (!claimed) {
                 commentStatus = "skipped";
@@ -547,7 +555,9 @@ console.log(
             // The public comment reply above is unchanged. If the user is a
             // returning user, the follow relationship is freshly verified;
             // otherwise the first matched comment receives the Follow Gate.
-            try {
+            if (!wantsDm) {
+              dmStatus = "skipped";
+            } else try {
               const dmResult = await processCommentWithFollowGate({
                 userId: event.userId ?? (await resolveCommenterId(event.commentId, process.env.META_ACCESS_TOKEN?.trim() ?? "")),
                 username: event.username,
@@ -963,6 +973,7 @@ app.post("/api/automation/post-mappings", async (req, res) => {
 
   mappedAt: Date.now(),
   updatedAt: Date.now(),
+  extraLinks: sanitizeExtraLinks(body.extraLinks, jobId),
 });
     res.status(201).json({ id: mediaId, mediaId, jobId });
   } catch (e) {
@@ -1010,12 +1021,27 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
         ? body.instagramPostUrl.trim()
         : existing.instagramPostUrl;
 
+    // extraLinks: when the client sends the field it replaces the list
+    // (an empty array clears it); when omitted the existing list is kept.
+    const extraLinks = Array.isArray(body.extraLinks)
+      ? sanitizeExtraLinks(body.extraLinks, jobId)
+      : sanitizeExtraLinks(existing.extraLinks, jobId);
+
+    // The frontend "Archive" action PATCHes { status }. Previously this was
+    // ignored (the existing status was always re-written); honor it now.
+    const status =
+      body.status === "archived" || body.status === "active"
+        ? body.status
+        : existing.status;
+
     await writePostMapping(mediaId, {
       ...existing,
 
       jobId,
       jobTitleCache,
       instagramPostUrl,
+      extraLinks,
+      status,
 
       // Preserve original mapping time.
       mappedAt: existing.mappedAt ?? Date.now(),

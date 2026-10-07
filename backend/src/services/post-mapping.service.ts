@@ -15,6 +15,7 @@
 
 import { env } from "../config/env.js";
 import { readPostMapping, readJob } from "./firebase-admin.service.js";
+import type { MappingExtraLink, ResolvedLink } from "./job-links.js";
 
 export interface PostJobResolution {
   mapped: boolean;
@@ -28,6 +29,12 @@ export interface PostJobResolution {
   title: string | null;
   /** Job location from the job record (Checkpoint 3 template rendering). */
   location: string | null;
+  /**
+   * All links to deliver, primary job first, then any extra job/external
+   * links (max 5 total). Always has at least the primary link when mapped.
+   * Single-job mappings produce exactly one entry, so legacy behavior holds.
+   */
+  links: ResolvedLink[];
   reason: string;
 }
 
@@ -37,7 +44,12 @@ export interface PostJobResolution {
  */
 export interface DataReader {
   /** Returns the post mapping for a media id, or null when absent. */
-  getPostMapping(mediaId: string): Promise<{ jobId: string; jobTitleCache: string | null; status?: "active" | "archived" } | null>;
+  getPostMapping(mediaId: string): Promise<{
+    jobId: string;
+    jobTitleCache: string | null;
+    status?: "active" | "archived";
+    extraLinks?: MappingExtraLink[];
+  } | null>;
 /** Returns the job record for a job id, or null when absent. */
   getJob(jobId: string): Promise<{
     jobTitle: string | null;
@@ -71,6 +83,11 @@ export function buildJobUrl(
   return `${normalizedBase}/jobs/${slugify(location) || "remote"}/${slugify(jobTitle) || "job"}/${slugify(company) || "company"}/${encodeURIComponent(jobId)}`;
 }
 
+function jobLabel(company: string | null, title: string | null): string {
+  if (company && title) return `${title} - ${company}`;
+  return title || company || "Job";
+}
+
 function notMapped(mediaId: string, reason: string, jobId: string | null = null): PostJobResolution {
   return {
     mapped: false,
@@ -81,6 +98,7 @@ function notMapped(mediaId: string, reason: string, jobId: string | null = null)
     company: null,
     title: null,
     location: null,
+    links: [],
     reason,
   };
 }
@@ -123,16 +141,39 @@ export async function resolvePostJobWithReader(
 // The job record is the source of truth for the title; the cache is only a
   // fallback for convenience (and is never preferred over the real record).
   const jobTitle = job.jobTitle ?? jobTitleCache;
+  const jobUrl = buildJobUrl(publicBaseUrl, jobId, job.location, job.jobTitle, job.company);
+
+  const links: ResolvedLink[] = [
+    { label: jobLabel(job.company, jobTitle), url: jobUrl },
+  ];
+
+  // Optional extra links (additional jobs / external URLs). A missing extra
+  // job is skipped — it must never block the primary job delivery.
+  for (const extra of mapping.extraLinks ?? []) {
+    if (links.length >= 5) break;
+    if (extra.type === "external") {
+      links.push({ label: extra.label, url: extra.url });
+      continue;
+    }
+    if (extra.jobId === jobId) continue;
+    const extraJob = await reader.getJob(extra.jobId);
+    if (!extraJob) continue;
+    links.push({
+      label: extra.label || jobLabel(extraJob.company, extraJob.jobTitle),
+      url: buildJobUrl(publicBaseUrl, extra.jobId, extraJob.location, extraJob.jobTitle, extraJob.company),
+    });
+  }
 
   return {
     mapped: true,
     mediaId,
     jobId,
-    jobUrl: buildJobUrl(publicBaseUrl, jobId, job.location, job.jobTitle, job.company),
+    jobUrl,
     jobTitle,
     company: job.company,
     title: job.jobTitle,
     location: job.location,
+    links,
     reason: "resolved",
   };
 }
@@ -146,7 +187,9 @@ export async function resolvePostJob(mediaId: string): Promise<PostJobResolution
   const reader: DataReader = {
     getPostMapping: async (id) => {
       const m = await readPostMapping(id);
-      return m ? { jobId: m.jobId, jobTitleCache: m.jobTitleCache, status: m.status } : null;
+      return m
+        ? { jobId: m.jobId, jobTitleCache: m.jobTitleCache, status: m.status, extraLinks: m.extraLinks }
+        : null;
     },
     getJob: async (id) => readJob(id),
   };

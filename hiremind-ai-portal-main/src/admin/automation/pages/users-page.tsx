@@ -4,6 +4,8 @@ import { Users as UsersIcon } from "lucide-react";
 import { getUsers } from "../services/automation-service";
 import { TableToolbar } from "../components/table-toolbar";
 import { EmptyState } from "../components/empty-state";
+import { PageHeader } from "../components/page-header";
+import { UsersArt, EmptyArt } from "../components/illustrations";
 import { TableSkeleton } from "../components/table-skeleton";
 import { PaginationBar } from "../components/pagination-bar";
 import { StatusBadge } from "../components/status-badge";
@@ -33,8 +35,11 @@ export function UsersPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-white" style={{ fontFamily: "'Space Grotesk'" }}>Users</h1>
-      <p className="mt-1 text-sm text-white/50">Everyone who's triggered an automation, most recent first.</p>
+      <PageHeader
+        title="Users"
+        subtitle="Everyone who's triggered an automation, most recent first."
+        art={<UsersArt />}
+      />
 
       <div className="glass mt-6 rounded-2xl">
         <TableToolbar search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search by username…" />
@@ -42,7 +47,7 @@ export function UsersPage() {
         {isLoading ? (
           <TableSkeleton rows={6} cols={5} />
         ) : paged.length === 0 ? (
-          <EmptyState icon={UsersIcon} title="No users yet" description="Users will appear here once automations start triggering." />
+          <EmptyState icon={UsersIcon} art={<EmptyArt kind="inbox" />} title="No users yet" description="Users will appear here once automations start triggering." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
