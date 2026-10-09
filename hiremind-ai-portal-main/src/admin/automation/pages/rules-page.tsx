@@ -8,8 +8,10 @@ import { getRules, getPostMappings, getTemplates, createRule, updateRule, delete
 import { fetchJobs } from "../../../lib/jobs";
 import type { AutomationRule, MatchType, ReplyMode, RuleMode } from "../types";
 import { TableToolbar } from "../components/table-toolbar";
+import { SortSelect } from "../components/sort-select";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
+import { ModalPortal } from "../components/modal-portal";
 import { RulesArt, EmptyArt } from "../components/illustrations";
 import { StatusBadge } from "../components/status-badge";
 import { ConfirmDialog } from "./post-mapping-page";
@@ -41,6 +43,16 @@ function cooldownText(m: number): string {
   return `once every ${m} minutes per person`;
 }
 
+type RuleSort = "newest" | "oldest" | "updated" | "active" | "inactive" | "keyword";
+const RULE_SORTS: { value: RuleSort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "updated", label: "Recently updated" },
+  { value: "active", label: "Active first" },
+  { value: "inactive", label: "Inactive first" },
+  { value: "keyword", label: "Keyword A to Z" },
+];
+
 export function RulesPage() {
   const qc = useQueryClient();
   const { data: rules, isLoading } = useQuery({ queryKey: ["automation", "rules"], queryFn: getRules });
@@ -49,6 +61,7 @@ export function RulesPage() {
   const { data: templates } = useQuery({ queryKey: ["automation", "templates"], queryFn: getTemplates });
 
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<RuleSort>("newest");
   const [editing, setEditing] = useState<AutomationRule | "new" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AutomationRule | null>(null);
 
@@ -58,8 +71,17 @@ export function RulesPage() {
       const t = search.toLowerCase();
       list = list.filter((r) => r.keywords.join(" ").toLowerCase().includes(t));
     }
-    return list;
-  }, [rules, search]);
+    const sorted = [...list];
+    switch (sortBy) {
+      case "oldest": sorted.sort((a, b) => a.createdAt - b.createdAt); break;
+      case "updated": sorted.sort((a, b) => b.updatedAt - a.updatedAt); break;
+      case "active": sorted.sort((a, b) => Number(b.active) - Number(a.active) || b.createdAt - a.createdAt); break;
+      case "inactive": sorted.sort((a, b) => Number(a.active) - Number(b.active) || b.createdAt - a.createdAt); break;
+      case "keyword": sorted.sort((a, b) => (a.keywords[0] ?? "~").toLowerCase().localeCompare((b.keywords[0] ?? "~").toLowerCase())); break;
+      default: sorted.sort((a, b) => b.createdAt - a.createdAt);
+    }
+    return sorted;
+  }, [rules, search, sortBy]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["automation", "rules"] });
 
@@ -101,7 +123,12 @@ export function RulesPage() {
       />
 
       <div className="glass mt-6 rounded-2xl">
-        <TableToolbar search={search} onSearchChange={setSearch} placeholder="Search by keyword…" />
+        <TableToolbar
+          search={search}
+          onSearchChange={setSearch}
+          placeholder="Search by keyword…"
+          sort={<SortSelect value={sortBy} onChange={setSortBy} options={RULE_SORTS} />}
+        />
 
         {isLoading ? (
           <div className="grid gap-3 p-4 md:grid-cols-2">
@@ -305,8 +332,9 @@ const submit = async () => {
   const label = "mb-1.5 block text-xs text-white/50";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm animate-fade-up">
-      <div className="glass-strong my-6 w-full max-w-3xl rounded-2xl p-5 md:p-6 animate-scale-in">
+    <ModalPortal>
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 p-4 backdrop-blur-sm animate-fade-up">
+      <div className="glass-strong mx-auto my-2 w-full max-w-3xl sm:my-8 rounded-2xl p-5 md:p-6 animate-scale-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">{rule ? "Edit rule" : "New automation rule"}</h2>
           <button onClick={onClose} className="btn-ghost-glow rounded-lg p-1.5"><X className="h-4 w-4" /></button>
@@ -479,5 +507,6 @@ const submit = async () => {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

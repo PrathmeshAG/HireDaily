@@ -7,6 +7,7 @@ import type { Template, TemplateKind } from "../types";
 import { TableToolbar } from "../components/table-toolbar";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
+import { ModalPortal } from "../components/modal-portal";
 import { DmPreview, namesBlock } from "../components/dm-preview";
 import { TEMPLATE_PRESETS } from "../template-presets";
 import { TemplatesArt, EmptyArt } from "../components/illustrations";
@@ -335,8 +336,9 @@ function TemplateDialog({
   const label = "mb-1.5 block text-xs text-white/50";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm animate-fade-up">
-      <div className="glass-strong my-8 w-full max-w-2xl rounded-2xl p-6 animate-scale-in">
+    <ModalPortal>
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 p-4 backdrop-blur-sm animate-fade-up">
+      <div className="glass-strong mx-auto my-2 w-full max-w-2xl sm:my-8 rounded-2xl p-6 animate-scale-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">{template ? "Edit template" : "New template"}</h2>
           <button onClick={onClose} className="btn-ghost-glow rounded-lg p-1.5"><X className="h-4 w-4" /></button>
@@ -492,5 +494,6 @@ function TemplateDialog({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

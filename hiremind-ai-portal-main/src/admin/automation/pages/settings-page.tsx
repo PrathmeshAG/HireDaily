@@ -9,6 +9,25 @@ import { StatusBadge } from "../components/status-badge";
 import { PageHeader } from "../components/page-header";
 import { SettingsArt } from "../components/illustrations";
 
+const DISCONNECT_REASONS: Record<string, { title: string; fix?: string }> = {
+  token_invalid_or_expired: {
+    title: "Access token is invalid or expired.",
+    fix: "Generate a new long-lived token, update META_ACCESS_TOKEN on the backend and redeploy.",
+  },
+  missing_access_token: { title: "META_ACCESS_TOKEN is not set on the backend." },
+  missing_business_id: { title: "INSTAGRAM_BUSINESS_ID is not set on the backend." },
+  permission_denied: {
+    title: "Meta denied permission for this token.",
+    fix: "Re-authorize the app with the Instagram messaging and comments permissions.",
+  },
+  invalid_account_id: {
+    title: "INSTAGRAM_BUSINESS_ID looks wrong for this token.",
+    fix: "Check that the ID belongs to the account the token was issued for.",
+  },
+  rate_limited: { title: "Meta is rate limiting requests right now.", fix: "Wait a few minutes and re-check." },
+  network_error: { title: "The backend could not reach Meta.", fix: "Usually temporary. Re-check in a minute." },
+};
+
 export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => void }) {
   const qc = useQueryClient();
   const { data, isLoading, refetch } = useQuery({ queryKey: ["automation", "settings"], queryFn: getSettings, staleTime: 15_000 });
@@ -88,6 +107,13 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
               <Row label="Type">
                 <span className="text-white/80">{data?.instagram.accountType ?? "—"}</span>
               </Row>
+              {!data?.instagram.connected && data?.instagram.reason && (
+                <div className="mt-1 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2.5 text-xs leading-relaxed text-rose-200">
+                  <p className="font-medium">{DISCONNECT_REASONS[data.instagram.reason]?.title ?? `Check failed (${data.instagram.reason})`}</p>
+                  {DISCONNECT_REASONS[data.instagram.reason]?.fix && <p className="mt-1 text-rose-200/80">{DISCONNECT_REASONS[data.instagram.reason].fix}</p>}
+                  {data.instagram.metaErrorCode !== null && data.instagram.metaErrorCode !== undefined && <p className="mt-1 text-rose-200/60">Meta error code: {data.instagram.metaErrorCode}</p>}
+                </div>
+              )}
               <Row label="Token expires">
                 <span className="text-white/80">
                   {data?.instagram.tokenExpiresAt ? new Date(data.instagram.tokenExpiresAt).toLocaleDateString() : "—"}

@@ -67,6 +67,12 @@ validateEnvironment();
 
 const app = express();
 
+// Vercel (and most hosts) put exactly one reverse proxy in front of the app.
+// Without this, req.ip is the proxy's address, so express-rate-limit logs
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and every visitor shares one rate-limit
+// bucket. Trusting one hop fixes both and makes req.protocol report https.
+app.set("trust proxy", 1);
+
 /**
  * Instagram webhook safety guards.
  *
@@ -233,6 +239,11 @@ app.use("/webhooks/instagram", requireMetaWebhookSignature);
 // All automation management endpoints are admin-only. Firebase ID tokens are
 // verified server-side; the browser's email/UI gate is never trusted here.
 app.use("/api/automation", apiRateLimiter, requireFirebaseAuth, requireAdmin);
+
+/** GET / — friendly 200 for uptime pingers (previously a 404 every few minutes). */
+app.get("/", (_req, res) => {
+  res.status(200).json({ ok: true, service: "hiredaily-backend" });
+});
 
 /** GET /health — cheap liveness/connectivity probe. */
 app.get("/health", (_req, res) => {
@@ -941,8 +952,11 @@ app.post("/api/automation/post-mappings", async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const mediaId = typeof body.mediaId === "string" ? body.mediaId.trim() : "";
     const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
-    if (!mediaId || !jobId) {
-      res.status(400).json({ error: "mediaId_and_jobId_required" });
+    // A job is optional now: a mapping needs at least ONE link, either the
+    // primary job or an extra link (another job / an external URL).
+    const newExtraLinks = sanitizeExtraLinks(body.extraLinks, jobId);
+    if (!mediaId || (!jobId && newExtraLinks.length === 0)) {
+      res.status(400).json({ error: "mediaId_and_at_least_one_link_required" });
       return;
     }
 
@@ -973,7 +987,7 @@ app.post("/api/automation/post-mappings", async (req, res) => {
 
   mappedAt: Date.now(),
   updatedAt: Date.now(),
-  extraLinks: sanitizeExtraLinks(body.extraLinks, jobId),
+  extraLinks: newExtraLinks,
 });
     res.status(201).json({ id: mediaId, mediaId, jobId });
   } catch (e) {
@@ -1005,10 +1019,10 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
       return;
     }
 
+    // An explicit empty string clears the primary job (external-only
+    // mapping); omitting the field keeps the existing one.
     const jobId =
-      typeof body.jobId === "string" && body.jobId.trim()
-        ? body.jobId.trim()
-        : existing.jobId;
+      typeof body.jobId === "string" ? body.jobId.trim() : existing.jobId;
 
     const jobTitleCache =
       typeof body.jobTitleCache === "string"
@@ -1026,6 +1040,11 @@ app.patch("/api/automation/post-mappings/:mediaId", async (req, res) => {
     const extraLinks = Array.isArray(body.extraLinks)
       ? sanitizeExtraLinks(body.extraLinks, jobId)
       : sanitizeExtraLinks(existing.extraLinks, jobId);
+
+    if (!jobId && extraLinks.length === 0) {
+      res.status(400).json({ error: "at_least_one_link_required" });
+      return;
+    }
 
     // The frontend "Archive" action PATCHes { status }. Previously this was
     // ignored (the existing status was always re-written); honor it now.
@@ -1140,7 +1159,7 @@ app.get("/api/automation/analytics", async (_req, res) => {
     const keywordCounts = new Map<string, number>();
     // Top-post counts come from matched-rule logs keyed by the real Instagram
     // mediaId, then resolve the existing post mapping/job for a human label.
-    const postCounts = new Map<string, { mediaId: string; triggers: number; jobId: string }>();
+    const postCounts = new Map<string, { mediaId: string; triggers: number; jobId: string; titleCache: string | null }>();
 
     for (const log of logs) {
       if (log.type !== "keyword_matched") continue;
@@ -1167,12 +1186,14 @@ app.get("/api/automation/analytics", async (_req, res) => {
 
       if (log.mediaId) {
         const mapping = await readPostMapping(log.mediaId);
-        if (mapping?.jobId) {
+        // Mappings without a primary job (external-only) still count.
+        if (mapping && (mapping.jobId || mapping.extraLinks.length > 0)) {
           const current = postCounts.get(log.mediaId);
           postCounts.set(log.mediaId, {
             mediaId: log.mediaId,
             triggers: (current?.triggers ?? 0) + 1,
             jobId: mapping.jobId,
+            titleCache: mapping.jobTitleCache,
           });
         }
       }
@@ -1188,9 +1209,12 @@ app.get("/api/automation/analytics", async (_req, res) => {
       .slice(0, 10);
 
     const topPosts = (await Promise.all(
-      postEntries.map(async ({ mediaId, triggers, jobId }) => {
-        const job = await readJob(jobId);
-        const postLabel = [job?.jobTitle, job?.company].filter(Boolean).join(" — ") || `Instagram post ${mediaId}`;
+      postEntries.map(async ({ mediaId, triggers, jobId, titleCache }) => {
+        const job = jobId ? await readJob(jobId) : null;
+        const postLabel =
+          [job?.jobTitle, job?.company].filter(Boolean).join(" — ") ||
+          titleCache ||
+          `Instagram post ${mediaId}`;
         return {
           postLabel,
           triggers,
@@ -1272,7 +1296,11 @@ app.get("/api/automation/settings", async (req, res) => {
       connected: false,
       username: null as string | null,
       accountType: null as string | null,
+      // Why the check failed (safe, no secrets). Null when connected.
+      reason: null as string | null,
+      metaErrorCode: null as number | null,
     };
+    const checkFailures: { status: number | null; code: number | null }[] = [];
 
     const accessToken = process.env.META_ACCESS_TOKEN?.trim();
     const instagramBusinessId = process.env.INSTAGRAM_BUSINESS_ID?.trim();
@@ -1309,6 +1337,21 @@ app.get("/api/automation/settings", async (req, res) => {
           const latencyMs = Date.now() - metaStartedAt;
 
           if (!metaResponse.ok) {
+            // Previously swallowed silently. Record Meta's error code (never
+            // the token) so the real cause is visible in logs and Settings.
+            let code: number | null = null;
+            try {
+              const body = (await metaResponse.json()) as { error?: { code?: number } };
+              code = typeof body?.error?.code === "number" ? body.error.code : null;
+            } catch {
+              // non-JSON error body
+            }
+            checkFailures.push({ status: metaResponse.status, code });
+            logger.warn("Instagram connection check rejected by Meta", {
+              source: check.source,
+              status: metaResponse.status,
+              metaErrorCode: code,
+            });
             continue;
           }
 
@@ -1323,6 +1366,8 @@ app.get("/api/automation/settings", async (req, res) => {
             connected: true,
             username: typeof data.username === "string" ? data.username : null,
             accountType: typeof data.account_type === "string" ? data.account_type : null,
+            reason: null,
+            metaErrorCode: null,
           };
           res.locals.metaLatencyMs = latencyMs;
 
@@ -1332,12 +1377,36 @@ app.get("/api/automation/settings", async (req, res) => {
           });
           break;
         } catch (error) {
+          checkFailures.push({ status: null, code: null });
           logger.warn("Instagram connection check attempt failed", {
             source: check.source,
             error: error instanceof Error ? error.message : "unknown_error",
           });
         }
       }
+    }
+
+    if (!instagram.connected) {
+      const codes = checkFailures.map((f) => f.code);
+      const first = checkFailures[0];
+      instagram.metaErrorCode = codes.find((c) => c !== null) ?? null;
+      instagram.reason = !accessToken
+        ? "missing_access_token"
+        : !instagramBusinessId
+          ? "missing_business_id"
+          : codes.includes(190)
+            ? "token_invalid_or_expired"
+            : codes.some((c) => c === 10 || c === 200 || c === 299)
+              ? "permission_denied"
+              : codes.includes(100)
+                ? "invalid_account_id"
+                : codes.some((c) => c === 4 || c === 17 || c === 32 || c === 613)
+                  ? "rate_limited"
+                  : checkFailures.length > 0 && checkFailures.every((f) => f.status === null)
+                    ? "network_error"
+                    : first?.status
+                      ? `meta_http_${first.status}`
+                      : "unknown";
     }
 
     let lastEventAt: number | null = null;

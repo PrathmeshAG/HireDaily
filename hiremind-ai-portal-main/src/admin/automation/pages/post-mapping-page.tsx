@@ -11,14 +11,26 @@ import type { PostMapping, ExtraLink } from "../types";
 import { MAX_TOTAL_LINKS } from "../types";
 import { SearchablePicker } from "../components/searchable-picker";
 import { TableToolbar } from "../components/table-toolbar";
+import { SortSelect } from "../components/sort-select";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
+import { ModalPortal } from "../components/modal-portal";
 import { DmPreview, namesBlock } from "../components/dm-preview";
 import { MappingArt, EmptyArt } from "../components/illustrations";
 import { TableSkeleton } from "../components/table-skeleton";
 import { PaginationBar } from "../components/pagination-bar";
 import { StatusBadge } from "../components/status-badge";
 import { getJobPath } from "../../../lib/job-url";
+
+type MappingSort = "newest" | "oldest" | "az" | "za" | "links" | "active";
+const MAPPING_SORTS: { value: MappingSort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "az", label: "Job A to Z" },
+  { value: "za", label: "Job Z to A" },
+  { value: "links", label: "Most links" },
+  { value: "active", label: "Active first" },
+];
 
 export function PostMappingPage() {
   const qc = useQueryClient();
@@ -36,6 +48,7 @@ export function PostMappingPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all");
+  const [sortBy, setSortBy] = useState<MappingSort>("newest");
   const [page, setPage] = useState(1);
   const perPage = 8;
 
@@ -50,8 +63,19 @@ export function PostMappingPage() {
       const t = search.toLowerCase();
       list = list.filter((m) => `${m.companyName} ${m.jobTitle} ${m.mediaId}`.toLowerCase().includes(t));
     }
-    return list;
-  }, [mappings, statusFilter, search]);
+    // Newest first by default (the API returns oldest first).
+    const name = (m: PostMapping) => (m.jobTitle || m.companyName || "").toLowerCase();
+    const sorted = [...list];
+    switch (sortBy) {
+      case "oldest": sorted.sort((a, b) => a.createdAt - b.createdAt); break;
+      case "az": sorted.sort((a, b) => name(a).localeCompare(name(b))); break;
+      case "za": sorted.sort((a, b) => name(b).localeCompare(name(a))); break;
+      case "links": sorted.sort((a, b) => (b.extraLinks?.length ?? 0) - (a.extraLinks?.length ?? 0) || b.createdAt - a.createdAt); break;
+      case "active": sorted.sort((a, b) => Number(b.status === "active") - Number(a.status === "active") || b.createdAt - a.createdAt); break;
+      default: sorted.sort((a, b) => b.createdAt - a.createdAt);
+    }
+    return sorted;
+  }, [mappings, statusFilter, search, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
@@ -117,6 +141,7 @@ export function PostMappingPage() {
           search={search}
           onSearchChange={(v) => { setSearch(v); setPage(1); }}
           placeholder="Search by company, job title, media ID…"
+          sort={<SortSelect value={sortBy} onChange={(v) => { setSortBy(v); setPage(1); }} options={MAPPING_SORTS} />}
           filters={
             <div className="flex gap-1.5">
               {(["all", "active", "archived"] as const).map((s) => (
@@ -352,7 +377,8 @@ function MappingDialog({
     const j = jobs.find((x) => x.id === id);
     return j ? `${j.role} - ${j.companyName}` : id;
   };
-  const totalLinks = 1 + extraLinks.length;
+  // The primary job is optional. A mapping needs at least one link in total.
+  const totalLinks = (jobId ? 1 : 0) + extraLinks.length;
   const canAddMore = totalLinks < MAX_TOTAL_LINKS;
 
   const addExtraJob = (id: string) => {
@@ -397,8 +423,12 @@ function MappingDialog({
   };
 
   const submit = async () => {
-    if (!mediaId.trim() || !jobId) {
-      toast.error("Instagram post and job are required");
+    if (!mediaId.trim()) {
+      toast.error("Select an Instagram post");
+      return;
+    }
+    if (totalLinks === 0) {
+      toast.error("Add at least one link: pick a job or paste an external link");
       return;
     }
     if (!instagramPostUrl.trim()) {
@@ -408,7 +438,14 @@ function MappingDialog({
 
     setBusy(true);
     try {
-      const jobRef = selectedJob ?? { role: mapping?.jobTitle ?? "", companyName: mapping?.companyName ?? "" };
+      // Name shown in lists: the primary job, else the first extra link.
+      const firstExtra = extraLinks[0];
+      const fallbackName = firstExtra ? (firstExtra.type === "job" ? jobLabel(firstExtra.jobId) : firstExtra.label) : "";
+      const jobRef = selectedJob
+        ? selectedJob
+        : jobId
+          ? { role: mapping?.jobTitle ?? "", companyName: mapping?.companyName ?? "" }
+          : { role: fallbackName, companyName: "" };
       if (mapping) {
         await updatePostMapping(mapping.id, {
           mediaId: mapping.mediaId,
@@ -451,8 +488,9 @@ function MappingDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm animate-fade-up">
-      <div className="glass-strong my-4 w-full max-w-6xl rounded-2xl p-5 shadow-2xl animate-scale-in md:p-6">
+    <ModalPortal>
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/75 p-4 backdrop-blur-sm animate-fade-up">
+      <div className="glass-strong mx-auto my-2 w-full max-w-6xl sm:my-8 rounded-2xl p-5 shadow-2xl animate-scale-in md:p-6">
         <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-4">
           <div>
             <h2 className="text-lg font-semibold text-white">{mapping ? "Edit mapping" : "New post mapping"}</h2>
@@ -528,11 +566,11 @@ function MappingDialog({
           </section>
 
           <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-            <p className="text-xs font-medium uppercase tracking-wider text-white/45">Hire Daily job</p>
-            <p className="mt-1 text-sm text-white/70">Link the post to the job delivered by the automation.</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-white/45">Links delivered in the DM</p>
+            <p className="mt-1 text-sm text-white/70">Pick a Hire Daily job, or skip it and use only external links. At least one link is needed.</p>
 
             <div className="mt-4">
-              <label className="mb-1.5 block text-xs text-white/50">Linked job</label>
+              <label className="mb-1.5 block text-xs text-white/50">Hire Daily job <span className="text-white/35">(optional)</span></label>
               <SearchablePicker
                 items={jobItems}
                 value={jobId}
@@ -541,9 +579,10 @@ function MappingDialog({
                   // The primary job can't also be an extra link.
                   setExtraLinks((l) => l.filter((x) => !(x.type === "job" && x.jobId === id)));
                 }}
-                placeholder="Select a job"
+                placeholder="No job selected. Select a job (optional)"
                 searchPlaceholder="Search role, company, location…"
                 emptyText="No job matches your search"
+                allowClear
               />
             </div>
 
@@ -557,7 +596,7 @@ function MappingDialog({
 
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-white/80">More links in the same DM</p>
+                <p className="text-sm font-medium text-white/80">{jobId ? "More links in the same DM" : "Links in the DM"}</p>
                 <span className={`rounded-full px-2 py-0.5 text-[11px] ${canAddMore ? "bg-white/5 text-white/50" : "bg-amber-500/15 text-amber-300"}`}>{totalLinks}/{MAX_TOTAL_LINKS} links</span>
               </div>
               <p className="mt-1 text-xs text-white/40">Add other Hire Daily jobs or paste any external link. All links go in one DM, one below another, each with its name.</p>
@@ -566,7 +605,7 @@ function MappingDialog({
                 <ul className="mt-3 space-y-2">
                   {extraLinks.map((l, i) => (
                     <li key={`${l.type}-${l.type === "job" ? l.jobId : l.url}`} className="flex items-center gap-2 rounded-lg bg-white/[0.03] p-2 ring-1 ring-white/5 animate-scale-in">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-[11px] text-white/60">{i + 2}</span>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-[11px] text-white/60">{i + (jobId ? 2 : 1)}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm text-white">{l.type === "job" ? (l.label || jobLabel(l.jobId)) : l.label}</p>
                         <p className="truncate text-[11px] text-white/40">{l.type === "job" ? "Hire Daily job" : l.url}</p>
@@ -607,7 +646,7 @@ function MappingDialog({
 
               {totalLinks > 1 && (() => {
                 const labels = [
-                  selectedJob ? `${selectedJob.role} - ${selectedJob.companyName}` : "Primary job",
+                  ...(jobId ? [selectedJob ? `${selectedJob.role} - ${selectedJob.companyName}` : "Primary job"] : []),
                   ...extraLinks.map((l) => (l.type === "job" ? (l.label || jobLabel(l.jobId)) : l.label)),
                 ];
                 const intro = "Hi @username! 🙌 Here are your links 👇";
@@ -623,11 +662,13 @@ function MappingDialog({
               })()}
             </div>
 
-            <div className="mt-4 rounded-xl border border-dashed border-white/10 p-3">
-              <p className="mb-3 text-[11px] uppercase tracking-wider text-white/40">Link verification</p>
-              <LinkPreview label="Job Detail URL" value={jobDetailUrl} onCopy={copy} />
-              <div className="mt-3"><LinkPreview label="Official Apply URL" value={officialApplyUrl} onCopy={copy} /></div>
-            </div>
+            {jobId && (
+              <div className="mt-4 rounded-xl border border-dashed border-white/10 p-3">
+                <p className="mb-3 text-[11px] uppercase tracking-wider text-white/40">Link verification</p>
+                <LinkPreview label="Job Detail URL" value={jobDetailUrl} onCopy={copy} />
+                <div className="mt-3"><LinkPreview label="Official Apply URL" value={officialApplyUrl} onCopy={copy} /></div>
+              </div>
+            )}
           </section>
         </div>
 
@@ -643,6 +684,7 @@ function MappingDialog({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
@@ -679,6 +721,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-up">
       <div className="glass-strong w-full max-w-md rounded-2xl p-6 animate-scale-in">
         <div className={`flex h-12 w-12 items-center justify-center rounded-xl ring-1 ${danger ? "bg-red-500/20 ring-red-500/40" : "bg-[#00e5ff]/20 ring-[#00e5ff]/30"}`}>
@@ -697,5 +740,6 @@ export function ConfirmDialog({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

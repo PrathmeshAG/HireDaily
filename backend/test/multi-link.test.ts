@@ -173,6 +173,34 @@ test("emoji-safe titles (never split a surrogate pair)", async () => {
   assert(Array.from(t).length <= 20 && !/[\ud800-\udbff]$/.test(t), "no lone surrogate: " + t);
 });
 
+console.log("Multi-link — mapping without a primary job");
+function noJobReader(extra?: unknown[]): DataReader {
+  return {
+    getPostMapping: async () => ({ jobId: "", jobTitleCache: null, status: "active", extraLinks: extra as never }),
+    getJob: async (id) => jobs[id] ?? null,
+  };
+}
+test("external-only mapping resolves: first link is the URL, jobId is null", async () => {
+  const r = await resolvePostJobWithReader("m1", noJobReader([{ type: "external", url: "https://careers.example.com/apply", label: "Company careers" }]), "https://site.test");
+  assert(r.mapped, "mapped: " + r.reason);
+  assert(r.jobId === null && r.jobUrl === "https://careers.example.com/apply", "url + null jobId");
+  assert(r.links.length === 1 && r.title === "Company careers", "title falls back to link name");
+});
+test("no job + job and external extras keep their order and job details feed the first link", async () => {
+  const r = await resolvePostJobWithReader("m1", noJobReader([{ type: "job", jobId: "j2", label: null }, { type: "external", url: "https://x.com/a", label: "Apply form" }]), "https://site.test");
+  assert(r.mapped && r.links.length === 2, "two links");
+  assert(r.company === "Globex" && r.title === "Backend Dev", "first job details");
+  assert(r.links[1].label === "Apply form", "external second");
+});
+test("no job and no extra links is still invalid (nothing to send)", async () => {
+  const r = await resolvePostJobWithReader("m1", noJobReader(), "https://site.test");
+  assert(!r.mapped && r.reason === "post_mapping_invalid", "reason " + r.reason);
+});
+test("no job and only missing extra jobs -> job_not_found", async () => {
+  const r = await resolvePostJobWithReader("m1", noJobReader([{ type: "job", jobId: "gone", label: null }]), "https://site.test");
+  assert(!r.mapped && r.reason === "job_not_found", "reason " + r.reason);
+});
+
 Promise.all(pending).then(() => {
   console.log("\n" + "-".repeat(40));
   console.log(`Multi-link tests: ${passed} passed, ${failed} failed`);

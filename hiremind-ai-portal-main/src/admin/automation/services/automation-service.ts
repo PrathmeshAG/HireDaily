@@ -387,6 +387,8 @@ export async function getSettings(): Promise<AutomationSettings> {
       connected: boolean;
       username: string | null;
       accountType: string | null;
+      reason?: string | null;
+      metaErrorCode?: number | null;
     };
     webhook?: {
       subscribed: boolean;
@@ -406,6 +408,8 @@ export async function getSettings(): Promise<AutomationSettings> {
       username: data.instagram.username,
       accountType: data.instagram.accountType,
       tokenExpiresAt: null,
+      reason: data.instagram.reason ?? null,
+      metaErrorCode: data.instagram.metaErrorCode ?? null,
     },
     webhook: {
       subscribed: data.webhook?.subscribed ?? data.webhookConfigured,

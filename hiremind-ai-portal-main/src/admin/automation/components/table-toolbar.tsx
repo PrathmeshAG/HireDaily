@@ -6,12 +6,15 @@ export function TableToolbar({
   onSearchChange,
   placeholder = "Search…",
   filters,
+  sort,
   action,
 }: {
   search: string;
   onSearchChange: (v: string) => void;
   placeholder?: string;
   filters?: ReactNode;
+  /** Optional sort control, shown after the filters. */
+  sort?: ReactNode;
   action?: ReactNode;
 }) {
   return (
@@ -27,6 +30,7 @@ export function TableToolbar({
           />
         </div>
         {filters}
+        {sort}
       </div>
       {action}
     </div>

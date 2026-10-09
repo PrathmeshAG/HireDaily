@@ -139,6 +139,9 @@ export interface InstagramConnection {
   username: string | null;
   accountType: string | null;
   tokenExpiresAt: number | null;
+  /** Why the backend reports disconnected (e.g. token_invalid_or_expired). */
+  reason?: string | null;
+  metaErrorCode?: number | null;
 }
 
 export interface WebhookStatus {

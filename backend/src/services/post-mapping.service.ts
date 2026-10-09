@@ -130,7 +130,50 @@ export async function resolvePostJobWithReader(
     return notMapped(mediaId, "post_mapping_archived", jobId || null);
   }
   if (!jobId) {
-    return notMapped(mediaId, "post_mapping_invalid", jobId);
+    // No primary job: valid only when the mapping has extra links (for
+    // example external-only). Without any link there is nothing to send.
+    const extras = mapping.extraLinks ?? [];
+    if (extras.length === 0) {
+      return notMapped(mediaId, "post_mapping_invalid", jobId);
+    }
+
+    const links: ResolvedLink[] = [];
+    let firstJob: { company: string | null; title: string | null; location: string | null } | null = null;
+    for (const extra of extras) {
+      if (links.length >= 5) break;
+      if (extra.type === "external") {
+        links.push({ label: extra.label, url: extra.url });
+        continue;
+      }
+      const extraJob = await reader.getJob(extra.jobId);
+      if (!extraJob) continue;
+      if (links.length === 0) {
+        firstJob = { company: extraJob.company, title: extraJob.jobTitle, location: extraJob.location };
+      }
+      links.push({
+        label: extra.label || jobLabel(extraJob.company, extraJob.jobTitle),
+        url: buildJobUrl(publicBaseUrl, extra.jobId, extraJob.location, extraJob.jobTitle, extraJob.company),
+      });
+    }
+    if (links.length === 0) {
+      return notMapped(mediaId, "job_not_found", null);
+    }
+
+    // {{title}}: the first job's title, or the first link's name for
+    // external links. {{company}} / {{location}} are only known for jobs.
+    const title = firstJob?.title ?? links[0].label;
+    return {
+      mapped: true,
+      mediaId,
+      jobId: null,
+      jobUrl: links[0].url,
+      jobTitle: title,
+      company: firstJob?.company ?? null,
+      title,
+      location: firstJob?.location ?? null,
+      links,
+      reason: "resolved",
+    };
   }
 
   const job = await reader.getJob(jobId);
