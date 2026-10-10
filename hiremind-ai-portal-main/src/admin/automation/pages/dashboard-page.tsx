@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Instagram, Link2, ListChecks, MessageCircle, Send, AlertTriangle,
-  MessageSquareText, FileText, Users, ArrowRight, CheckCircle2, Circle, ScrollText,
+  MessageSquareText, FileText, Users, ArrowRight, CheckCircle2, Circle, ScrollText, KeyRound, Unlink, RotateCcw, Inbox,
 } from "lucide-react";
-import { getDashboardSummary, getRecentLogs } from "../services/automation-service";
+import { getDashboardSummary, getRecentLogs, getHealthReport } from "../services/automation-service";
 import { StatCard } from "../components/stat-card";
 import { PageHeader } from "../components/page-header";
 import { HeroArt, EmptyArt } from "../components/illustrations";
@@ -21,7 +21,53 @@ export function DashboardPage({ onNavigate }: { onNavigate: (page: PageId) => vo
     queryFn: () => getRecentLogs(6),
   });
 
+  const { data: health } = useQuery({
+    queryKey: ["automation", "health-report"],
+    queryFn: getHealthReport,
+    staleTime: 60_000,
+    retry: false,
+  });
+
   const failed = summary?.failedAutomations ?? 0;
+
+  // Things that need attention, most urgent first.
+  const DAY = 24 * 60 * 60 * 1000;
+  const tokenDays = health?.token?.expiresAt ? Math.floor((health.token.expiresAt - Date.now()) / DAY) : null;
+  const attention: { key: string; tone: "bad" | "warn" | "info"; icon: typeof KeyRound; title: string; text: string; page: PageId; cta: string }[] = [];
+  if (health?.token?.valid === false) {
+    attention.push({
+      key: "token", tone: "bad", icon: KeyRound, page: "settings", cta: "Open Settings",
+      title: "Meta access token is invalid",
+      text: "Replies and DMs are failing. Generate a new token, update META_ACCESS_TOKEN and redeploy.",
+    });
+  } else if (tokenDays !== null && tokenDays <= 7) {
+    attention.push({
+      key: "token-soon", tone: "warn", icon: KeyRound, page: "settings", cta: "Open Settings",
+      title: `Meta access token expires in ${Math.max(0, tokenDays)} day${tokenDays === 1 ? "" : "s"}`,
+      text: "Replace it before then so the automation does not stop.",
+    });
+  }
+  if ((health?.retryableFailures ?? 0) > 0) {
+    attention.push({
+      key: "retry", tone: "warn", icon: RotateCcw, page: "logs", cta: "Retry in Logs",
+      title: `${health!.retryableFailures} comment${health!.retryableFailures === 1 ? "" : "s"} did not get a reply or DM`,
+      text: "These failed recently and can be sent again with one click.",
+    });
+  }
+  if ((health?.missingJobs.length ?? 0) > 0) {
+    attention.push({
+      key: "missing", tone: "bad", icon: Unlink, page: "mappings", cta: "Fix mappings",
+      title: `${health!.missingJobs.length} post mapping${health!.missingJobs.length === 1 ? " points" : "s point"} to a deleted job`,
+      text: `${health!.missingJobs.slice(0, 3).map((m) => m.label).join(", ")}${health!.missingJobs.length > 3 ? "…" : ""}. These posts cannot send links until fixed.`,
+    });
+  }
+  if ((health?.unmatchedComments ?? 0) >= 5) {
+    attention.push({
+      key: "unmatched", tone: "info", icon: Inbox, page: "rules", cta: "Review comments",
+      title: `${health!.unmatchedComments} comments matched no rule`,
+      text: "Review them to find new keywords and spelling variations.",
+    });
+  }
 
   const cards = [
     {
@@ -82,6 +128,28 @@ export function DashboardPage({ onNavigate }: { onNavigate: (page: PageId) => vo
           </span>
         )}
       </PageHeader>
+
+      {attention.length > 0 && (
+        <section aria-label="Needs attention" className="space-y-2.5">
+          {attention.map((a) => (
+            <div
+              key={a.key}
+              className={`flex flex-wrap items-center gap-3 rounded-2xl px-4 py-3 ring-1 ${
+                a.tone === "bad" ? "bg-rose-500/10 ring-rose-400/25" : a.tone === "warn" ? "bg-amber-500/10 ring-amber-400/25" : "bg-[#00e5ff]/[0.06] ring-[#00e5ff]/20"
+              }`}
+            >
+              <a.icon className={`h-5 w-5 shrink-0 ${a.tone === "bad" ? "text-rose-300" : a.tone === "warn" ? "text-amber-300" : "text-[#67e8f9]"}`} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-white">{a.title}</p>
+                <p className="text-xs text-white/55">{a.text}</p>
+              </div>
+              <button onClick={() => onNavigate(a.page)} className="btn-ghost-glow flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs">
+                {a.cta} <ArrowRight className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         {isLoading

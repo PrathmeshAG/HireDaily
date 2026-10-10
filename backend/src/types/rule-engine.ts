@@ -31,6 +31,12 @@ export interface RuleEngineRule {
   postId: string | null;
   postLabel: string | null;
   commentTemplateId: string | null;
+  /**
+   * Optional extra comment templates. When present, one of
+   * [commentTemplateId, ...commentTemplateIds] is picked at random for each
+   * public reply so replies do not look identical.
+   */
+  commentTemplateIds?: string[];
   dmTemplateId: string | null;
   replyMode: ReplyMode;
   cooldownMinutes: number;

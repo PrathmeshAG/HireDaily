@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Plus, Pencil, Trash2, Loader2, Save, X, ListChecks, Clock, MessageSquare, Send as SendIcon,
+  Plus, Pencil, Trash2, Loader2, Save, X, ListChecks, Clock, MessageSquare, Send as SendIcon, FlaskConical,
 } from "lucide-react";
 import { getRules, getPostMappings, getTemplates, createRule, updateRule, deleteRule } from "../services/automation-service";
 import { fetchJobs } from "../../../lib/jobs";
@@ -12,6 +12,8 @@ import { SortSelect } from "../components/sort-select";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
 import { ModalPortal } from "../components/modal-portal";
+import { SimulatorDialog } from "../components/simulator-dialog";
+import { UnmatchedPanel } from "../components/unmatched-panel";
 import { RulesArt, EmptyArt } from "../components/illustrations";
 import { StatusBadge } from "../components/status-badge";
 import { ConfirmDialog } from "./post-mapping-page";
@@ -22,6 +24,34 @@ const REPLY_MODE_LABEL: Record<ReplyMode, string> = {
   dm_only: "DM Only",
   comment_and_dm: "Comment + DM",
 };
+
+/** Local date <-> input[type=date] helpers. End dates run to the end of that day. */
+function toDateInput(ts: number | null | undefined): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+function fromDateInput(value: string, endOfDay: boolean): number | null {
+  if (!value) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999).getTime() : new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+}
+const shortDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+/** Schedule badge for a rule card: expired / ends soon / starts later. */
+function scheduleBadge(rule: { activeFrom: number | null; activeUntil: number | null }): { text: string; tone: string } | null {
+  const now = Date.now();
+  if (rule.activeUntil && rule.activeUntil < now) return { text: `Expired ${shortDate(rule.activeUntil)}`, tone: "bg-rose-500/10 text-rose-300 ring-rose-500/25" };
+  if (rule.activeFrom && rule.activeFrom > now) return { text: `Starts ${shortDate(rule.activeFrom)}`, tone: "bg-[#00e5ff]/10 text-[#7DF9FF] ring-[#00e5ff]/25" };
+  if (rule.activeUntil) {
+    const days = Math.ceil((rule.activeUntil - now) / 86400000);
+    return { text: days <= 1 ? "Ends today" : `Ends ${shortDate(rule.activeUntil)} (${days}d)`, tone: days <= 3 ? "bg-amber-500/10 text-amber-300 ring-amber-500/25" : "bg-white/5 text-white/60 ring-white/10" };
+  }
+  return null;
+}
 
 const REPLY_MODE_HELP: Record<ReplyMode, string> = {
   comment_only: "Public reply under the comment. No DM.",
@@ -63,6 +93,9 @@ export function RulesPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<RuleSort>("newest");
   const [editing, setEditing] = useState<AutomationRule | "new" | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  // Keywords to pre-fill when a rule is started from an unmatched comment.
+  const [prefillKeywords, setPrefillKeywords] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<AutomationRule | null>(null);
 
   const filtered = useMemo(() => {
@@ -116,11 +149,18 @@ export function RulesPage() {
         subtitle="Keyword triggers that fire a comment reply and/or a DM with the mapped job links."
         art={<RulesArt />}
         actions={
-          <button onClick={() => setEditing("new")} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
-            <Plus className="h-4 w-4" /> Create rule
-          </button>
+          <>
+            <button onClick={() => { setPrefillKeywords(""); setEditing("new"); }} className="btn-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+              <Plus className="h-4 w-4" /> Create rule
+            </button>
+            <button onClick={() => setSimulating(true)} className="btn-ghost-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+              <FlaskConical className="h-4 w-4" /> Test a comment
+            </button>
+          </>
         }
       />
+
+      <UnmatchedPanel onCreateRule={(kw) => { setPrefillKeywords(kw); setEditing("new"); }} />
 
       <div className="glass mt-6 rounded-2xl">
         <TableToolbar
@@ -171,10 +211,21 @@ export function RulesPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3">
-                  <span className="rounded-md bg-white/5 px-2 py-1 text-[11px] text-white/60 ring-1 ring-white/10">
-                    {REPLY_MODE_LABEL[rule.replyMode]}
-                  </span>
+                <div className="mt-4 flex items-center justify-between gap-2 border-t border-white/5 pt-3">
+                  <div className="flex min-w-0 flex-wrap gap-1.5">
+                    <span className="rounded-md bg-white/5 px-2 py-1 text-[11px] text-white/60 ring-1 ring-white/10">
+                      {REPLY_MODE_LABEL[rule.replyMode]}
+                    </span>
+                    {(rule.commentTemplateIds?.length ?? 0) > 0 && (
+                      <span className="rounded-md bg-[#7c3aed]/15 px-2 py-1 text-[11px] text-[#c4b5fd] ring-1 ring-[#7c3aed]/25" title="One of these comment templates is picked at random">
+                        {(rule.commentTemplateIds?.length ?? 0) + 1} reply variations
+                      </span>
+                    )}
+                    {(() => {
+                      const b = scheduleBadge(rule);
+                      return b ? <span className={`rounded-md px-2 py-1 text-[11px] ring-1 ${b.tone}`}>{b.text}</span> : null;
+                    })()}
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => toggleActive(rule)}
@@ -201,9 +252,21 @@ export function RulesPage() {
         )}
       </div>
 
+      {simulating && (
+        <SimulatorDialog
+          mappings={((mappings ?? []).map((m) => {
+            const job = jobs?.find((j) => j.id === m.jobId);
+            return { ...m, companyName: job?.companyName ?? m.companyName, jobTitle: job?.role ?? m.jobTitle };
+          }))}
+          keywordHints={Array.from(new Set((rules ?? []).flatMap((r) => r.keywords)))}
+          onClose={() => setSimulating(false)}
+        />
+      )}
+
       {editing && (
         <RuleDialog
           rule={editing === "new" ? null : editing}
+          initialKeywords={editing === "new" ? prefillKeywords : undefined}
           mappings={((mappings ?? []).map((m) => {
             const job = jobs?.find((j) => j.id === m.jobId);
             return { ...m, companyName: job?.companyName ?? m.companyName, jobTitle: job?.role ?? m.jobTitle };
@@ -233,17 +296,20 @@ function RuleDialog({
   rule,
   mappings,
   templates,
+  initialKeywords,
   onClose,
   onSaved,
 }: {
   rule: AutomationRule | null;
   mappings: { id: string; jobTitle: string; companyName: string; createdAt?: number; status?: string; extraLinks?: unknown[] }[];
   templates: { id: string; kind: "comment" | "dm"; name: string }[];
+  /** Pre-fills the keyword field (used when creating a rule from an unmatched comment). */
+  initialKeywords?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
 const [mode, setMode] = useState<RuleMode>(rule?.mode ?? "keyword");
-  const [keywords, setKeywords] = useState(rule?.keywords.join(", ") ?? "");
+  const [keywords, setKeywords] = useState(rule?.keywords.join(", ") ?? initialKeywords ?? "");
   const [matchType, setMatchType] = useState<MatchType>(rule?.matchType ?? "contains");
   const [scope, setScope] = useState<"all_posts" | "specific_post">(rule?.scope ?? "all_posts");
   const [postId, setPostId] = useState(rule?.postId ?? "");
@@ -252,7 +318,16 @@ const [mode, setMode] = useState<RuleMode>(rule?.mode ?? "keyword");
   const [replyMode, setReplyMode] = useState<ReplyMode>(rule?.replyMode ?? "comment_and_dm");
   const [cooldownMinutes, setCooldownMinutes] = useState(rule?.cooldownMinutes ?? 1440);
   const [active, setActive] = useState(rule?.active ?? true);
+  const [extraCommentIds, setExtraCommentIds] = useState<string[]>(rule?.commentTemplateIds ?? []);
+  const [startDate, setStartDate] = useState(toDateInput(rule?.activeFrom));
+  const [endDate, setEndDate] = useState(toDateInput(rule?.activeUntil));
   const [busy, setBusy] = useState(false);
+
+  const addDays = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    setEndDate(toDateInput(d.getTime()));
+  };
 
   // Latest mapped posts first; archived ones are hidden unless already selected.
   const postItems = [...mappings]
@@ -270,7 +345,7 @@ const [mode, setMode] = useState<RuleMode>(rule?.mode ?? "keyword");
     `When someone comments ${mode === "keyword" ? (kwPreview.length ? kwPreview.join(" or ") : "a keyword") : "anything"} ` +
     `${scope === "specific_post" ? "on the selected post" : "on any mapped post"}, ` +
     `${replyMode === "comment_only" ? "reply publicly" : replyMode === "dm_only" ? "send a DM" : "reply publicly and send a DM"} ` +
-    `${cooldownText(cooldownMinutes)}.`;
+    `${cooldownText(cooldownMinutes)}${endDate ? `, until ${shortDate(fromDateInput(endDate, true) ?? Date.now())}` : ""}.`;
   const commentTemplates = templates.filter((t) => t.kind === "comment");
   const dmTemplates = templates.filter((t) => t.kind === "dm");
 
@@ -292,6 +367,12 @@ const submit = async () => {
       toast.error("This reply type sends a DM. Choose a DM template.");
       return;
     }
+    const activeFrom = fromDateInput(startDate, false);
+    const activeUntil = fromDateInput(endDate, true);
+    if (activeFrom && activeUntil && activeUntil < activeFrom) {
+      toast.error("The end date must be on or after the start date");
+      return;
+    }
     setBusy(true);
     try {
       // For specific_post rules, the post must be selected by its real
@@ -306,11 +387,12 @@ const submit = async () => {
         postId: scope === "specific_post" ? postId || null : null,
         postLabel: scope === "specific_post" && mapping ? `${mapping.jobTitle} — ${mapping.companyName}` : null,
         commentTemplateId: commentTemplateId || null,
+        commentTemplateIds: extraCommentIds.filter((id) => id !== commentTemplateId && commentTemplates.some((t) => t.id === id)),
         dmTemplateId: dmTemplateId || null,
         replyMode,
         cooldownMinutes,
-        activeFrom: rule?.activeFrom ?? null,
-        activeUntil: rule?.activeUntil ?? null,
+        activeFrom,
+        activeUntil,
         active,
       };
       if (rule) {
@@ -424,6 +506,58 @@ const submit = async () => {
                   <option key={t.id} value={t.id} className="bg-[#111827]">{t.name}</option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          {replyMode !== "dm_only" && commentTemplates.filter((t) => t.id !== commentTemplateId).length > 0 && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
+              <p className="text-xs font-medium text-white/80">Reply variations <span className="font-normal text-white/40">(optional)</span></p>
+              <p className="mt-0.5 text-[11px] text-white/40">Pick extra comment templates. One of them (or the main one) is chosen at random for each reply, so replies do not all look identical.</p>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {commentTemplates.filter((t) => t.id !== commentTemplateId).map((t) => {
+                  const on = extraCommentIds.includes(t.id);
+                  const full = !on && extraCommentIds.length >= 4;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      disabled={full}
+                      aria-pressed={on}
+                      onClick={() => setExtraCommentIds((ids) => (on ? ids.filter((x) => x !== t.id) : [...ids, t.id]))}
+                      className={`rounded-lg px-2.5 py-1.5 text-xs ring-1 transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        on ? "bg-[#7c3aed]/20 text-white ring-[#7c3aed]/40" : "bg-white/5 text-white/65 ring-white/10 hover:text-white"
+                      }`}
+                    >
+                      {on ? "✓ " : ""}{t.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
+            <p className="text-xs font-medium text-white/80">Schedule <span className="font-normal text-white/40">(optional)</span></p>
+            <p className="mt-0.5 text-[11px] text-white/40">The rule only fires between these dates, so a job&apos;s last-date post stops replying by itself.</p>
+            <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={label}>Start date</label>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={input} />
+              </div>
+              <div>
+                <label className={label}>End date (inclusive)</label>
+                <input type="date" value={endDate} min={startDate || undefined} onChange={(e) => setEndDate(e.target.value)} className={input} />
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[7, 14, 30].map((d) => (
+                <button key={d} type="button" onClick={() => addDays(d)} className="rounded-md px-2 py-1 text-[11px] text-white/55 ring-1 ring-white/10 transition hover:text-white">
+                  Ends in {d} days
+                </button>
+              ))}
+              <button type="button" onClick={() => { setStartDate(""); setEndDate(""); }} className="rounded-md px-2 py-1 text-[11px] text-white/55 ring-1 ring-white/10 transition hover:text-white">
+                No schedule
+              </button>
             </div>
           </div>
 

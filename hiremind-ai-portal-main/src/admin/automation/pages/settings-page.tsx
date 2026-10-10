@@ -2,12 +2,34 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
-  Instagram, Webhook, Activity, ShieldCheck, CheckCircle2, XCircle, KeyRound, RefreshCw, ScrollText, FlaskConical,
+  Instagram, Webhook, Activity, ShieldCheck, CheckCircle2, XCircle, KeyRound, RefreshCw, ScrollText, FlaskConical, BellRing, Send, Loader2, MousePointerClick, Gauge,
 } from "lucide-react";
-import { checkBackendHealth, getSettings } from "../services/automation-service";
+import { checkBackendHealth, getSettings, sendTestAlert, sendSummaryNow } from "../services/automation-service";
+import type { TokenState } from "../types";
 import { StatusBadge } from "../components/status-badge";
 import { PageHeader } from "../components/page-header";
 import { SettingsArt } from "../components/illustrations";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** How to show the access-token expiry, with a severity for colouring. */
+function describeToken(token: TokenState | undefined): { text: string; tone: "ok" | "warn" | "bad" | "muted"; detail?: string } {
+  if (!token) return { text: "—", tone: "muted" };
+  if (token.valid === false) return { text: "Invalid / expired", tone: "bad" };
+  if (token.neverExpires) return { text: "Never expires", tone: "ok", detail: "Page token: valid until revoked." };
+  if (token.expiresAt) {
+    const days = Math.floor((token.expiresAt - Date.now()) / DAY_MS);
+    const date = new Date(token.expiresAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    return {
+      text: `${date} (${days <= 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`})`,
+      tone: days <= 3 ? "bad" : days <= 7 ? "warn" : "ok",
+      detail: days <= 7 ? "Replace the token before this date." : undefined,
+    };
+  }
+  return { text: "Unknown", tone: "muted", detail: "Meta did not report an expiry for this token." };
+}
+
+const TONE_TEXT = { ok: "text-emerald-300", warn: "text-amber-300", bad: "text-rose-300", muted: "text-white/60" } as const;
 
 const DISCONNECT_REASONS: Record<string, { title: string; fix?: string }> = {
   token_invalid_or_expired: {
@@ -32,6 +54,21 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
   const qc = useQueryClient();
   const { data, isLoading, refetch } = useQuery({ queryKey: ["automation", "settings"], queryFn: getSettings, staleTime: 15_000 });
   const [healthBusy, setHealthBusy] = useState(false);
+  const [alertBusy, setAlertBusy] = useState<"test" | "summary" | null>(null);
+
+  const runAlert = async (kind: "test" | "summary") => {
+    setAlertBusy(kind);
+    try {
+      const r = kind === "test" ? await sendTestAlert() : await sendSummaryNow();
+      if (r.configured.length === 0) toast.error("No alert channel is configured yet. See the setup steps below.");
+      else if (r.failed.length > 0) toast.error(`Could not deliver to: ${r.failed.join(", ")}. Check the credentials.`);
+      else toast.success(`${kind === "test" ? "Test alert" : "Summary"} sent to ${r.sent.join(", ")}`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setAlertBusy(null);
+    }
+  };
 
   const refreshConnection = async () => {
     setHealthBusy(true);
@@ -115,10 +152,13 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
                 </div>
               )}
               <Row label="Token expires">
-                <span className="text-white/80">
-                  {data?.instagram.tokenExpiresAt ? new Date(data.instagram.tokenExpiresAt).toLocaleDateString() : "—"}
+                <span className={TONE_TEXT[describeToken(data?.token).tone]} title={describeToken(data?.token).detail}>
+                  {describeToken(data?.token).text}
                 </span>
               </Row>
+              {describeToken(data?.token).detail && describeToken(data?.token).tone !== "ok" && (
+                <p className={`text-[11px] ${TONE_TEXT[describeToken(data?.token).tone]}`}>{describeToken(data?.token).detail}</p>
+              )}
             </div>
             <button onClick={refreshConnection} disabled={healthBusy} className="btn-ghost-glow mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm disabled:opacity-60"><RefreshCw className={`h-3.5 w-3.5 ${healthBusy ? "animate-spin" : ""}`} /> Re-check connection</button>
           </div>
@@ -175,6 +215,84 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
           </div>
         </div>
       )}
+
+      {(data?.token?.valid === false || (data?.token?.expiresAt && data.token.expiresAt - Date.now() < 7 * DAY_MS)) && (
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <span className="font-medium">{data?.token?.valid === false ? "The Meta access token is not valid." : "The Meta access token expires soon."}</span>{" "}
+            Generate a new token, update <code className="rounded bg-black/30 px-1">META_ACCESS_TOKEN</code> on the backend and redeploy. Until then replies and DMs can fail.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-6 glass rounded-2xl p-6">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 ring-1 ring-amber-400/25">
+            <BellRing className="h-[18px] w-[18px] text-amber-300" />
+          </span>
+          <div>
+            <h2 className="font-semibold text-white">Alerts, tracking and safety</h2>
+            <p className="text-xs text-white/40">Get a message when something breaks, so an outage never goes unnoticed.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
+            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><BellRing className="h-3.5 w-3.5" /> Alert channels</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(data?.alerts?.channels ?? []).length > 0 ? (
+                data!.alerts!.channels.map((c) => (
+                  <span key={c} className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs capitalize text-emerald-300 ring-1 ring-emerald-500/25">{c}</span>
+                ))
+              ) : (
+                <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300 ring-1 ring-amber-500/25">Not configured</span>
+              )}
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-white/40">
+              Scheduled checks: {data?.alerts?.cronConfigured ? <span className="text-emerald-300">enabled</span> : <span className="text-amber-300">off (set CRON_SECRET)</span>}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
+            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><MousePointerClick className="h-3.5 w-3.5" /> Link click tracking</p>
+            <p className={`mt-2 text-sm ${data?.tracking?.enabled ? "text-emerald-300" : "text-white/60"}`}>{data?.tracking?.enabled ? "On" : "Off"}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+              {data?.tracking?.enabled ? "DM buttons count clicks, shown in Analytics." : "Set TRACKING_BASE_URL (this backend's public URL) to count clicks from DM buttons."}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
+            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><Gauge className="h-3.5 w-3.5" /> Safety limits</p>
+            <p className="mt-2 text-sm text-white/80">
+              {data?.safety ? `${data.safety.maxCommentsPerHour || "No limit"} replies and ${data.safety.maxDmsPerHour || "no limit"} DMs per hour` : "—"}
+            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+              {data?.safety ? (data.safety.delayMaxMs > 0 ? `Random ${(data.safety.delayMinMs / 1000).toFixed(1)}-${(data.safety.delayMaxMs / 1000).toFixed(1)}s pause between a reply and its DM.` : "No pause between reply and DM.") : ""}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-2.5">
+          <button onClick={() => runAlert("test")} disabled={alertBusy !== null} className="btn-ghost-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm disabled:opacity-60">
+            {alertBusy === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />} Send test alert
+          </button>
+          <button onClick={() => runAlert("summary")} disabled={alertBusy !== null} className="btn-ghost-glow flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm disabled:opacity-60">
+            {alertBusy === "summary" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send today&apos;s summary
+          </button>
+        </div>
+
+        {(data?.alerts?.channels ?? []).length === 0 && !isLoading && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-white/55">
+            <p className="font-medium text-white/75">How to turn alerts on (backend environment variables)</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              <li><span className="text-white/75">Telegram:</span> create a bot with @BotFather, then set <code className="rounded bg-black/30 px-1">TELEGRAM_BOT_TOKEN</code> and <code className="rounded bg-black/30 px-1">TELEGRAM_CHAT_ID</code>.</li>
+              <li><span className="text-white/75">Email (Resend):</span> set <code className="rounded bg-black/30 px-1">RESEND_API_KEY</code> and <code className="rounded bg-black/30 px-1">ALERT_EMAIL_TO</code>.</li>
+              <li><span className="text-white/75">Slack / Discord:</span> set <code className="rounded bg-black/30 px-1">ALERT_WEBHOOK_URL</code> to an https webhook.</li>
+            </ul>
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 glass rounded-2xl p-6">
         <div className="flex items-center gap-2.5">

@@ -62,6 +62,27 @@ import {
   processCommentWithFollowGate,
 } from "./services/follow-gate.service.js";
 import { sanitizeExtraLinks } from "./services/job-links.js";
+import {
+  writeUnmatchedComment,
+  readUnmatchedComments,
+  deleteUnmatchedComment,
+  clearUnmatchedComments,
+  readLogsSince,
+  readClicksForDates,
+  incrementClick,
+  readCommentTemplateVariants,
+  readDmTemplateText,
+  readAllPostMappings as readAllPostMappingsForReport,
+} from "./services/firebase-admin.service.js";
+import { reserveSend, pauseBetweenActions, capsFromEnv, delayRangeFromEnv } from "./services/rate-guard.service.js";
+import { notifyIfAuthFailure, runHealthCheck, sendDailySummaryNow, findMissingJobs, countRetryable, dailyHousekeeping } from "./services/alerts.service.js";
+import { checkMetaToken } from "./services/token-health.service.js";
+import { getConfiguredChannels, sendAlert } from "./services/notifier.service.js";
+import { selectRetryable, retryItem, MAX_RETRY_HOURS, DEFAULT_RETRY_HOURS } from "./services/retry.service.js";
+import { simulateComment } from "./services/simulator.service.js";
+import { trackingBaseUrl, isCrawlerUserAgent, lastDates, summarizeClicks } from "./services/click-tracking.service.js";
+import { rateLimit } from "express-rate-limit";
+import crypto from "node:crypto";
 
 validateEnvironment();
 
@@ -316,6 +337,17 @@ const expectedToken = process.env.META_VERIFY_TOKEN ?? "";
 });
 
 /** Builds the RuleEngine input context from a normalized webhook event. */
+/** Up to 4 unique non-empty template ids (rotation list). */
+function cleanIdList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v === "string" && v.trim() && !out.includes(v.trim())) out.push(v.trim());
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
 function toRuleContext(event: {
   commentText: string | null;
   mediaId: string | null;
@@ -436,6 +468,19 @@ async function runRuleEngine(event: {
     const context = toRuleContext(event);
     const result = evaluateComment(activeRules, context, now);
 
+    // Keep the text of comments that matched no rule so new keywords
+    // (Hinglish, spelling variations) can be discovered in the admin panel.
+    if (!result.matched && event.eventType === "comment" && event.commentId && event.commentText?.trim()) {
+      await writeUnmatchedComment({
+        commentId: event.commentId,
+        text: event.commentText,
+        username: event.username,
+        mediaId: event.mediaId,
+        reason: result.reason,
+        timestamp: now,
+      }).catch((e) => logger.error("Failed to record unmatched comment", { error: e }));
+    }
+
 console.log("🔥 RULE ENGINE RESULT", {
   matched: result.matched,
   ruleId: result.ruleId,
@@ -525,19 +570,43 @@ console.log(
                   timestamp: Date.now(),
                 });
               } else {
-                const replyData = await processCommentReplyProduction({
-                  commentId: event.commentId,
-                  mediaId: event.mediaId,
-                  userId: event.userId,
-                  username: event.username,
-                  rule: result.rule,
-                  matchedKeyword: result.matchedKeyword,
-                  resolution,
-                });
-                commentStatus = replyData.commentStatus;
-                await writeCommentReplyLog(replyData);
-                if (replyData.externalId && !replyData.dryRun) {
-                  await rememberBotComment(replyData.externalId);
+                const commentSlot = await reserveSend("comment", dryRun);
+                if (!commentSlot.allowed) {
+                  // Hourly safety cap reached. Logged as failed so it can be
+                  // retried later from the Logs page.
+                  commentStatus = "failed";
+                  logger.warn("Hourly comment cap reached", { cap: commentSlot.cap, commentId: event.commentId });
+                  await writeCommentReplyLog({
+                    userId: event.userId,
+                    username: event.username,
+                    mediaId: event.mediaId,
+                    commentId: event.commentId,
+                    jobId: resolution.jobId,
+                    ruleId: result.rule.id,
+                    keyword: result.matchedKeyword,
+                    commentStatus: "failed",
+                    error: "hourly_cap_reached",
+                    dryRun,
+                    timestamp: Date.now(),
+                  });
+                } else {
+                  const replyData = await processCommentReplyProduction({
+                    commentId: event.commentId,
+                    mediaId: event.mediaId,
+                    userId: event.userId,
+                    username: event.username,
+                    rule: result.rule,
+                    matchedKeyword: result.matchedKeyword,
+                    resolution,
+                  });
+                  commentStatus = replyData.commentStatus;
+                  await writeCommentReplyLog(replyData);
+                  if (replyData.externalId && !replyData.dryRun) {
+                    await rememberBotComment(replyData.externalId);
+                  }
+                  if (replyData.commentStatus === "failed") {
+                    await notifyIfAuthFailure(replyData.error);
+                  }
                 }
               }
             } catch (replyError) {
@@ -569,18 +638,45 @@ console.log(
             if (!wantsDm) {
               dmStatus = "skipped";
             } else try {
-              const dmResult = await processCommentWithFollowGate({
-                userId: event.userId ?? (await resolveCommenterId(event.commentId, process.env.META_ACCESS_TOKEN?.trim() ?? "")),
-                username: event.username,
-                mediaId: event.mediaId,
-                commentId: event.commentId,
-                rule: result.rule,
-                matchedKeyword: result.matchedKeyword,
-                commentStatus,
-                dryRun,
-              });
-              dmStatus = dmResult.dm.dmStatus;
-              followStatusForTracking = dmResult.followStatus;
+              // Short random pause between the public reply and the DM, so
+              // the account does not act like a script.
+              if (wantsComment && commentStatus !== "skipped") await pauseBetweenActions(dryRun);
+
+              const dmSlot = await reserveSend("dm", dryRun);
+              if (!dmSlot.allowed) {
+                dmStatus = "failed";
+                logger.warn("Hourly DM cap reached", { cap: dmSlot.cap, commentId: event.commentId });
+                await writeDmLog({
+                  userId: event.userId,
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  jobId: resolution.jobId,
+                  ruleId: result.rule.id,
+                  keyword: result.matchedKeyword,
+                  commentStatus,
+                  dmStatus: "failed",
+                  error: "hourly_cap_reached",
+                  dryRun,
+                  timestamp: Date.now(),
+                });
+              } else {
+                const dmResult = await processCommentWithFollowGate({
+                  userId: event.userId ?? (await resolveCommenterId(event.commentId, process.env.META_ACCESS_TOKEN?.trim() ?? "")),
+                  username: event.username,
+                  mediaId: event.mediaId,
+                  commentId: event.commentId,
+                  rule: result.rule,
+                  matchedKeyword: result.matchedKeyword,
+                  commentStatus,
+                  dryRun,
+                });
+                dmStatus = dmResult.dm.dmStatus;
+                followStatusForTracking = dmResult.followStatus;
+                if (dmResult.dm.dmStatus === "failed") {
+                  await notifyIfAuthFailure(dmResult.dm.error);
+                }
+              }
               // The Follow Gate service writes its own DM log so the existing
               // logging schema remains unchanged.
             } catch (dmError) {
@@ -749,6 +845,7 @@ app.post("/api/automation/rules", async (req, res) => {
       postId: typeof body.postId === "string" ? body.postId : null,
       postLabel: typeof body.postLabel === "string" ? body.postLabel : null,
       commentTemplateId: typeof body.commentTemplateId === "string" ? body.commentTemplateId : null,
+      commentTemplateIds: cleanIdList(body.commentTemplateIds),
       dmTemplateId: typeof body.dmTemplateId === "string" ? body.dmTemplateId : null,
       replyMode:
         body.replyMode === "comment_only" || body.replyMode === "dm_only" || body.replyMode === "comment_and_dm"
@@ -785,6 +882,10 @@ app.patch("/api/automation/rules/:id", async (req, res) => {
       channel: "instagram",
       updatedAt: Date.now(),
     };
+    // Rotation templates: sanitized; omitted keeps the existing list.
+    merged.commentTemplateIds = Array.isArray(body.commentTemplateIds)
+      ? cleanIdList(body.commentTemplateIds)
+      : existing.commentTemplateIds ?? [];
     await writeRule(id, merged);
     res.status(200).json({ id });
   } catch (e) {
@@ -1425,12 +1526,29 @@ app.get("/api/automation/settings", async (req, res) => {
     const recentEvent = !!lastEventAt && Date.now() - lastEventAt <= 24 * 60 * 60 * 1000;
     const apiOk = isFirebase && (metaConfigured ? instagram.connected : false);
 
+    // Token expiry + alert/safety configuration (no secrets, only flags).
+    const tokenState = await getCachedTokenState();
+    const caps = capsFromEnv();
+    const delay = delayRangeFromEnv();
+
     res.status(200).json({
       firebaseConfigured: isFirebase,
       metaConfigured,
       dryRun,
       webhookConfigured,
       serviceStatus: apiOk ? "operational" : isFirebase ? "degraded" : "degraded",
+      token: tokenState,
+      alerts: {
+        channels: getConfiguredChannels(),
+        cronConfigured: !!process.env.CRON_SECRET?.trim(),
+      },
+      tracking: { enabled: trackingBaseUrl() !== null },
+      safety: {
+        maxCommentsPerHour: caps.comment,
+        maxDmsPerHour: caps.dm,
+        delayMinMs: delay.min,
+        delayMaxMs: delay.max,
+      },
       instagram,
       webhook: {
         configured: webhookConfigured,
@@ -1447,6 +1565,254 @@ app.get("/api/automation/settings", async (req, res) => {
   } catch (e) {
     logger.error("Failed to load settings", { error: e });
     res.status(500).json({ error: "failed_to_load_settings" });
+  }
+});
+
+
+// ===========================================================================
+// Update 4 — click tracking, cron, retry, simulator, unmatched comments,
+// health report. Admin routes below sit under /api/automation and therefore
+// inherit rate limiting + Firebase auth + admin check. The two public routes
+// (/r/... and /api/cron/...) have their own protection.
+// ===========================================================================
+
+let tokenStateCache: { at: number; value: Awaited<ReturnType<typeof checkMetaToken>> } | null = null;
+async function getCachedTokenState() {
+  if (tokenStateCache && Date.now() - tokenStateCache.at < 5 * 60 * 1000) return tokenStateCache.value;
+  const value = await checkMetaToken();
+  tokenStateCache = { at: Date.now(), value };
+  return value;
+}
+
+/**
+ * Public click redirect used by DM buttons when TRACKING_BASE_URL is set.
+ * The destination is ALWAYS read from the post mapping on the server, never
+ * from the URL, so this cannot be abused as an open redirect.
+ */
+const clickLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: true, legacyHeaders: false });
+app.get("/r/:mediaId/:idx", clickLimiter, async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  const siteHome = process.env.NODE_ENV === "production" ? "https://hire-daily.vercel.app" : env.publicAppUrl;
+  try {
+    const index = Number(req.params.idx);
+    if (!Number.isInteger(index) || index < 0 || index > 4) {
+      res.redirect(302, siteHome);
+      return;
+    }
+    const resolution = await resolvePostJob(req.params.mediaId);
+    const link = resolution.mapped ? resolution.links[index] : undefined;
+    if (!link) {
+      res.redirect(302, siteHome);
+      return;
+    }
+    if (!isCrawlerUserAgent(req.get("user-agent"))) {
+      await incrementClick(dateKey(Date.now()), req.params.mediaId, index).catch((e) =>
+        logger.warn("Click count failed", { error: e }),
+      );
+    }
+    res.redirect(302, link.url);
+  } catch (e) {
+    logger.error("Click redirect failed", { error: e });
+    res.redirect(302, siteHome);
+  }
+});
+
+/** Constant-time check of the cron secret (Bearer header, x-cron-secret header or ?key=). */
+function cronAuthorized(req: express.Request): boolean | "not_configured" {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret) return "not_configured";
+  const bearer = req.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  const provided = bearer || req.get("x-cron-secret") || (typeof req.query.key === "string" ? req.query.key : "");
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * GET /api/cron/:task — scheduled jobs.
+ *   health : token + deleted-job check (throttled alerts). Safe to call often.
+ *   daily  : health + housekeeping + the daily summary message.
+ * Works with Vercel Cron or any external scheduler.
+ */
+app.get("/api/cron/:task", async (req, res) => {
+  const auth = cronAuthorized(req);
+  if (auth === "not_configured") {
+    res.status(503).json({ error: "cron_not_configured" });
+    return;
+  }
+  if (!auth) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  try {
+    if (req.params.task === "health") {
+      const health = await runHealthCheck();
+      res.status(200).json({ ok: true, task: "health", tokenValid: health.token.valid, missingJobs: health.missingJobs, alertsSent: health.alertsSent });
+      return;
+    }
+    if (req.params.task === "daily") {
+      const health = await runHealthCheck();
+      const housekeeping = await dailyHousekeeping();
+      const summary = await sendDailySummaryNow();
+      res.status(200).json({ ok: true, task: "daily", tokenValid: health.token.valid, alertsSent: health.alertsSent, summarySentTo: summary.sent, ...housekeeping });
+      return;
+    }
+    res.status(404).json({ error: "unknown_task" });
+  } catch (e) {
+    logger.error("Cron task failed", { task: req.params.task, error: e });
+    res.status(500).json({ error: "cron_failed" });
+  }
+});
+
+/** GET /api/automation/health-report — things that need attention. */
+app.get("/api/automation/health-report", async (_req, res) => {
+  try {
+    const [token, missing, retryable, unmatched] = await Promise.all([
+      getCachedTokenState(),
+      findMissingJobs().catch(() => []),
+      countRetryable().catch(() => 0),
+      readUnmatchedComments(1000).then((l) => l.length).catch(() => 0),
+    ]);
+    res.status(200).json({ token, missingJobs: missing, retryableFailures: retryable, unmatchedComments: unmatched });
+  } catch (e) {
+    logger.error("Health report failed", { error: e });
+    res.status(500).json({ error: "failed_health_report" });
+  }
+});
+
+/** GET /api/automation/retry/failed?hours=72 — comments whose reply/DM failed and can be retried. */
+app.get("/api/automation/retry/failed", async (req, res) => {
+  try {
+    const hours = Math.min(Math.max(Number(req.query.hours) || DEFAULT_RETRY_HOURS, 1), MAX_RETRY_HOURS);
+    const since = Date.now() - hours * 60 * 60 * 1000;
+    const items = selectRetryable(await readLogsSince(since), since);
+    res.status(200).json({ hours, items });
+  } catch (e) {
+    logger.error("Failed to list retryable comments", { error: e });
+    res.status(500).json({ error: "failed_to_list_retryable" });
+  }
+});
+
+/**
+ * POST /api/automation/retry/failed  { commentIds?: string[], hours?: number }
+ * Retries up to 15 comments per call (oldest limits are Meta's 7-day window).
+ */
+app.post("/api/automation/retry/failed", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as { commentIds?: unknown; hours?: unknown };
+    const hours = Math.min(Math.max(Number(body.hours) || DEFAULT_RETRY_HOURS, 1), MAX_RETRY_HOURS);
+    const since = Date.now() - hours * 60 * 60 * 1000;
+    let items = selectRetryable(await readLogsSince(since), since);
+    if (Array.isArray(body.commentIds)) {
+      const wanted = new Set(body.commentIds.filter((x): x is string => typeof x === "string"));
+      items = items.filter((i) => wanted.has(i.commentId));
+    }
+    const batch = items.slice(0, 15);
+    const results = [];
+    for (const item of batch) {
+      results.push(await retryItem(item));
+      if (results.length < batch.length) await pauseBetweenActions(env.meta.dryRun);
+    }
+    res.status(200).json({ attempted: results.length, remaining: Math.max(0, items.length - batch.length), results });
+  } catch (e) {
+    logger.error("Retry failed comments failed", { error: e });
+    res.status(500).json({ error: "failed_to_retry" });
+  }
+});
+
+/** POST /api/automation/simulate { mediaId, commentText, username? } — dry preview, sends nothing. */
+app.post("/api/automation/simulate", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as { mediaId?: unknown; commentText?: unknown; username?: unknown };
+    const mediaId = typeof body.mediaId === "string" ? body.mediaId.trim() : "";
+    const commentText = typeof body.commentText === "string" ? body.commentText.slice(0, 500) : "";
+    if (!mediaId || !commentText.trim()) {
+      res.status(400).json({ error: "mediaId_and_commentText_required" });
+      return;
+    }
+    const result = await simulateComment(
+      { mediaId, commentText, username: typeof body.username === "string" ? body.username : null },
+      {
+        readRules: readAllRules,
+        resolve: resolvePostJob,
+        commentVariants: readCommentTemplateVariants,
+        dmText: readDmTemplateText,
+        dryRun: env.meta.dryRun,
+      },
+    );
+    res.status(200).json(result);
+  } catch (e) {
+    logger.error("Simulation failed", { error: e });
+    res.status(500).json({ error: "failed_to_simulate" });
+  }
+});
+
+/** GET /api/automation/unmatched — comments that matched no rule (newest first). */
+app.get("/api/automation/unmatched", async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 300);
+    res.status(200).json({ items: await readUnmatchedComments(limit) });
+  } catch (e) {
+    logger.error("Failed to read unmatched comments", { error: e });
+    res.status(500).json({ error: "failed_to_read_unmatched" });
+  }
+});
+
+app.delete("/api/automation/unmatched/:id", async (req, res) => {
+  try {
+    await deleteUnmatchedComment(req.params.id);
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "failed_to_delete_unmatched" });
+  }
+});
+
+app.delete("/api/automation/unmatched", async (_req, res) => {
+  try {
+    await clearUnmatchedComments();
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "failed_to_clear_unmatched" });
+  }
+});
+
+/** GET /api/automation/clicks?days=14 — link click totals (requires TRACKING_BASE_URL). */
+app.get("/api/automation/clicks", async (req, res) => {
+  try {
+    const enabled = trackingBaseUrl() !== null;
+    const days = Math.min(Math.max(Number(req.query.days) || 14, 1), 30);
+    const daily = await readClicksForDates(lastDates(days));
+    const mappings = await readAllPostMappingsForReport();
+    const labels = new Map(mappings.map((m) => [m.mediaId, m.jobTitleCache || `Instagram post ${m.mediaId}`]));
+    res.status(200).json({ enabled, ...summarizeClicks(daily, labels) });
+  } catch (e) {
+    logger.error("Failed to read clicks", { error: e });
+    res.status(500).json({ error: "failed_to_read_clicks" });
+  }
+});
+
+/** POST /api/automation/alerts/test — sends a test alert to every configured channel. */
+app.post("/api/automation/alerts/test", async (_req, res) => {
+  try {
+    const result = await sendAlert({
+      title: "✅ HireDaily test alert",
+      body: "If you can read this, alerts are working. You will get messages here when the Meta token fails or expires, and a daily summary.",
+    });
+    res.status(200).json(result);
+  } catch (e) {
+    res.status(500).json({ error: "failed_to_send_test_alert" });
+  }
+});
+
+/** POST /api/automation/summary/send — sends today's summary now. */
+app.post("/api/automation/summary/send", async (_req, res) => {
+  try {
+    const result = await sendDailySummaryNow();
+    res.status(200).json({ sent: result.sent, failed: result.failed, configured: result.configured, title: result.title, body: result.body });
+  } catch (e) {
+    logger.error("Failed to send summary", { error: e });
+    res.status(500).json({ error: "failed_to_send_summary" });
   }
 });
 

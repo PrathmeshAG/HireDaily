@@ -10,6 +10,7 @@ import { EmptyState } from "../components/empty-state";
 import { TableSkeleton } from "../components/table-skeleton";
 import { PaginationBar } from "../components/pagination-bar";
 import { PageHeader } from "../components/page-header";
+import { RetryPanel } from "../components/retry-panel";
 import { LogsArt, EmptyArt } from "../components/illustrations";
 
 const LOG_ICON: Record<LogType, typeof MessageCircle> = {
@@ -135,6 +136,8 @@ export function LogsPage() {
           </>
         }
       />
+
+      <RetryPanel />
 
       <div className="glass mt-6 rounded-2xl">
         <TableToolbar

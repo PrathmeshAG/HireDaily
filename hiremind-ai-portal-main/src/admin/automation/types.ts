@@ -45,6 +45,8 @@ export interface AutomationRule {
   postId: string | null;
   postLabel: string | null;
   commentTemplateId: string | null;
+  /** Extra comment templates. One of main + extras is picked at random per reply. */
+  commentTemplateIds?: string[];
   dmTemplateId: string | null;
   replyMode: ReplyMode;
   cooldownMinutes: number;
@@ -164,11 +166,107 @@ export interface SystemStatus {
   webhookConfigured: boolean;
 }
 
+export interface TokenState {
+  /** true = valid, false = rejected by Meta, null = unknown. */
+  valid: boolean | null;
+  /** Unix ms. Null when it never expires or is unknown. */
+  expiresAt: number | null;
+  neverExpires: boolean;
+  dataAccessExpiresAt: number | null;
+  method: "debug_token" | "probe" | "none";
+  checkedAt: number;
+  error: string | null;
+}
+
 export interface AutomationSettings {
   instagram: InstagramConnection;
   webhook: WebhookStatus;
   api: ApiStatus;
   system?: SystemStatus;
+  token?: TokenState;
+  alerts?: { channels: ("telegram" | "email" | "webhook")[]; cronConfigured: boolean };
+  tracking?: { enabled: boolean };
+  safety?: { maxCommentsPerHour: number; maxDmsPerHour: number; delayMinMs: number; delayMaxMs: number };
+}
+
+// ---------- Update 4: health, retry, simulator, unmatched, clicks ----------
+
+export interface MissingJobMapping {
+  mediaId: string;
+  label: string;
+  primaryMissing: boolean;
+  missingExtraJobIds: string[];
+}
+
+export interface HealthReport {
+  token: TokenState;
+  missingJobs: MissingJobMapping[];
+  retryableFailures: number;
+  unmatchedComments: number;
+}
+
+export interface RetryItem {
+  commentId: string;
+  userId: string | null;
+  username: string | null;
+  mediaId: string;
+  ruleId: string;
+  keyword: string | null;
+  parts: ("comment" | "dm")[];
+  lastError: string | null;
+  lastFailedAt: number;
+}
+
+export interface RetryOutcome {
+  commentId: string;
+  comment: "success" | "failed" | "skipped" | null;
+  dm: "success" | "failed" | "skipped" | null;
+  error: string | null;
+}
+
+export interface DmPreviewResult {
+  kind: "text" | "button" | "buttons" | "carousel";
+  text: string;
+  buttons: string[];
+  cards: string[];
+}
+
+export interface SimulationResult {
+  matched: boolean;
+  reason: string;
+  rule: { id: string; mode: string; keywords: string[]; replyMode: string; scope: string } | null;
+  matchedKeyword: string | null;
+  otherRules: { ruleId: string; active: boolean; scopeMatched: boolean; matched: boolean; keywords: string[] }[];
+  mapping: { mapped: boolean; reason: string; links: { label: string; url: string }[]; title: string | null };
+  willPostComment: boolean;
+  willSendDm: boolean;
+  comment: { variants: { id: string; text: string | null; error: string | null }[] };
+  dm: DmPreviewResult | null;
+  warnings: string[];
+  dryRun: boolean;
+}
+
+export interface UnmatchedComment {
+  id: string;
+  commentId: string;
+  text: string;
+  username: string | null;
+  mediaId: string | null;
+  reason: string;
+  timestamp: number;
+}
+
+export interface ClickStats {
+  enabled: boolean;
+  total: number;
+  daily: { date: string; clicks: number }[];
+  byPost: { mediaId: string; label: string; clicks: number; byLink: { index: number; clicks: number }[] }[];
+}
+
+export interface AlertSendResult {
+  sent: string[];
+  failed: string[];
+  configured: string[];
 }
 
 export interface DashboardSummary {

@@ -185,6 +185,12 @@ test("external-only mapping resolves: first link is the URL, jobId is null", asy
   assert(r.mapped, "mapped: " + r.reason);
   assert(r.jobId === null && r.jobUrl === "https://careers.example.com/apply", "url + null jobId");
   assert(r.links.length === 1 && r.title === "Company careers", "title falls back to link name");
+  // renderCommentReply refuses empty variables, so these must never be blank.
+  assert(r.company === "the company" && r.location === "Online", "neutral fallbacks, not blanks");
+  const rendered = renderCommentReply("Hi {{username}}! {{title}} at {{company}} ({{location}}) {{jobLink}}", {
+    commentReplyText: "", username: "sam", title: r.title ?? "", company: r.company ?? "", location: r.location ?? "", jobLink: r.jobUrl ?? "",
+  });
+  assert(rendered.ok, "template with company/location renders for external-only mappings: " + rendered.error);
 });
 test("no job + job and external extras keep their order and job details feed the first link", async () => {
   const r = await resolvePostJobWithReader("m1", noJobReader([{ type: "job", jobId: "j2", label: null }, { type: "external", url: "https://x.com/a", label: "Apply form" }]), "https://site.test");

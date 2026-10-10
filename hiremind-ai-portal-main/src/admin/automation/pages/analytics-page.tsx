@@ -6,9 +6,9 @@ import {
 } from "recharts";
 import {
   Download, TrendingUp, TrendingDown, Minus, Lightbulb, RefreshCw, BookOpen, ChevronDown,
-  CheckCircle2, AlertTriangle, Info as InfoIcon, XCircle,
+  CheckCircle2, AlertTriangle, Info as InfoIcon, XCircle, MousePointerClick,
 } from "lucide-react";
-import { getAnalytics } from "../services/automation-service";
+import { getAnalytics, getClickStats } from "../services/automation-service";
 import type { DailyAnalytics } from "../types";
 import { PageHeader } from "../components/page-header";
 import { AnimatedNumber } from "../components/animated-number";
@@ -24,7 +24,7 @@ const tooltipStyle = {
 };
 
 type Range = 7 | 14;
-type SeriesKey = "Received" | "Matched" | "Replies" | "DMs";
+type SeriesKey = "Received" | "Matched" | "Replies" | "DMs" | "Clicks";
 type Tone = "good" | "warn" | "bad" | "info";
 interface Insight { tone: Tone; title: string; text: string }
 
@@ -33,6 +33,7 @@ const SERIES: { key: SeriesKey; color: string; grad: string; meaning: string }[]
   { key: "Matched", color: "#7c3aed", grad: "gMatch", meaning: "comments that matched a rule" },
   { key: "Replies", color: "#f59e0b", grad: "gReply", meaning: "public replies posted" },
   { key: "DMs", color: "#34d399", grad: "gDm", meaning: "DMs delivered with your links" },
+  { key: "Clicks", color: "#38bdf8", grad: "gClick", meaning: "taps on the link buttons inside your DMs" },
 ];
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -86,6 +87,7 @@ const GLOSSARY: { term: string; meaning: string }[] = [
   { term: "Follow verified", meaning: "The person already followed your account when the follow gate checked, so they got the link right away." },
   { term: "Not following", meaning: "The person was asked to follow first. They receive the link after tapping the follow confirmation." },
   { term: "Match rate", meaning: "Rule matches divided by comments received. Low means your keywords miss how people actually comment." },
+  { term: "Link click", meaning: "A tap on a job button inside a DM, counted by the click tracker (needs TRACKING_BASE_URL). Click rate = clicks divided by DMs sent." },
   { term: "Delivered %", meaning: "Sent divided by (sent + failed). Anything under 95% is worth a look in Logs." },
 ];
 
@@ -94,6 +96,12 @@ export function AnalyticsPage() {
     queryKey: ["automation", "analytics"],
     queryFn: getAnalytics,
     staleTime: 15_000,
+  });
+  const { data: clickData } = useQuery({
+    queryKey: ["automation", "clicks"],
+    queryFn: () => getClickStats(14),
+    staleTime: 30_000,
+    retry: false,
   });
   const [range, setRange] = useState<Range>(14);
   const [hidden, setHidden] = useState<SeriesKey[]>([]);
@@ -108,12 +116,19 @@ export function AnalyticsPage() {
   const prev = useMemo(() => sum(previousDays), [previousDays]);
   const hasPrev = previousDays.length > 0;
 
+  const clicksEnabled = clickData?.enabled === true;
+  const clicksByDate = new Map((clickData?.daily ?? []).map((d) => [d.date, d.clicks]));
+  const clicksTotal = days.reduce((a, d) => a + (clicksByDate.get(d.date) ?? 0), 0);
+  const clickRate = pct(clicksTotal, days.reduce((a, d) => a + d.dmsSent, 0));
+  const visibleSeries = SERIES.filter((x) => x.key !== "Clicks" || clicksEnabled);
+
   const chartData = days.map((d) => ({
     date: d.date.slice(5),
     Received: d.commentsReceived,
     Matched: d.triggers,
     Replies: d.repliesSent,
     DMs: d.dmsSent,
+    Clicks: clicksByDate.get(d.date) ?? 0,
   }));
   const followData = days.map((d) => ({
     date: d.date.slice(5),
@@ -225,6 +240,20 @@ export function AnalyticsPage() {
       }
     }
 
+    if (clicksEnabled && t.dms > 0) {
+      if (clickRate !== null && clickRate >= 30) {
+        out.push({ tone: "good", title: "Strong click rate", text: `${clicksTotal} link clicks from ${t.dms} DMs (${clickRate}%). People are opening your jobs.` });
+      } else if (clickRate !== null && clickRate < 10 && t.dms >= 10) {
+        out.push({ tone: "warn", title: "Few DM clicks", text: `Only ${clickRate}% of DMs led to a click. Try a clearer button label, a shorter message, or a more exciting first line.` });
+      } else {
+        out.push({ tone: "info", title: "Link clicks", text: `${clicksTotal} clicks from ${t.dms} DMs${clickRate !== null ? ` (${clickRate}%)` : ""}.` });
+      }
+      const bestClickPost = clickData?.byPost[0];
+      if (bestClickPost && bestClickPost.clicks > 0) {
+        out.push({ tone: "info", title: "Most clicked post", text: `${bestClickPost.label} got ${bestClickPost.clicks} click${bestClickPost.clicks === 1 ? "" : "s"}.` });
+      }
+    }
+
     if (keywords[0] && keywordTotal > 0) {
       out.push({
         tone: "info",
@@ -240,20 +269,23 @@ export function AnalyticsPage() {
       });
     }
     return out;
-  }, [t, prev, hasPrev, days.length, avgPerDay, activeDays, busiest, bestWeekday, matchRate, dmRate, replyRate, followTotal, followRate, keywords, keywordTotal, topPosts, topPostsTotal]);
+  }, [t, prev, hasPrev, days.length, avgPerDay, activeDays, busiest, bestWeekday, matchRate, dmRate, replyRate, followTotal, followRate, keywords, keywordTotal, topPosts, topPostsTotal, clicksEnabled, clicksTotal, clickRate, clickData]);
 
   const funnel = [
     { label: "Comments received", value: t.received, color: "from-[#00e5ff] to-[#22d3ee]", note: "Every comment on your mapped posts." },
     { label: "Matched a rule", value: t.matched, color: "from-[#22d3ee] to-[#7c3aed]", note: t.received - t.matched > 0 ? `${t.received - t.matched} comments matched no rule.` : "Every comment matched a rule." },
     { label: "Public replies sent", value: t.replies, color: "from-[#7c3aed] to-[#a78bfa]", note: t.matched - t.replies > 0 ? `${t.matched - t.replies} matches got no public reply (DM-only rules, failures or skipped duplicates).` : "Every match got a public reply." },
     { label: "DMs sent", value: t.dms, color: "from-[#34d399] to-[#22d3ee]", note: t.matched - t.dms > 0 ? `${t.matched - t.dms} matches got no DM (comment-only rules, waiting for follow, or failed).` : "Every match got a DM." },
+    ...(clicksEnabled
+      ? [{ label: "Link clicked", value: clicksTotal, color: "from-[#38bdf8] to-[#7c3aed]", note: t.dms > 0 ? `${clicksTotal} taps on job buttons${clickRate !== null ? `, ${clickRate}% of DMs sent` : ""}. A person who taps twice counts twice.` : "No DMs sent in this period." }]
+      : []),
     { label: "Follow verified", value: t.verified, color: "from-[#f59e0b] to-[#34d399]", note: followTotal > 0 ? `${t.verified} of ${followTotal} checked people already followed.` : "No follow checks yet." },
   ];
   const funnelMax = Math.max(1, ...funnel.map((f) => f.value));
 
   const exportCsv = () => {
-    const header = ["date", "comments_received", "rule_matches", "replies_sent", "dms_sent", "reply_failures", "dm_failures", "errors", "follow_verified", "follow_not_following", "follow_unsupported"];
-    const rows = days.map((d) => [d.date, d.commentsReceived, d.triggers, d.repliesSent, d.dmsSent, d.commentsFailed, d.dmsFailed, d.automationErrors, d.followVerified ?? 0, d.followNotVerified ?? 0, d.followUnsupported ?? 0]);
+    const header = ["date", "comments_received", "rule_matches", "replies_sent", "dms_sent", "link_clicks", "reply_failures", "dm_failures", "errors", "follow_verified", "follow_not_following", "follow_unsupported"];
+    const rows = days.map((d) => [d.date, d.commentsReceived, d.triggers, d.repliesSent, d.dmsSent, clicksByDate.get(d.date) ?? 0, d.commentsFailed, d.dmsFailed, d.automationErrors, d.followVerified ?? 0, d.followNotVerified ?? 0, d.followUnsupported ?? 0]);
     const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
@@ -332,7 +364,7 @@ export function AnalyticsPage() {
       </section>
 
       {/* KPI row */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className={`grid gap-3 sm:grid-cols-2 ${clicksEnabled ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
         {isLoading ? (
           Array.from({ length: 6 }, (_, i) => <div key={i} className="glass shimmer-loading h-28 rounded-2xl" />)
         ) : (
@@ -347,6 +379,12 @@ export function AnalyticsPage() {
               help="Private messages delivered with your job links. Delivered % = sent ÷ (sent + failed). Comment-only rules never send a DM." />
             <Kpi label="Follow verified" value={t.verified} dot="#22d3ee" change={hasPrev ? delta(t.verified, prev.verified) : null} hint={followRate !== null ? `${followRate}% already followed` : undefined}
               help="People who already followed your account when the follow gate checked. % = verified ÷ (verified + not following)." />
+            {clicksEnabled && (
+              <>
+                <Kpi label="Link clicks" value={clicksTotal} dot="#38bdf8" hint={clickRate !== null ? `${clickRate}% of DMs were clicked` : "No DMs yet"}
+                  help="Taps on the job buttons inside your DMs, counted by the click tracker. Click rate = clicks ÷ DMs sent. One person tapping twice counts twice." />
+              </>
+            )}
             <Kpi label="Errors" value={t.errors} dot="#fb7185" bad={t.errors > 0} change={hasPrev ? delta(t.errors, prev.errors) : null} invert hint={data?.users !== undefined ? `${data.users.toLocaleString()} unique users overall` : undefined}
               help="Failed replies + failed DMs + automation errors. Open the Logs page and filter by Errors to see the reason for each. For this card, a drop is good news." />
           </>
@@ -364,7 +402,7 @@ export function AnalyticsPage() {
               <>
                 <p>Each point is one day. The four lines follow a comment through your automation:</p>
                 <ul className="mt-2 space-y-1">
-                  {SERIES.map((s) => (
+                  {visibleSeries.map((s) => (
                     <li key={s.key}><span className="font-semibold" style={{ color: s.color }}>{s.key}</span>: {s.meaning}</li>
                   ))}
                 </ul>
@@ -373,7 +411,7 @@ export function AnalyticsPage() {
             }
           />
           <div className="flex flex-wrap gap-1.5">
-            {SERIES.map((s) => {
+            {visibleSeries.map((s) => {
               const off = hidden.includes(s.key);
               return (
                 <button
@@ -399,7 +437,7 @@ export function AnalyticsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <defs>
-                  {SERIES.map((s) => (
+                  {visibleSeries.map((s) => (
                     <linearGradient key={s.grad} id={s.grad} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={s.color} stopOpacity={0.3} />
                       <stop offset="100%" stopColor={s.color} stopOpacity={0} />
@@ -410,7 +448,7 @@ export function AnalyticsPage() {
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} />
-                {SERIES.filter((s) => !hidden.includes(s.key)).map((s) => (
+                {visibleSeries.filter((s) => !hidden.includes(s.key)).map((s) => (
                   <Area key={s.key} type="monotone" dataKey={s.key} stroke={s.color} fill={`url(#${s.grad})`} strokeWidth={2} />
                 ))}
               </AreaChart>
@@ -677,6 +715,60 @@ export function AnalyticsPage() {
         </section>
       </div>
 
+      {/* Link clicks */}
+      <section className="glass rounded-2xl p-6">
+        <SectionTitle
+          title="Link clicks by post"
+          icon={<MousePointerClick className="h-4 w-4 text-[#38bdf8]" />}
+          subtitle="Which posts and which links people actually tap after receiving the DM."
+          tipTitle="Link clicks"
+          tip={
+            <>
+              <p>When click tracking is on, every job button in a DM goes through your backend once, is counted, then opens the job.</p>
+              <p className="mt-2">&quot;Link 1&quot; is the first job in the DM, &quot;Link 2&quot; the second, and so on. Compare them to see which job is more popular.</p>
+              <p className="mt-2">Preview bots are not counted. Covers the last 14 days.</p>
+            </>
+          }
+        />
+        {!clicksEnabled ? (
+          <div className="mt-4 rounded-xl border border-dashed border-white/10 p-5 text-sm text-white/60">
+            <p className="font-medium text-white/80">Click tracking is off</p>
+            <p className="mt-1 text-xs leading-relaxed text-white/45">
+              To see how many people tap your job buttons, set <code className="rounded bg-black/30 px-1">TRACKING_BASE_URL</code> on the backend to its public address (for example https://your-backend.vercel.app) and redeploy. Links keep working exactly as before while it is off.
+            </p>
+          </div>
+        ) : (clickData?.byPost.length ?? 0) === 0 ? (
+          <div className="mt-4 h-40"><EmptyChart label="No clicks yet in the last 14 days" /></div>
+        ) : (
+          <div className="mt-4 space-y-2.5">
+            {clickData!.byPost.slice(0, 8).map((p, i) => {
+              const max = clickData!.byPost[0].clicks || 1;
+              return (
+                <div key={p.mediaId} className="rounded-xl border border-white/5 bg-white/[0.025] px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-[11px] text-white/55">{i + 1}</span>
+                      <span className="truncate text-xs font-medium text-white/85" title={p.label}>{p.label}</span>
+                    </span>
+                    <span className="shrink-0 rounded-md bg-[#38bdf8]/10 px-2 py-1 text-[11px] font-semibold text-[#7dd3fc]">{p.clicks} click{p.clicks === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
+                    <div className="hd-bar-grow h-full rounded-full bg-gradient-to-r from-[#38bdf8] to-[#7c3aed]" style={{ width: `${Math.max(6, (p.clicks / max) * 100)}%` }} />
+                  </div>
+                  {p.byLink.length > 1 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {p.byLink.map((l) => (
+                        <span key={l.index} className="rounded-md bg-white/5 px-2 py-0.5 text-[10px] text-white/55 ring-1 ring-white/10">Link {l.index + 1}: {l.clicks}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Daily breakdown */}
       <section className="glass rounded-2xl">
         <div className="flex flex-wrap items-start justify-between gap-3 px-6 pt-6">
@@ -696,7 +788,7 @@ export function AnalyticsPage() {
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-y border-white/5 text-left text-[11px] uppercase tracking-wider text-white/40">
-                {["Date", "Comments", "Matches", "Replies", "DMs", "Followed", "Not following", "Errors"].map((h, i) => (
+                {["Date", "Comments", "Matches", "Replies", "DMs", ...(clicksEnabled ? ["Clicks"] : []), "Followed", "Not following", "Errors"].map((h, i) => (
                   <th key={h} className={`px-4 py-2.5 font-medium ${i > 0 ? "text-right" : ""}`}>{h}</th>
                 ))}
               </tr>
@@ -711,6 +803,7 @@ export function AnalyticsPage() {
                     <Num v={d.triggers} />
                     <Num v={d.repliesSent} />
                     <Num v={d.dmsSent} />
+                    {clicksEnabled && <Num v={clicksByDate.get(d.date) ?? 0} />}
                     <Num v={d.followVerified ?? 0} />
                     <Num v={d.followNotVerified ?? 0} />
                     <td className={`px-4 py-2.5 text-right ${errs > 0 ? "font-semibold text-rose-300" : "text-white/35"}`}>{errs}</td>
@@ -718,7 +811,7 @@ export function AnalyticsPage() {
                 );
               })}
               {days.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-white/40">No data yet</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-white/40">No data yet</td></tr>
               )}
             </tbody>
           </table>

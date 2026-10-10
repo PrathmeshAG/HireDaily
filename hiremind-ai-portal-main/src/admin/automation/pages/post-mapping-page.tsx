@@ -218,6 +218,11 @@ export function PostMappingPage() {
                     <td className="px-4 py-3 text-white/80">{jobs?.find((j) => j.id === m.jobId)?.companyName || m.companyName || "—"}</td>
                     <td className="px-4 py-3 text-white/80">
                       {jobs?.find((j) => j.id === m.jobId)?.role || m.jobTitle || "—"}
+                      {jobs && ((m.jobId && !jobs.find((j) => j.id === m.jobId)) || (m.extraLinks ?? []).some((l) => l.type === "job" && !jobs.find((j) => j.id === l.jobId))) && (
+                        <span className="ml-2 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] text-rose-300 ring-1 ring-rose-500/25" title="A linked job no longer exists. This post cannot send that link until you fix the mapping.">
+                          Job removed
+                        </span>
+                      )}
                       {m.extraLinks && m.extraLinks.length > 0 && (
                         <span className="ml-2 rounded-full bg-[#7c3aed]/20 px-2 py-0.5 text-[10px] text-[#c4b5fd]" title="Extra links sent in the same DM">
                           +{m.extraLinks.length} {m.extraLinks.length === 1 ? "link" : "links"}
@@ -662,6 +667,11 @@ function MappingDialog({
               })()}
             </div>
 
+            {!jobId && extraLinks.length > 0 && (
+              <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5 text-[11px] leading-relaxed text-white/50">
+                No Hire Daily job is selected, so in your templates <code className="rounded bg-black/30 px-1">{"{{company}}"}</code> becomes &ldquo;the company&rdquo; and <code className="rounded bg-black/30 px-1">{"{{location}}"}</code> becomes &ldquo;Online&rdquo;. <code className="rounded bg-black/30 px-1">{"{{title}}"}</code> is the name of your first link. Use the Test a comment button on the Rules page to preview the result.
+              </p>
+            )}
             {jobId && (
               <div className="mt-4 rounded-xl border border-dashed border-white/10 p-3">
                 <p className="mb-3 text-[11px] uppercase tracking-wider text-white/40">Link verification</p>

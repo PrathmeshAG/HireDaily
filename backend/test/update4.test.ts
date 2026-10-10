@@ -1,0 +1,287 @@
+// Update 4 — alerts, token health, retry selection, simulator, summary,
+// missing jobs, click tracking, rate guard. In-memory stubs only.
+
+import { sendAlert, getConfiguredChannels } from "../src/services/notifier.service.js";
+import { checkMetaToken, isMetaAuthError, daysUntil } from "../src/services/token-health.service.js";
+import { buildDailySummary, EMPTY_DAY } from "../src/services/summary.service.js";
+import { selectRetryable } from "../src/services/retry.service.js";
+import { simulateComment, buildDmPreview } from "../src/services/simulator.service.js";
+import { findMissingJobMappings } from "../src/services/health-report.service.js";
+import { trackingBaseUrl, buildTrackedUrl, isCrawlerUserAgent, summarizeClicks, lastDates } from "../src/services/click-tracking.service.js";
+import { capsFromEnv, delayRangeFromEnv, randomDelayMs } from "../src/services/rate-guard.service.js";
+import type { RawLog } from "../src/services/firebase-admin.service.js";
+import type { RuleEngineRule } from "../src/types/rule-engine.js";
+import type { PostJobResolution } from "../src/services/post-mapping.service.js";
+
+let passed = 0;
+let failed = 0;
+const failures: string[] = [];
+const pending: Promise<void>[] = [];
+function test(name: string, fn: () => Promise<void> | void): void {
+  pending.push(
+    Promise.resolve().then(fn).then(() => { passed++; console.log("  ✓ " + name); }).catch((err: unknown) => {
+      failed++; failures.push(name);
+      console.error("  ✗ " + name); console.error("    " + (err instanceof Error ? err.message : String(err)));
+    }),
+  );
+}
+function assert(c: boolean, m: string): void { if (!c) throw new Error(m); }
+
+function fetchStub(responses: { ok?: boolean; status?: number; body?: unknown }[]) {
+  const calls: { url: string; body: any; headers: any }[] = [];
+  let i = 0;
+  const impl = (async (url: string, init?: any) => {
+    calls.push({ url, body: init?.body ? JSON.parse(init.body) : null, headers: init?.headers });
+    const r = responses[Math.min(i++, responses.length - 1)];
+    return new Response(JSON.stringify(r.body ?? {}), { status: r.status ?? (r.ok === false ? 400 : 200) });
+  }) as unknown as typeof fetch;
+  return { calls, impl };
+}
+
+console.log("Notifier");
+test("no channels configured is a harmless no-op", async () => {
+  const { calls, impl } = fetchStub([{}]);
+  const r = await sendAlert({ title: "t", body: "b" }, { fetchImpl: impl, values: {} as NodeJS.ProcessEnv });
+  assert(r.configured.length === 0 && r.sent.length === 0 && calls.length === 0, "nothing sent");
+});
+test("telegram + email + webhook are each used when configured, secrets stay out of the result", async () => {
+  const values = {
+    TELEGRAM_BOT_TOKEN: "123:ABC", TELEGRAM_CHAT_ID: "99",
+    RESEND_API_KEY: "re_secret", ALERT_EMAIL_TO: "a@x.com, b@x.com",
+    ALERT_WEBHOOK_URL: "https://hooks.example.com/x",
+  } as unknown as NodeJS.ProcessEnv;
+  assert(getConfiguredChannels(values).join() === "telegram,email,webhook", "channels");
+  const { calls, impl } = fetchStub([{}]);
+  const r = await sendAlert({ title: "Title", body: "Body" }, { fetchImpl: impl, values });
+  assert(r.sent.length === 3 && r.failed.length === 0, "all sent");
+  const tg = calls.find((c) => c.url.includes("api.telegram.org"))!;
+  assert(tg.body.chat_id === "99" && tg.body.text.includes("Title"), "telegram payload");
+  const mail = calls.find((c) => c.url.includes("resend.com"))!;
+  assert(Array.isArray(mail.body.to) && mail.body.to.length === 2 && mail.headers.Authorization === "Bearer re_secret", "email payload");
+  assert(!JSON.stringify(r).includes("re_secret") && !JSON.stringify(r).includes("123:ABC"), "no secrets in result");
+});
+test("a failing channel is reported but never throws", async () => {
+  const values = { TELEGRAM_BOT_TOKEN: "1:a", TELEGRAM_CHAT_ID: "1" } as unknown as NodeJS.ProcessEnv;
+  const { impl } = fetchStub([{ ok: false, status: 500 }]);
+  const r = await sendAlert({ title: "t", body: "b" }, { fetchImpl: impl, values });
+  assert(r.failed.join() === "telegram" && r.sent.length === 0, "failed reported");
+});
+test("webhook must be https", () => {
+  assert(getConfiguredChannels({ ALERT_WEBHOOK_URL: "http://insecure.example" } as unknown as NodeJS.ProcessEnv).length === 0, "http ignored");
+});
+
+console.log("Token health");
+test("detects Meta auth errors from real log text", () => {
+  assert(isMetaAuthError("Error validating access token: Session has expired on Thursday"), "session expired");
+  assert(isMetaAuthError("follow_gate_rejected_401:Error validating access token: x"), "401 gate");
+  assert(isMetaAuthError("meta_http_401"), "meta_http_401");
+  assert(!isMetaAuthError("hourly_cap_reached") && !isMetaAuthError("comment_id_missing") && !isMetaAuthError(null), "not auth");
+});
+test("debug_token: date expiry", async () => {
+  const exp = Math.floor(Date.now() / 1000) + 10 * 86400;
+  const { impl } = fetchStub([{ body: { data: { is_valid: true, expires_at: exp, data_access_expires_at: exp + 86400 } } }]);
+  const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "1", appSecret: "s" });
+  assert(s.valid === true && s.neverExpires === false && s.expiresAt === exp * 1000 && s.method === "debug_token", "dated");
+  assert(daysUntil(s.expiresAt) === 9 || daysUntil(s.expiresAt) === 10, "days");
+});
+test("debug_token: expires_at 0 means never expires", async () => {
+  const { impl } = fetchStub([{ body: { data: { is_valid: true, expires_at: 0 } } }]);
+  const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "1", appSecret: "s" });
+  assert(s.valid === true && s.neverExpires === true && s.expiresAt === null, "never");
+});
+test("debug_token: invalid token", async () => {
+  const { impl } = fetchStub([{ body: { data: { is_valid: false, expires_at: 1 } } }]);
+  const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "1", appSecret: "s" });
+  assert(s.valid === false && s.error === "token_invalid_or_expired", "invalid");
+});
+test("without app credentials it probes /me and reports expiry as unknown", async () => {
+  const { impl } = fetchStub([{ ok: true, body: { id: "1" } }]);
+  const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "", appSecret: "" });
+  assert(s.valid === true && s.expiresAt === null && !s.neverExpires && s.method === "probe", "probe");
+});
+test("probe 401 / code 190 is invalid; missing token is invalid", async () => {
+  const { impl } = fetchStub([{ status: 401, body: { error: { code: 190 } } }]);
+  const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "", appSecret: "" });
+  assert(s.valid === false, "401");
+  const m = await checkMetaToken({ fetchImpl: impl, token: "", appId: "", appSecret: "" });
+  assert(m.valid === false && m.error === "missing_access_token", "missing");
+});
+
+console.log("Daily summary");
+test("summary lists numbers, trend and what needs attention", () => {
+  const s = buildDailySummary({
+    date: "2026-10-10",
+    today: { ...EMPTY_DAY, commentsReceived: 42, triggers: 40, repliesSent: 38, dmsSent: 38, commentsFailed: 1, dmsFailed: 1, followVerified: 10, followNotVerified: 30 },
+    yesterday: { ...EMPTY_DAY, commentsReceived: 21, dmsSent: 19 },
+    token: { valid: true, expiresAt: Date.now() + 3 * 86400000, neverExpires: false, dataAccessExpiresAt: null, method: "debug_token", checkedAt: Date.now(), error: null },
+    missingJobMappings: 2, retryableFailures: 2, clicks: 19,
+  });
+  assert(s.title.includes("2026-10-10"), "title");
+  assert(s.body.includes("Comments: 42 (+100% vs yesterday)") && s.body.includes("DMs sent: 38"), "numbers + trend");
+  assert(s.body.includes("Link clicks: 19 (50% of DMs)") && s.body.includes("10 of 40"), "clicks + follow");
+  assert(s.body.includes("expires in") && s.body.includes("2 post mappings have a job") && s.body.includes("can be retried"), "attention list");
+});
+test("summary says all good when nothing needs attention", () => {
+  const s = buildDailySummary({ date: "d", today: { ...EMPTY_DAY, commentsReceived: 1 } });
+  assert(s.body.includes("Nothing needs attention"), "all good");
+});
+
+console.log("Retry selection");
+const L = (o: Partial<RawLog>): RawLog => ({
+  id: "x", type: "comment_sent", username: "u", userId: "U1", mediaId: "m1", commentId: "c1", ruleId: "r1", ruleKeyword: "job",
+  commentStatus: null, dmStatus: null, error: null, dryRun: false, timestamp: 1000, ...o,
+});
+test("failed reply and failed DM are both retryable parts", () => {
+  const items = selectRetryable([
+    L({ type: "comment_sent", commentStatus: "failed", error: "Error validating access token", timestamp: 2000 }),
+    L({ type: "dm_sent", dmStatus: "failed", error: "follow_gate_rejected_401", timestamp: 2100 }),
+  ], 0);
+  assert(items.length === 1 && items[0].parts.join() === "comment,dm", "both parts");
+  assert(items[0].userId === "U1" && items[0].keyword === "job", "context kept");
+});
+test("a later success clears that part only", () => {
+  const items = selectRetryable([
+    L({ type: "comment_sent", commentStatus: "failed", timestamp: 2000 }),
+    L({ type: "comment_sent", commentStatus: "success", timestamp: 3000 }),
+    L({ type: "dm_sent", dmStatus: "failed", timestamp: 2100 }),
+  ], 0);
+  assert(items.length === 1 && items[0].parts.join() === "dm", "only dm left");
+});
+test("fully recovered comments disappear", () => {
+  const items = selectRetryable([
+    L({ type: "comment_sent", commentStatus: "failed", timestamp: 2000 }),
+    L({ type: "comment_sent", commentStatus: "success", timestamp: 2500 }),
+  ], 0);
+  assert(items.length === 0, "empty");
+});
+test("dry-run, skipped, old and incomplete logs are ignored", () => {
+  const items = selectRetryable([
+    L({ commentStatus: "failed", dryRun: true, timestamp: 2000, commentId: "a" }),
+    L({ commentStatus: "skipped", timestamp: 2000, commentId: "b" }),
+    L({ commentStatus: "failed", timestamp: 10, commentId: "c" }),
+    L({ commentStatus: "failed", timestamp: 2000, commentId: "d", ruleId: null }),
+    L({ commentStatus: "failed", timestamp: 2000, commentId: "e", mediaId: null }),
+    L({ type: "keyword_matched", commentStatus: "failed", timestamp: 2000, commentId: "f" }),
+  ], 500);
+  assert(items.length === 0, "got " + items.length);
+});
+test("a failure AFTER an earlier success is retryable again; newest first", () => {
+  const items = selectRetryable([
+    L({ commentId: "old", commentStatus: "failed", timestamp: 2000 }),
+    L({ commentId: "new", commentStatus: "failed", timestamp: 5000 }),
+    L({ commentId: "again", commentStatus: "success", timestamp: 1000 }),
+    L({ commentId: "again", commentStatus: "failed", timestamp: 4000 }),
+  ], 0);
+  assert(items.map((i) => i.commentId).join() === "new,again,old", "order " + items.map((i) => i.commentId).join());
+});
+
+console.log("Simulator");
+const rule = (o: Partial<RuleEngineRule> = {}): RuleEngineRule => ({
+  id: "r1", channel: "instagram", mode: "keyword", keywords: ["job", "link"], matchType: "contains", scope: "all_posts",
+  postId: null, postLabel: null, commentTemplateId: "ct1", commentTemplateIds: [], dmTemplateId: "dt1", replyMode: "comment_and_dm",
+  cooldownMinutes: 0, activeFrom: null, activeUntil: null, active: true, createdAt: 1, updatedAt: 1, ...o,
+} as RuleEngineRule);
+const res1: PostJobResolution = {
+  mapped: true, mediaId: "m1", jobId: "j1", jobUrl: "https://site/jobs/1", jobTitle: "Dev", company: "Acme", title: "Dev", location: "Pune",
+  links: [{ label: "Dev - Acme", url: "https://site/jobs/1" }], reason: "resolved",
+};
+const resMulti: PostJobResolution = { ...res1, links: [
+  { label: "Dev - Acme", url: "https://site/jobs/1" }, { label: "QA - Globex", url: "https://site/jobs/2" }, { label: "Careers", url: "https://c.example.com" },
+] };
+function deps(rules: RuleEngineRule[], resolution: PostJobResolution, dm = "Hi {{username}}! {{title}} at {{company}}\n\n[[CTA:Apply Now]]", comments = [{ id: "ct1", text: "Hey {{username}}, check DM 📩" }]) {
+  return { readRules: async () => rules, resolve: async () => resolution, commentVariants: async () => comments, dmText: async () => dm, now: 5000, dryRun: false };
+}
+test("matching comment: shows rule, public reply and a DM with ONE button", async () => {
+  const r = await simulateComment({ mediaId: "m1", commentText: "Please send JOB link", username: "sam" }, deps([rule()], res1));
+  assert(r.matched && r.rule?.id === "r1" && r.matchedKeyword === "job", "matched");
+  assert(r.willPostComment && r.willSendDm, "both");
+  assert(r.comment.variants[0].text === "Hey sam, check DM 📩", "comment rendered");
+  assert(r.dm?.kind === "button" && r.dm.buttons[0] === "Apply Now" && r.dm.text.includes("Dev at Acme"), "dm button");
+});
+test("no match explains why and previews nothing", async () => {
+  const r = await simulateComment({ mediaId: "m1", commentText: "nice post" }, deps([rule()], res1));
+  assert(!r.matched && r.dm === null && r.comment.variants.length === 0 && r.reason.length > 0, "no match");
+});
+test("replyMode controls what would be sent", async () => {
+  const c = await simulateComment({ mediaId: "m1", commentText: "job" }, deps([rule({ replyMode: "comment_only" })], res1));
+  assert(c.willPostComment && !c.willSendDm && c.dm === null, "comment only");
+  const d = await simulateComment({ mediaId: "m1", commentText: "job" }, deps([rule({ replyMode: "dm_only" })], res1));
+  assert(!d.willPostComment && d.willSendDm && d.dm !== null && d.comment.variants.length === 0, "dm only");
+});
+test("unmapped post warns and sends nothing", async () => {
+  const r = await simulateComment({ mediaId: "m1", commentText: "job" }, deps([rule()], { ...res1, mapped: false, reason: "mapping_not_found", links: [] }));
+  assert(!r.willPostComment && !r.willSendDm && r.warnings.some((w) => w.includes("no usable mapping")), "warning");
+});
+test("2-3 links preview as buttons, 4-5 as cards", () => {
+  const b = buildDmPreview("Hi {{username}}\n\n{{jobLink}}\n\n[[CTA:x]]", resMulti, "sam");
+  assert(b.preview?.kind === "buttons" && b.preview.buttons.length === 3 && b.preview.text.includes("2. QA - Globex"), "buttons");
+  const five = { ...resMulti, links: [...resMulti.links, { label: "Four", url: "https://d" }, { label: "Five", url: "https://e" }] };
+  const c = buildDmPreview("Hi {{username}}", five, "sam");
+  assert(c.preview?.kind === "carousel" && c.preview.cards.length === 5, "carousel");
+});
+test("template that cannot render is reported (empty variable refuses to send)", async () => {
+  const r = await simulateComment({ mediaId: "m1", commentText: "job" }, deps([rule()], { ...res1, location: "" }, "At {{location}}"));
+  assert(r.warnings.some((w) => w.includes("cannot be rendered")), "render warning: " + r.warnings.join("|"));
+});
+test("rotation lists every comment variant", async () => {
+  const r = await simulateComment({ mediaId: "m1", commentText: "job" }, deps([rule()], res1, "Hi", [{ id: "a", text: "One {{username}}" }, { id: "b", text: "Two {{username}}" }]));
+  assert(r.comment.variants.length === 2 && r.warnings.some((w) => w.includes("Rotation is on")), "variants");
+});
+
+console.log("Missing jobs");
+test("flags active mappings whose primary or extra job is gone; ignores archived", async () => {
+  const exists = async (id: string) => id !== "gone" && id !== "gone2";
+  const out = await findMissingJobMappings([
+    { mediaId: "a", jobId: "ok", jobTitleCache: "A", status: "active" },
+    { mediaId: "b", jobId: "gone", jobTitleCache: "B", status: "active" },
+    { mediaId: "c", jobId: "ok", jobTitleCache: "C", status: "active", extraLinks: [{ type: "job", jobId: "gone2" }, { type: "external", url: "https://x" }] },
+    { mediaId: "d", jobId: "gone", jobTitleCache: "D", status: "archived" },
+    { mediaId: "e", jobId: "", jobTitleCache: "E", status: "active", extraLinks: [{ type: "external", url: "https://x" }] },
+  ], exists);
+  assert(out.map((o) => o.mediaId).join() === "b,c", "got " + out.map((o) => o.mediaId).join());
+  assert(out[0].primaryMissing && out[1].missingExtraJobIds.join() === "gone2", "details");
+});
+
+console.log("Click tracking");
+test("tracking is opt-in and URLs are built from the mapping, not user input", () => {
+  assert(trackingBaseUrl({} as NodeJS.ProcessEnv) === null, "off by default");
+  assert(trackingBaseUrl({ TRACKING_BASE_URL: "javascript:alert(1)" } as unknown as NodeJS.ProcessEnv) === null, "bad scheme");
+  const base = trackingBaseUrl({ TRACKING_BASE_URL: "https://api.example.com/" } as unknown as NodeJS.ProcessEnv)!;
+  assert(base === "https://api.example.com", "trailing slash stripped");
+  assert(buildTrackedUrl(base, "1789 0", 2) === "https://api.example.com/r/1789%200/2", "encoded");
+});
+test("link-preview bots are not counted but Instagram's in-app browser is", () => {
+  assert(isCrawlerUserAgent("facebookexternalhit/1.1") && isCrawlerUserAgent("Mozilla/5.0 (compatible; Googlebot/2.1)"), "bots");
+  assert(!isCrawlerUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Instagram 300.0.0.0 Android"), "real user");
+});
+test("click summary groups by day, post and link", () => {
+  const s = summarizeClicks([
+    { date: "2026-10-09", byPost: { m1: { "0": 3, "1": 1 } } },
+    { date: "2026-10-10", byPost: { m1: { "0": 2 }, m2: { "0": 5 } } },
+  ], new Map([["m1", "Dev - Acme"]]));
+  assert(s.total === 11 && s.daily[1].clicks === 7, "totals");
+  // m1 = 3+1+2 = 6 clicks, m2 = 5 clicks, so m1 ranks first.
+  assert(s.byPost[0].mediaId === "m1" && s.byPost[0].clicks === 6 && s.byPost[0].label === "Dev - Acme" && s.byPost[0].byLink.length === 2, "by post");
+  assert(s.byPost[1].mediaId === "m2" && s.byPost[1].label === "Instagram post m2", "fallback label");
+  assert(lastDates(3, Date.UTC(2026, 9, 10, 12)).length === 3, "dates");
+});
+
+console.log("Rate guard");
+test("caps and delay come from env with safe defaults", () => {
+  const d = capsFromEnv({} as NodeJS.ProcessEnv);
+  assert(d.comment === 150 && d.dm === 200, "defaults");
+  const c = capsFromEnv({ AUTOMATION_MAX_COMMENTS_PER_HOUR: "0", AUTOMATION_MAX_DMS_PER_HOUR: "abc" } as unknown as NodeJS.ProcessEnv);
+  assert(c.comment === 0 && c.dm === 200, "zero = unlimited, garbage = default");
+  assert(delayRangeFromEnv({} as NodeJS.ProcessEnv).min === 800, "delay default");
+  const off = delayRangeFromEnv({ AUTOMATION_DELAY_MIN_MS: "0", AUTOMATION_DELAY_MAX_MS: "0" } as unknown as NodeJS.ProcessEnv);
+  assert(randomDelayMs(off.min, off.max) === 0, "delay off");
+  const big = delayRangeFromEnv({ AUTOMATION_DELAY_MIN_MS: "999999", AUTOMATION_DELAY_MAX_MS: "999999" } as unknown as NodeJS.ProcessEnv);
+  assert(big.max <= 5000, "delay capped at 5s so the webhook never stalls");
+  assert(randomDelayMs(1000, 2000, () => 0.5) === 1500, "random range");
+});
+
+Promise.all(pending).then(() => {
+  console.log("\n" + "-".repeat(40));
+  console.log(`Update 4 tests: ${passed} passed, ${failed} failed`);
+  if (failed > 0) { console.log("Failing tests:"); failures.forEach((f) => console.log("  - " + f)); process.exit(1); }
+});

@@ -160,7 +160,10 @@ export async function resolvePostJobWithReader(
     }
 
     // {{title}}: the first job's title, or the first link's name for
-    // external links. {{company}} / {{location}} are only known for jobs.
+    // external links. renderCommentReply REFUSES to send when a referenced
+    // variable is empty, so external-only mappings get neutral fallbacks for
+    // {{company}} and {{location}} instead of blanks. Otherwise a template
+    // such as "at {{company}} ({{location}})" would silently fail.
     const title = firstJob?.title ?? links[0].label;
     return {
       mapped: true,
@@ -168,9 +171,9 @@ export async function resolvePostJobWithReader(
       jobId: null,
       jobUrl: links[0].url,
       jobTitle: title,
-      company: firstJob?.company ?? null,
+      company: firstJob?.company ?? "the company",
       title,
-      location: firstJob?.location ?? null,
+      location: firstJob?.location ?? "Online",
       links,
       reason: "resolved",
     };

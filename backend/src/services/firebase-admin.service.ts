@@ -206,6 +206,16 @@ export async function writeAutomationSettings(partial: Record<string, unknown>):
   await db().ref("automation/settings").update(partial);
 }
 
+function cleanTemplateIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v === "string" && v.trim() && !out.includes(v.trim())) out.push(v.trim());
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
 /**
  * Reads all rules under `automation/rules` and returns the currently active
  * instagram subset (as RuleEngineRule). Backward-compatible: existing rules
@@ -238,6 +248,7 @@ export async function readActiveRules(now: number = Date.now()): Promise<RuleEng
       postId: typeof r.postId === "string" ? r.postId : null,
       postLabel: typeof r.postLabel === "string" ? r.postLabel : null,
       commentTemplateId: typeof r.commentTemplateId === "string" ? r.commentTemplateId : null,
+      commentTemplateIds: cleanTemplateIds(r.commentTemplateIds),
       dmTemplateId: typeof r.dmTemplateId === "string" ? r.dmTemplateId : null,
       replyMode: r.replyMode === "comment_only" || r.replyMode === "dm_only" || r.replyMode === "comment_and_dm"
         ? r.replyMode
@@ -445,11 +456,21 @@ export async function releaseInstagramActionClaim(
  * reads `automation/templates` — never writes it.
  */
 export async function readCommentTemplateText(rule: RuleEngineRule): Promise<string | null> {
-  if (!rule.commentTemplateId) return null;
-  const snap = await db().ref(`automation/templates/${rule.commentTemplateId}`).get();
-  if (!snap.exists()) return null;
-  const val = snap.val() as Record<string, unknown>;
-  if (typeof val.text === "string" && val.text.trim().length > 0) return val.text;
+  // Rotation: pick randomly among the main template and any extras. If the
+  // chosen one is missing/empty, fall back to the others so a deleted
+  // variation never blocks the reply.
+  const ids = [rule.commentTemplateId, ...(rule.commentTemplateIds ?? [])].filter(
+    (id, i, arr): id is string => typeof id === "string" && id.length > 0 && arr.indexOf(id) === i,
+  );
+  if (ids.length === 0) return null;
+  const start = Math.floor(Math.random() * ids.length);
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[(start + i) % ids.length];
+    const snap = await db().ref(`automation/templates/${id}`).get();
+    if (!snap.exists()) continue;
+    const val = snap.val() as Record<string, unknown>;
+    if (typeof val.text === "string" && val.text.trim().length > 0) return val.text;
+  }
   return null;
 }
 
@@ -822,6 +843,7 @@ export async function readAllRules(): Promise<RuleEngineRule[]> {
       postId: typeof r.postId === "string" ? r.postId : null,
       postLabel: typeof r.postLabel === "string" ? r.postLabel : null,
       commentTemplateId: typeof r.commentTemplateId === "string" ? r.commentTemplateId : null,
+      commentTemplateIds: cleanTemplateIds(r.commentTemplateIds),
       dmTemplateId: typeof r.dmTemplateId === "string" ? r.dmTemplateId : null,
       replyMode:
         r.replyMode === "comment_only" || r.replyMode === "dm_only" || r.replyMode === "comment_and_dm"
@@ -1289,5 +1311,212 @@ export async function readRecentAnalytics(days = 14): Promise<
     );
   }
 
+  return out;
+}
+
+// ===========================================================================
+// Update 4 — alerts, hourly caps, unmatched comments, link clicks, retries.
+// All data lives under new automation/* nodes; nothing existing is changed.
+// ===========================================================================
+
+function safeKey(raw: string): string {
+  return String(raw).replace(/[.#$\[\]/]/g, "_").slice(0, 120);
+}
+
+/**
+ * Atomically claims an alert slot. Returns true when no alert with this key
+ * was sent within `cooldownMs` (so the caller should send it now).
+ */
+export async function claimAlertSlot(key: string, cooldownMs: number, now: number = Date.now()): Promise<boolean> {
+  const result = await db().ref(`automation/alerts/${safeKey(key)}`).transaction((cur) => {
+    const last = cur && typeof cur.sentAt === "number" ? cur.sentAt : 0;
+    if (now - last < cooldownMs) return undefined;
+    return { sentAt: now };
+  });
+  return result.committed;
+}
+
+/**
+ * Reserves one action in the current hour. `cap <= 0` means unlimited.
+ * Counters live at automation/rate/{YYYYMMDDHH}/{kind}.
+ */
+export async function reserveHourlySlot(
+  kind: "comment" | "dm",
+  cap: number,
+  now: number = Date.now(),
+): Promise<{ allowed: boolean; count: number }> {
+  if (!(cap > 0)) return { allowed: true, count: 0 };
+  const hour = new Date(now).toISOString().slice(0, 13).replace(/[-T]/g, "");
+  const result = await db().ref(`automation/rate/${hour}/${kind}`).transaction((cur) => {
+    const n = typeof cur === "number" ? cur : 0;
+    if (n >= cap) return undefined;
+    return n + 1;
+  });
+  const value = result.snapshot.val();
+  return { allowed: result.committed, count: typeof value === "number" ? value : cap };
+}
+
+export interface UnmatchedComment {
+  id: string;
+  commentId: string;
+  text: string;
+  username: string | null;
+  mediaId: string | null;
+  reason: string;
+  timestamp: number;
+}
+
+export async function writeUnmatchedComment(data: Omit<UnmatchedComment, "id">): Promise<void> {
+  if (!data.commentId) return;
+  await db().ref(`automation/unmatchedComments/${safeKey(data.commentId)}`).set({
+    commentId: data.commentId,
+    text: data.text.slice(0, 300),
+    username: data.username,
+    mediaId: data.mediaId,
+    reason: data.reason,
+    timestamp: data.timestamp,
+  });
+}
+
+export async function readUnmatchedComments(limit = 100): Promise<UnmatchedComment[]> {
+  const snap = await db().ref("automation/unmatchedComments").orderByChild("timestamp").limitToLast(limit).get();
+  if (!snap.exists()) return [];
+  const out: UnmatchedComment[] = [];
+  snap.forEach((child) => {
+    const v = child.val() as Record<string, unknown>;
+    if (!v || typeof v !== "object") return;
+    out.push({
+      id: child.key ?? "",
+      commentId: typeof v.commentId === "string" ? v.commentId : child.key ?? "",
+      text: typeof v.text === "string" ? v.text : "",
+      username: typeof v.username === "string" ? v.username : null,
+      mediaId: typeof v.mediaId === "string" ? v.mediaId : null,
+      reason: typeof v.reason === "string" ? v.reason : "no_match",
+      timestamp: typeof v.timestamp === "number" ? v.timestamp : 0,
+    });
+  });
+  return out.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export async function countUnmatchedComments(): Promise<number> {
+  const snap = await db().ref("automation/unmatchedComments").get();
+  return snap.exists() ? snap.numChildren() : 0;
+}
+
+export async function deleteUnmatchedComment(id: string): Promise<void> {
+  if (!id) return;
+  await db().ref(`automation/unmatchedComments/${safeKey(id)}`).remove();
+}
+
+export async function clearUnmatchedComments(): Promise<void> {
+  await db().ref("automation/unmatchedComments").remove();
+}
+
+/** Deletes unmatched comments older than `olderThan` (unix ms). Returns how many were removed. */
+export async function pruneUnmatchedComments(olderThan: number): Promise<number> {
+  const snap = await db().ref("automation/unmatchedComments").orderByChild("timestamp").endAt(olderThan).get();
+  if (!snap.exists()) return 0;
+  const updates: Record<string, null> = {};
+  snap.forEach((child) => {
+    if (child.key) updates[child.key] = null;
+  });
+  const n = Object.keys(updates).length;
+  if (n > 0) await db().ref("automation/unmatchedComments").update(updates);
+  return n;
+}
+
+/** Increments the click counter for link `index` of a mapped post on `date` (YYYY-MM-DD). */
+export async function incrementClick(date: string, mediaId: string, index: number): Promise<void> {
+  await db()
+    .ref(`automation/clicks/daily/${date}/${safeKey(mediaId)}/${index}`)
+    .transaction((cur) => (typeof cur === "number" ? cur : 0) + 1);
+}
+
+export interface DailyClicks {
+  date: string;
+  /** mediaId -> link index -> clicks */
+  byPost: Record<string, Record<string, number>>;
+}
+
+/** Reads click counters for the given dates (YYYY-MM-DD). */
+export async function readClicksForDates(dates: string[]): Promise<DailyClicks[]> {
+  const out: DailyClicks[] = [];
+  await Promise.all(
+    dates.map(async (date) => {
+      const snap = await db().ref(`automation/clicks/daily/${date}`).get();
+      const byPost: Record<string, Record<string, number>> = {};
+      if (snap.exists()) {
+        const raw = snap.val() as Record<string, unknown>;
+        for (const [mediaId, links] of Object.entries(raw)) {
+          if (!links || typeof links !== "object") continue;
+          const perLink: Record<string, number> = {};
+          for (const [idx, n] of Object.entries(links as Record<string, unknown>)) {
+            if (typeof n === "number") perLink[idx] = n;
+          }
+          byPost[mediaId] = perLink;
+        }
+      }
+      out.push({ date, byPost });
+    }),
+  );
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export interface RawLog {
+  id: string;
+  type: string;
+  username: string | null;
+  userId: string | null;
+  mediaId: string | null;
+  commentId: string | null;
+  ruleId: string | null;
+  ruleKeyword: string | null;
+  commentStatus: string | null;
+  dmStatus: string | null;
+  error: string | null;
+  dryRun: boolean;
+  timestamp: number;
+}
+
+/** Reads log entries newer than `since` (unix ms), including the ids needed to retry. */
+export async function readLogsSince(since: number, limit = 1500): Promise<RawLog[]> {
+  const snap = await db().ref("automation/logs").orderByChild("timestamp").startAt(since).limitToLast(limit).get();
+  if (!snap.exists()) return [];
+  const out: RawLog[] = [];
+  snap.forEach((child) => {
+    const l = child.val() as Record<string, unknown>;
+    if (!l || typeof l !== "object") return;
+    const str = (v: unknown) => (typeof v === "string" ? v : null);
+    out.push({
+      id: child.key ?? "",
+      type: typeof l.type === "string" ? l.type : "",
+      username: str(l.username),
+      userId: str(l.userId),
+      mediaId: str(l.mediaId),
+      commentId: str(l.commentId),
+      ruleId: str(l.ruleId),
+      ruleKeyword: str(l.ruleKeyword),
+      commentStatus: str(l.commentStatus),
+      dmStatus: str(l.dmStatus),
+      error: str(l.error),
+      dryRun: l.dryRun === true,
+      timestamp: typeof l.timestamp === "number" ? l.timestamp : 0,
+    });
+  });
+  return out;
+}
+
+/** All comment-template texts a rule can use (main + rotation), for previews. */
+export async function readCommentTemplateVariants(rule: RuleEngineRule): Promise<{ id: string; text: string }[]> {
+  const ids = [rule.commentTemplateId, ...(rule.commentTemplateIds ?? [])].filter(
+    (id, i, arr): id is string => typeof id === "string" && id.length > 0 && arr.indexOf(id) === i,
+  );
+  const out: { id: string; text: string }[] = [];
+  for (const id of ids) {
+    const snap = await db().ref(`automation/templates/${id}`).get();
+    if (!snap.exists()) continue;
+    const val = snap.val() as Record<string, unknown>;
+    if (typeof val.text === "string" && val.text.trim()) out.push({ id, text: val.text });
+  }
   return out;
 }

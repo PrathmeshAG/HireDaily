@@ -19,6 +19,13 @@ AutomationUser,
   LogType,
   PostMapping,
   ExtraLink,
+  HealthReport,
+  RetryItem,
+  RetryOutcome,
+  SimulationResult,
+  UnmatchedComment,
+  ClickStats,
+  AlertSendResult,
   Template,
 } from "../types";
 
@@ -383,6 +390,10 @@ export async function getSettings(): Promise<AutomationSettings> {
     dryRun: boolean;
     webhookConfigured: boolean;
     serviceStatus: string;
+    token?: AutomationSettings["token"];
+    alerts?: AutomationSettings["alerts"];
+    tracking?: AutomationSettings["tracking"];
+    safety?: AutomationSettings["safety"];
     instagram: {
       connected: boolean;
       username: string | null;
@@ -427,5 +438,59 @@ export async function getSettings(): Promise<AutomationSettings> {
       metaConfigured: !!data.metaConfigured,
       webhookConfigured: !!data.webhookConfigured,
     },
+    token: data.token,
+    alerts: data.alerts,
+    tracking: data.tracking,
+    safety: data.safety,
   };
+}
+
+// ---------- Update 4: health, retry, simulator, unmatched, clicks, alerts ----------
+
+export async function getHealthReport(): Promise<HealthReport> {
+  return request<HealthReport>("/api/automation/health-report");
+}
+
+export async function getRetryableFailures(hours = 72): Promise<RetryItem[]> {
+  const { items } = await request<{ items: RetryItem[] }>(`/api/automation/retry/failed?hours=${hours}`);
+  return items;
+}
+
+export async function retryFailed(commentIds?: string[], hours = 72): Promise<{ attempted: number; remaining: number; results: RetryOutcome[] }> {
+  return request("/api/automation/retry/failed", {
+    method: "POST",
+    body: JSON.stringify({ commentIds, hours }),
+  });
+}
+
+export async function simulateComment(input: { mediaId: string; commentText: string; username?: string }): Promise<SimulationResult> {
+  return request<SimulationResult>("/api/automation/simulate", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getUnmatchedComments(limit = 150): Promise<UnmatchedComment[]> {
+  const { items } = await request<{ items: UnmatchedComment[] }>(`/api/automation/unmatched?limit=${limit}`);
+  return items;
+}
+
+export async function dismissUnmatchedComment(id: string): Promise<void> {
+  await request(`/api/automation/unmatched/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function clearUnmatchedComments(): Promise<void> {
+  await request("/api/automation/unmatched", { method: "DELETE" });
+}
+
+export async function getClickStats(days = 14): Promise<ClickStats> {
+  return request<ClickStats>(`/api/automation/clicks?days=${days}`);
+}
+
+export async function sendTestAlert(): Promise<AlertSendResult> {
+  return request<AlertSendResult>("/api/automation/alerts/test", { method: "POST" });
+}
+
+export async function sendSummaryNow(): Promise<AlertSendResult> {
+  return request<AlertSendResult>("/api/automation/summary/send", { method: "POST" });
 }
