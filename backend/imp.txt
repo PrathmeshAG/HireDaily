@@ -18,3 +18,41 @@ AUTOMATION_DELAY_MAX_MS=0
 
 
 set karke pause band kar do.
+
+
+
+Token alert + expiry: token fail hote hi Telegram, email ya webhook par message jata hai (6 ghante mein ek). Settings mein token ki asli expiry date dikhti hai, aur 7 din bachne par warning banner aata hai.
+Retry failed: Logs page ke upar panel hai. Ek click mein ek baar mein 15 comments tak dobara bhej sakte ho.
+Deleted job warning: Dashboard par banner, Post Mapping mein “Job removed” badge, aur alert message.
+Click tracking: Analytics mein clicks, click rate aur per-post/per-link breakdown. Ye tabhi chalega jab TRACKING_BASE_URL set karoge, nahi to links pehle jaise seedhe jayenge.
+Test a comment: Rules page ka button hai, jo bina kuch bheje dikhata hai ki kaunsa rule match hua aur reply/DM kaisa dikhega.
+Unmatched comments: Rules page par common words ke chips aate hain, ek click mein naya rule ban jata hai.
+Hourly cap + delay: Reply aur DM ke beech 0.8–2.5 second ka random pause, aur ghante ki limit.
+Reply variations: Rule mein extra comment templates, har reply ke liye random ek chuna jata hai.
+Rule schedule: Start aur end date, aur rule card par “Ends 20 Oct” jaisa badge.
+Daily summary: Raat ko ek message aata hai, jisme “needs attention” list bhi hoti hai.
+
+Auth ka jawab: /api/automation/* pe Firebase login aur admin check pehle se laga hai, to bina login ke koi rules ya mappings nahi badal sakta.
+
+Setup (sab optional): exact environment variables CHANGES.md mein hain. Pehla test Settings ka “Send test alert” button hai.
+
+Jo maine verify NAHI kiya
+
+Backend typecheck clean hai, aur naye 29 tests pass hue. Purane fail wahi hain, koi naya nahi.
+Telegram/email ka real delivery, Meta ka debug_token response, Vercel Cron, aur Meta ko retry ka asli call yahan se test nahi ho sakta. Retry mein sirf “kaun retry hoga” ka logic test hua.
+Frontend npm run build yahan nahi chala.
+150 replies / 200 DMs per hour ke default mere andaze hain, Meta ki asli limit maine check nahi ki. Apne hisaab se badlo.
+Pehle META_DRY_RUN=true par ek baar dekh lena.
+
+Hobby plan ki limit: Vercel Hobby par cron din mein sirf ek baar chalta hai. Isliye daily summary ke liye wo theek hai, par baar-baar health check ke liye cron-job.org jaisa free scheduler use karo (steps CHANGES.md mein). Token fail hone ka alert cron ke bina bhi turant aata hai.
+
+Cron ki file active nahi hai. backend/vercel.cron.example.json ko vercel.json naam doge tabhi Vercel use karega. Is file se build mein koi dikkat aaye to hata dena.
+
+Pehle backend deploy karke Telegram bot bana lo, phir Settings se test alert bhejo. Wo chal gaya to baaki sab step by step on kar sakte ho.   
+
+
+Delay ke baare mein: reply aur DM ke beech ka 0.8–2.5 second ka pause abhi bhi on hai. 500 comments/ghanta ke hisaab se ye theek hona chahiye, kyunki har webhook alag chalta hai. Phir bhi, agar bahut saare comments ek saath aayein aur webhook slow lage, to AUTOMATION_DELAY_MAX_MS=0 set karke pause band kar do.
+
+Cron ki file active nahi hai. backend/vercel.cron.example.
+
+json ko vercel.json naam doge tabhi Vercel use karega. Is file se build mein koi dikkat aaye to hata dena.
