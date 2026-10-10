@@ -269,9 +269,9 @@ test("click summary groups by day, post and link", () => {
 console.log("Rate guard");
 test("caps and delay come from env with safe defaults", () => {
   const d = capsFromEnv({} as NodeJS.ProcessEnv);
-  assert(d.comment === 150 && d.dm === 200, "defaults");
-  const c = capsFromEnv({ AUTOMATION_MAX_COMMENTS_PER_HOUR: "0", AUTOMATION_MAX_DMS_PER_HOUR: "abc" } as unknown as NodeJS.ProcessEnv);
-  assert(c.comment === 0 && c.dm === 200, "zero = unlimited, garbage = default");
+  assert(d.comment === 0 && d.dm === 0, "no limit unless configured");
+  const c = capsFromEnv({ AUTOMATION_MAX_COMMENTS_PER_HOUR: "600", AUTOMATION_MAX_DMS_PER_HOUR: "abc" } as unknown as NodeJS.ProcessEnv);
+  assert(c.comment === 600 && c.dm === 0, "explicit cap used, garbage falls back to unlimited");
   assert(delayRangeFromEnv({} as NodeJS.ProcessEnv).min === 800, "delay default");
   const off = delayRangeFromEnv({ AUTOMATION_DELAY_MIN_MS: "0", AUTOMATION_DELAY_MAX_MS: "0" } as unknown as NodeJS.ProcessEnv);
   assert(randomDelayMs(off.min, off.max) === 0, "delay off");

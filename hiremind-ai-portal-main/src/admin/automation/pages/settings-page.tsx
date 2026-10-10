@@ -265,7 +265,11 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
           <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
             <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><Gauge className="h-3.5 w-3.5" /> Safety limits</p>
             <p className="mt-2 text-sm text-white/80">
-              {data?.safety ? `${data.safety.maxCommentsPerHour || "No limit"} replies and ${data.safety.maxDmsPerHour || "no limit"} DMs per hour` : "—"}
+              {data?.safety
+                ? !data.safety.maxCommentsPerHour && !data.safety.maxDmsPerHour
+                  ? "No hourly limit"
+                  : `${data.safety.maxCommentsPerHour || "No limit"} replies, ${data.safety.maxDmsPerHour || "no limit"} DMs per hour (whole account)`
+                : "—"}
             </p>
             <p className="mt-2 text-[11px] leading-relaxed text-white/40">
               {data?.safety ? (data.safety.delayMaxMs > 0 ? `Random ${(data.safety.delayMinMs / 1000).toFixed(1)}-${(data.safety.delayMaxMs / 1000).toFixed(1)}s pause between a reply and its DM.` : "No pause between reply and DM.") : ""}

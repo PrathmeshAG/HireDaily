@@ -1,8 +1,10 @@
 // Hourly send caps + a small random pause between the public reply and the DM,
 // so the account behaves less like a bot. Both are env-configurable.
 //
-//   AUTOMATION_MAX_COMMENTS_PER_HOUR  (default 150, 0 = unlimited)
-//   AUTOMATION_MAX_DMS_PER_HOUR       (default 200, 0 = unlimited)
+//   AUTOMATION_MAX_COMMENTS_PER_HOUR  (default 0 = unlimited)
+//   AUTOMATION_MAX_DMS_PER_HOUR       (default 0 = unlimited)
+// The caps count the WHOLE account (all posts together), not one post.
+// They are opt-in: nothing is limited unless you set them.
 //   AUTOMATION_DELAY_MIN_MS / AUTOMATION_DELAY_MAX_MS (default 800 / 2500, 0/0 = off)
 
 import { reserveHourlySlot } from "./firebase-admin.service.js";
@@ -16,8 +18,8 @@ function intEnv(values: NodeJS.ProcessEnv, key: string, fallback: number): numbe
 
 export function capsFromEnv(values: NodeJS.ProcessEnv = process.env): { comment: number; dm: number } {
   return {
-    comment: intEnv(values, "AUTOMATION_MAX_COMMENTS_PER_HOUR", 150),
-    dm: intEnv(values, "AUTOMATION_MAX_DMS_PER_HOUR", 200),
+    comment: intEnv(values, "AUTOMATION_MAX_COMMENTS_PER_HOUR", 0),
+    dm: intEnv(values, "AUTOMATION_MAX_DMS_PER_HOUR", 0),
   };
 }
 

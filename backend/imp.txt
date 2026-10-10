@@ -1,0 +1,20 @@
+Vercel mein backend project ke environment variables mein 
+
+AUTOMATION_MAX_COMMENTS_PER_HOUR=0 aur 
+AUTOMATION_MAX_DMS_PER_HOUR=0 
+
+set karo.
+
+Ye cap ek post par nahi lagta, poore account par lagta hai. Sab posts ke replies milke ek hi ghante ke counter mein ginte hain. 
+Aapke 500 comments/ghanta ke case mein default 150/200 sach mein 350 se zyada replies aur 300 DMs rok deta, aur wo “failed” ban jaate. 
+Ye default maine andaze se rakha tha aur galat tha.
+
+
+Delay ke baare mein: reply aur DM ke beech ka 0.8–2.5 second ka pause abhi bhi on hai. 
+500 comments/ghanta ke hisaab se ye theek hona chahiye, kyunki har webhook alag chalta hai. 
+Phir bhi, agar bahut saare comments ek saath aayein aur webhook slow lage, to 
+
+AUTOMATION_DELAY_MAX_MS=0 
+
+
+set karke pause band kar do.
