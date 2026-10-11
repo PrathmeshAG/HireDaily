@@ -3,6 +3,7 @@
 
 import { sendAlert, getConfiguredChannels } from "../src/services/notifier.service.js";
 import { checkMetaToken, isMetaAuthError, daysUntil } from "../src/services/token-health.service.js";
+import { getEffectiveTokenState } from "../src/services/token-status.service.js";
 import { buildDailySummary, EMPTY_DAY } from "../src/services/summary.service.js";
 import { selectRetryable } from "../src/services/retry.service.js";
 import { simulateComment, buildDmPreview } from "../src/services/simulator.service.js";
@@ -89,10 +90,44 @@ test("debug_token: expires_at 0 means never expires", async () => {
   const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "1", appSecret: "s" });
   assert(s.valid === true && s.neverExpires === true && s.expiresAt === null, "never");
 });
-test("debug_token: invalid token", async () => {
-  const { impl } = fetchStub([{ body: { data: { is_valid: false, expires_at: 1 } } }]);
+test("debug_token says invalid AND both hosts reject it -> invalid", async () => {
+  const { impl } = fetchStub([
+    { body: { data: { is_valid: false, expires_at: 1 } } },
+    { status: 401, body: { error: { code: 190 } } },
+    { status: 401, body: { error: { code: 190 } } },
+  ]);
   const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "1", appSecret: "s" });
   assert(s.valid === false && s.error === "token_invalid_or_expired", "invalid");
+});
+test("Instagram-Login token: Facebook host rejects it but graph.instagram.com accepts -> VALID", async () => {
+  const { calls, impl } = fetchStub([
+    { status: 400, body: { error: { code: 190 } } },       // debug_token cannot parse it
+    { status: 401, body: { error: { code: 190 } } },       // graph.facebook.com /me
+    { ok: true, body: { user_id: "1" } },                  // graph.instagram.com /me
+  ]);
+  const s = await checkMetaToken({ fetchImpl: impl, token: "IGAAtoken", appId: "1", appSecret: "s" });
+  assert(s.valid === true && s.method === "probe", "valid via instagram host");
+  assert(calls.some((c) => c.url.startsWith("https://graph.instagram.com/")), "instagram host was probed");
+});
+test("debug_token says invalid but a real call succeeds -> trust the real call", async () => {
+  const { impl } = fetchStub([{ body: { data: { is_valid: false } } }, { ok: true, body: { id: "1" } }]);
+  const s = await checkMetaToken({ fetchImpl: impl, token: "t", appId: "1", appSecret: "s" });
+  assert(s.valid === true, "valid");
+});
+test("network trouble is unknown, never a false 'invalid'", async () => {
+  const boom = (async () => { throw new Error("offline"); }) as unknown as typeof fetch;
+  const s = await checkMetaToken({ fetchImpl: boom, token: "t", appId: "", appSecret: "" });
+  assert(s.valid === null && s.error === "network_error", "unknown");
+});
+test("effective token state: connected Instagram overrides, manual expiry fills the gap", async () => {
+  const unknown = { valid: false, expiresAt: null, neverExpires: false, dataAccessExpiresAt: null, method: "probe" as const, checkedAt: 1, error: "x" };
+  const later = Date.now() + 20 * 86400000;
+  const s = await getEffectiveTokenState({ instagramConnected: true, check: async () => unknown, readNote: async () => ({ expiresAt: later, savedAt: 1 }) });
+  assert(s.valid === true && s.expiresAt === later && s.expirySource === "manual", "override + manual");
+  const meta = await getEffectiveTokenState({ check: async () => ({ ...unknown, valid: true, expiresAt: 5, error: null }), readNote: async () => ({ expiresAt: later, savedAt: 1 }) });
+  assert(meta.expiresAt === 5 && meta.expirySource === "meta", "Meta's date wins over the manual one");
+  const never = await getEffectiveTokenState({ check: async () => ({ ...unknown, valid: true, neverExpires: true, error: null }), readNote: async () => ({ expiresAt: later, savedAt: 1 }) });
+  assert(never.expiresAt === null && never.neverExpires, "never-expiring token ignores the note");
 });
 test("without app credentials it probes /me and reports expiry as unknown", async () => {
   const { impl } = fetchStub([{ ok: true, body: { id: "1" } }]);
@@ -275,6 +310,8 @@ test("caps and delay come from env with safe defaults", () => {
   assert(delayRangeFromEnv({} as NodeJS.ProcessEnv).min === 800, "delay default");
   const off = delayRangeFromEnv({ AUTOMATION_DELAY_MIN_MS: "0", AUTOMATION_DELAY_MAX_MS: "0" } as unknown as NodeJS.ProcessEnv);
   assert(randomDelayMs(off.min, off.max) === 0, "delay off");
+  const maxOnly = delayRangeFromEnv({ AUTOMATION_DELAY_MAX_MS: "0" } as unknown as NodeJS.ProcessEnv);
+  assert(maxOnly.min === 0 && maxOnly.max === 0, "MAX=0 alone switches the pause off (was a fixed 0.8s before)");
   const big = delayRangeFromEnv({ AUTOMATION_DELAY_MIN_MS: "999999", AUTOMATION_DELAY_MAX_MS: "999999" } as unknown as NodeJS.ProcessEnv);
   assert(big.max <= 5000, "delay capped at 5s so the webhook never stalls");
   assert(randomDelayMs(1000, 2000, () => 0.5) === 1500, "random range");

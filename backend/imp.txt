@@ -56,3 +56,42 @@ Delay ke baare mein: reply aur DM ke beech ka 0.8–2.5 second ka pause abhi bhi
 Cron ki file active nahi hai. backend/vercel.cron.example.
 
 json ko vercel.json naam doge tabhi Vercel use karega. Is file se build mein koi dikkat aaye to hata dena.
+
+
+
+
+1. External-only mapping ka fix: haan, ye Update 4 mein ho chuka hai. Ab {{company}} = “the company”, {{location}} = “Online”, aur {{title}} = pehle link ka naam. Iska test bhi hai.
+
+2. Token “Invalid” dikhna: mera bug tha. Aapka token shayad Instagram-Login wala hai. Aapka asli connection check dono hosts try karta hai, par meri token-health check sirf graph.facebook.com try karti thi, isliye galat “invalid” bolti thi. Alerts on hote to galat alert bhi aate. Ab dono hosts check hote hain, aur Instagram “Connected” ho to token valid mana jata hai. Iske naye tests pass hue hain.
+
+Ek aur bug mila: screenshot mein “Random 0.8–0.8s” dikha. Maine pehle bola tha AUTOMATION_DELAY_MAX_MS=0 set karne se pause band hota hai, par code mein wo fixed 0.8 second ban jata tha. Ab MAX=0 karne se pause sach mein band hota hai.
+
+3. Alerts, tracking aur safety kya hain
+Settings ke har box ke saath ab i icon hai, jisme variables ke naam likhe hain. Short mein:
+
+Alert channels: jahan HireDaily aapko message bhejta hai jab kuch toote (token fail, job delete) aur daily summary. Abhi off hai, jaisa aapne bola.
+Scheduled checks: ek timer jo roz ek private page kholkar token, deleted jobs aur summary check karta hai. Ye alert channel ke bina bekaar hai, to abhi off rehne do. Baad mein CRON_SECRET set karna padega.
+Link click tracking: DM button ke taps ginta hai. Ye abhi On hai (TRACKING_BASE_URL set hai). Ek baar apne phone par DM ka button tap karke dekh lena ki job khulta hai.
+Safety limits: abhi koi limit nahi hai. Variables: AUTOMATION_MAX_COMMENTS_PER_HOUR, AUTOMATION_MAX_DMS_PER_HOUR, AUTOMATION_DELAY_MIN_MS, AUTOMATION_DELAY_MAX_MS.
+
+4. Alerts abhi nahi chahiye: theek hai, jaise hain waise rehne do.
+
+Token ki date ab Settings mein dikhegi. Instagram-Login token ki expiry Meta khud nahi batata, isliye “Set expiry date” button hai. Wahan token banane ki date se 60 din wali date save kar sakte ho (ek click mein “Generated today +60 days”). Phir Settings aur Dashboard par countdown aur warning aayegi.
+
+5. vercel.json kya hai: Vercel ke liye ek settings file hai, jisme aap Vercel ko batate ho “ye URL roz is time par chalao”. Humare liye wo sirf daily summary aur token check ke liye hai. Wo abhi active nahi hai (file ka naam vercel.cron.example.json hai). Alerts on karoge tab hi iska fayda hai, tab tak mat lagao.
+
+6. Users page: upar total users, active this week, followers, not following aur unknown ke cards hain. Neeche top commenters (🥇🥈🥉), most DMs aur newest users hain. Filters, sorting, CSV export aur Instagram profile ka link bhi hai.
+
+Follow status ka matlab:
+
+Follower: Instagram ne confirm kiya ki wo follow karta hai.
+Not following: Instagram ke hisaab se follow nahi karta. Bot ne pehle follow karne bola, phir link bheja.
+Unknown: koi jawab nahi mila. Ya to us user ka follow check hua hi nahi (comment-only rules follow gate nahi chalate), ya Instagram us account ke liye bata nahi paya. Iska matlab “follow nahi karta” nahi hai.
+
+7. HIREDAILY_NOTES.txt: isme sab hai:
+
+Har update mein kya kiya aur kyun.
+Saare environment variables.
+Har 2 mahine ka checklist, token renew sabse upar.
+Gadbad ho to kya dekhna hai.
+Meri galtiyan, aur file ka map.

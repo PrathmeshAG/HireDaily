@@ -306,6 +306,7 @@ export async function getUsers(): Promise<AutomationUser[]> {
     commentCount: u.commentCount,
     dmCount: u.dmCount,
     lastSeen: u.lastActivityAt,
+    firstSeen: u.firstSeenAt,
   }));
 }
 
@@ -493,4 +494,9 @@ export async function sendTestAlert(): Promise<AlertSendResult> {
 
 export async function sendSummaryNow(): Promise<AlertSendResult> {
   return request<AlertSendResult>("/api/automation/summary/send", { method: "POST" });
+}
+
+/** Saves the token expiry date by hand (null clears it). Meta cannot report it for Instagram-Login tokens. */
+export async function saveTokenExpiry(expiresAt: number | null): Promise<void> {
+  await request("/api/automation/token-expiry", { method: "PUT", body: JSON.stringify({ expiresAt }) });
 }

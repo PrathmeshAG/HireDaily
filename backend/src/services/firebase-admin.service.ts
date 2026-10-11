@@ -1520,3 +1520,17 @@ export async function readCommentTemplateVariants(rule: RuleEngineRule): Promise
   }
   return out;
 }
+
+/** Token expiry date the admin entered by hand (Meta cannot report it for Instagram-Login tokens). */
+export async function readTokenExpiryNote(): Promise<{ expiresAt: number; savedAt: number } | null> {
+  const snap = await db().ref("automation/settings/tokenExpiry").get();
+  if (!snap.exists()) return null;
+  const v = snap.val() as Record<string, unknown>;
+  return typeof v?.expiresAt === "number" ? { expiresAt: v.expiresAt, savedAt: typeof v.savedAt === "number" ? v.savedAt : 0 } : null;
+}
+
+export async function writeTokenExpiryNote(expiresAt: number | null): Promise<void> {
+  const ref = db().ref("automation/settings/tokenExpiry");
+  if (expiresAt === null) await ref.remove();
+  else await ref.set({ expiresAt, savedAt: Date.now() });
+}

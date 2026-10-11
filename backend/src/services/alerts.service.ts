@@ -12,7 +12,8 @@ import {
   readClicksForDates,
 } from "./firebase-admin.service.js";
 import { sendAlert, type AlertResult } from "./notifier.service.js";
-import { checkMetaToken, daysUntil, isMetaAuthError, type TokenState } from "./token-health.service.js";
+import { daysUntil, isMetaAuthError, type TokenState } from "./token-health.service.js";
+import { getEffectiveTokenState } from "./token-status.service.js";
 import { findMissingJobMappings, type MissingJobMapping } from "./health-report.service.js";
 import { buildDailySummary, EMPTY_DAY, type DayCounters } from "./summary.service.js";
 import { selectRetryable, DEFAULT_RETRY_HOURS } from "./retry.service.js";
@@ -84,7 +85,7 @@ export interface HealthCheckResult {
 /** Token + deleted-job check. Alerts are throttled so a scheduler can call this often. */
 export async function runHealthCheck(): Promise<HealthCheckResult> {
   const alertsSent: string[] = [];
-  const token = await checkMetaToken();
+  const token = await getEffectiveTokenState();
 
   if (token.valid === false) {
     if (await claimAlertSlot("token_invalid", 6 * HOUR)) {
@@ -128,7 +129,7 @@ export async function buildSummaryNow(): Promise<{ title: string; body: string }
   const yesterday = analytics.length > 1 ? toDay(analytics[analytics.length - 2]) : null;
 
   const [token, missing, retryable, unmatched] = await Promise.all([
-    checkMetaToken().catch(() => null),
+    getEffectiveTokenState().catch(() => null),
     findMissingJobs().catch(() => []),
     countRetryable().catch(() => 0),
     countUnmatchedComments().catch(() => 0),

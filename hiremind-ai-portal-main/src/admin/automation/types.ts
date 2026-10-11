@@ -81,6 +81,8 @@ export interface AutomationUser {
   commentCount: number;
   dmCount: number;
   lastSeen: number;
+  /** When this user first triggered the automation (unix ms). */
+  firstSeen?: number;
 }
 
 export type LogType =
@@ -176,6 +178,8 @@ export interface TokenState {
   method: "debug_token" | "probe" | "none";
   checkedAt: number;
   error: string | null;
+  /** Where the expiry date came from: Meta itself, or a date saved by the admin. */
+  expirySource?: "meta" | "manual" | null;
 }
 
 export interface AutomationSettings {

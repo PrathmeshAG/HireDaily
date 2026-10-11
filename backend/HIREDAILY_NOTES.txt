@@ -1,0 +1,199 @@
+==========================================================================
+HIRE DAILY - INSTAGRAM AUTOMATION: NOTES FOR FUTURE ME  (written 11 Oct 2026)
+==========================================================================
+Ye file 2-3 mahine baad padhne ke liye hai: kya kya kiya, kyun kiya, aur
+aage kya yaad rakhna hai. Simple rakha hai.
+
+
+1) YE SYSTEM KYA HAI (ek line mein)
+--------------------------------------------------------------------------
+Koi Instagram post par keyword comment kare -> rule match -> post ke
+mapping se job links nikalte hain -> public reply + DM (links ke saath)
+bhejte hain -> follow gate (follow karta hai ya nahi) -> logs + analytics.
+
+Do hisse:
+  backend/                      Express + Firebase + Meta API (Vercel par: hiredaily-backend)
+  hiremind-ai-portal-main/      Website + admin panel (Vercel par: hire-daily)
+Admin panel: /admin/automation  (Dashboard, Post Mapping, Rules, Templates,
+Users, Logs, Analytics, Settings)
+
+
+2) JO KUCH KIYA AUR KYUN  (update by update)
+--------------------------------------------------------------------------
+UPDATE 1  (backend fix + multi-link)
+  - BUG: rule ka "replyMode" save hota tha par kahin check nahi hota tha,
+    isliye "only comment" aur "only DM" kaam nahi karte the. Ab karte hain.
+  - BUG: Post Mapping ka Archive button kuch nahi karta tha. Ab karta hai.
+  - Ek post par 5 links tak (job + dusre jobs + external link), ek hi DM mein.
+  - Job aur post chunne ke dropdown mein search + latest pehle.
+  KYUN: ek post par kabhi 2-3 jobs lagte hain; rules set karna slow tha.
+
+UPDATE 2  (buttons, templates, analytics)
+  - 2+ links ab buttons ke saath: 2-3 links = har link ka button,
+    4-5 links = swipe cards. Meta reject kare to plain text list (fallback).
+  - 7 ready-made emoji templates + button wala preview.
+  - Analytics bahut detail mein (funnel, follow gate, insights, CSV).
+  - Pages ko animated/professional banaya (SVG art, count-up numbers).
+  KYUN: text list mein link dikhte the, button zyada click hote hain.
+
+TOKEN OUTAGE (9 Oct)
+  - Meta access token expire hua, ~11 ghante automation band raha, kisi ko
+    pata nahi chala. Vercel log mein: "Session has expired".
+  - Isse bachne ke liye Update 4 (alerts) aur Settings mein token date aayi.
+  - Maine Settings mein "disconnect reason" dikhana shuru kiya.
+  - Vercel log ka X-Forwarded-For error: backend mein "trust proxy" set kiya.
+
+UPDATE 3  (UX + job optional)
+  - Dialog page ke beech khulte the (bahut scroll). Ab screen par upar se.
+  - Analytics: har chart par "i" explanation, glossary, weekday chart, insights.
+  - Post Mapping: job optional. Sirf external link se bhi mapping banti hai.
+  - Rules aur Post Mapping mein sorting (Newest first default).
+
+UPDATE 4  (reliability + tools)
+  - Token alert (Telegram/email/webhook) - ABHI OFF, baad mein on karna hai.
+  - Retry failed (Logs page): fail hue comments ek click mein dobara.
+  - Deleted job warning (Dashboard + Post Mapping badge).
+  - Link click tracking (DM button ke clicks gino).
+  - "Test a comment" (Rules page): bina bheje dekho kya hoga.
+  - Unmatched comments inbox (Rules page): naye keywords dhundo.
+  - Hourly cap + random delay (safety), Reply variations (rotation),
+    Rule start/end date, Daily summary message.
+
+UPDATE 5  (fixes + Users + Settings)
+  - Users page: top commenters, most DMs, newest, follow status explain,
+    filters, sorting, CSV.
+  - Settings: token expiry date (manual save), "i" icons jo env variables batate hain.
+  - Do bug fix (neeche "MERI GALTIYAN" dekho).
+
+
+3) ENVIRONMENT VARIABLES  (Vercel > backend project > Settings > Env Vars)
+--------------------------------------------------------------------------
+Pehle se zaroori (backend/src/config/env.ts mein poori list):
+  META_ACCESS_TOKEN, INSTAGRAM_BUSINESS_ID, META_APP_ID, META_APP_SECRET,
+  META_DRY_RUN (true = kuch asli nahi bhejta, sirf test)
+
+Naye, sab OPTIONAL (set nahi karoge to purana behaviour):
+  TRACKING_BASE_URL   backend ka public URL, jaise https://hiredaily-backend.vercel.app
+                      (ye set hai: Settings mein "Link click tracking: On")
+  CRON_SECRET         lamba random text. Scheduled checks ke liye.
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID           Telegram alerts
+  RESEND_API_KEY, ALERT_EMAIL_TO, ALERT_EMAIL_FROM   Email alerts
+  ALERT_WEBHOOK_URL                              Slack/Discord alerts
+  AUTOMATION_MAX_COMMENTS_PER_HOUR   0/khali = limit nahi (poore account par, sab posts milke)
+  AUTOMATION_MAX_DMS_PER_HOUR        0/khali = limit nahi
+  AUTOMATION_DELAY_MIN_MS, AUTOMATION_DELAY_MAX_MS   reply aur DM ke beech random pause
+                      MAX = 0 karo to pause band. (Default 800 - 2500 ms)
+Env change ke baad backend REDEPLOY zaroori hai.
+
+
+4) HAR 2 MAHINE MEIN YE KARNA (sabse zaroori)
+--------------------------------------------------------------------------
+[ ] META TOKEN RENEW. Instagram-Login token 60 din ka hota hai.
+    - Settings > Instagram Connection > "Set expiry date" mein date save karo
+      (Meta is token type ki date khud nahi batata).
+    - Dashboard par 7 din pehle warning aayegi.
+    - Naya token: Meta developer console se generate -> Vercel mein
+      META_ACCESS_TOKEN update -> backend redeploy -> Settings "Re-check".
+    - Facebook Page token ho to usually expire nahi hota (expires_at 0).
+    - Token check karne ka link:
+      https://graph.facebook.com/debug_token?input_token=TOKEN&access_token=APP_ID|APP_SECRET
+      (Instagram-Login token par ye kaam nahi karta, isliye date manual save karte hain.)
+[ ] Logs page ka "Retry failed" panel dekho. Kuch pada ho to retry karo
+    (Meta sirf ~7 din tak reply allow karta hai).
+[ ] Dashboard par red/yellow banner (deleted job, unmatched comments).
+[ ] Unmatched comments dekhkar naye keywords add karo.
+[ ] Rules ki end date check karo (purani job ke rules band karo).
+[ ] Firebase mein purane logs/users badhte jaate hain - kabhi size dekh lo.
+    Unmatched comments khud 30 din baad hatte hain, par SIRF jab daily cron on ho.
+
+
+5) KUCH GADBAD HO TO
+--------------------------------------------------------------------------
+Settings mein "Disconnected" / Replies nahi ja rahe:
+  1. Vercel > hiredaily-backend > Logs mein "Comment reply failed" dhundo.
+  2. "Session has expired" / "Error validating access token" = token expire.
+     Naya token lagao (upar step), phir Logs > Retry failed.
+  3. Dashboard/Settings ka message dekho (token invalid, job deleted...).
+Reply gaya par DM nahi: Logs mein DM error dekho; follow gate ka status dekho.
+Rule match nahi ho raha: Rules > "Test a comment" chalao, wo bata dega kyun.
+Template se reply nahi ja raha: kisi variable (company/location) ki value khali hogi.
+  Khali variable par app reply BHEJTA HI NAHI (ye original behaviour hai).
+  Job ke bina mapping mein company="the company", location="Online" aata hai.
+DM mein button nahi dikha: Meta ne structured message reject kiya hoga; plain
+  text list chali jaati hai (fallback). Logs mein check karo.
+Click count nahi badh raha: TRACKING_BASE_URL sahi hai? DM ka button tap karke dekho.
+Vercel log mein 429 / rate limit: API ka rate limit 120 requests / 15 min.
+Test chalane: backend folder mein "npx tsx test/update4.test.ts" (aur multi-link,
+  post-mapping, instagram, automation-final).
+  PURANE FAIL TESTS (mere changes se pehle ke): rule-engine 2, instagram-dm 11,
+  env-validation 1. Inhe ignore mat karna, kabhi theek karna.
+
+
+6) FOLLOW STATUS KA MATLAB (Users page)
+--------------------------------------------------------------------------
+Follower      = Instagram ne confirm kiya ki wo follow karta hai. Link turant mila.
+Not following = Instagram ke hisaab se follow nahi karta. Pehle follow karne bola,
+                confirm karne ke baad link bheja.
+Unknown       = Jawab nahi mila. Ya to kabhi check hi nahi hua (comment-only rule
+                follow gate nahi chalata, purane users), ya Instagram us account ke
+                liye bata nahi paya. "Follow nahi karta" ka matlab NAHI hai.
+Ye har user ka SABSE LATEST follow-check result hai.
+
+
+7) VERCEL.JSON KYA HAI (aur kyun chahiye)
+--------------------------------------------------------------------------
+vercel.json = Vercel ke liye ek settings file (project folder mein).
+Usme aap Vercel ko batate ho: kaunsa URL kab apne aap chalana hai ("crons"),
+redirects, headers etc.
+Humne sirf cron ke liye banaya hai: roz raat 9 baje (IST) /api/cron/daily
+chale -> token check + deleted jobs check + daily summary message.
+Abhi ACTIVE NAHI hai: file ka naam backend/vercel.cron.example.json hai.
+Jab alerts on karo: usse "vercel.json" naam do, redeploy. (Vercel Hobby plan par
+cron din mein sirf ek baar chalta hai.) Alerts ke bina iska fayda nahi,
+isliye abhi mat lagao. Naya file hone se build mein koi dikkat aaye to hata do.
+Alternative: cron-job.org (free) se URL call karwao.
+
+
+8) MERI GALTIYAN (jo baad mein pakdi) - future ke liye seekh
+--------------------------------------------------------------------------
+- Job ke bina (external-only) mapping mein company/location khali chhodna galat tha,
+  reply fail hota. Ab "the company"/"Online".
+- Hourly cap ka default 150/200 galat tha (aapke 500 comments/ghanta). Ab default OFF.
+- Token check sirf graph.facebook.com par karta tha, Instagram-Login token ko galat
+  "invalid" bolta tha. Ab dono hosts check karta hai, aur connection check ko mante hain.
+- AUTOMATION_DELAY_MAX_MS=0 se pause band nahi hota tha (0.8s fixed ho jaata tha). Ab band hota hai.
+Seekh: naye "safety" features ka default hamesha OFF rakho aur pehle DRY RUN par dekho.
+
+
+9) JO MAINE VERIFY NAHI KIYA (yahan se possible nahi tha)
+--------------------------------------------------------------------------
+- Telegram/email ka asli delivery, Vercel cron, Meta ka debug_token asli response.
+- Meta ki asli hourly limits (private replies etc.). Docs dekh kar hi cap lagao.
+- Retry ka asli Meta call (sirf "kaun retry hoga" ka logic test hua).
+- Frontend "npm run build" (yahan node_modules Windows ke the).
+Pehle META_DRY_RUN=true par test, phir asli.
+
+
+10) FILES KAHAN HAIN (jaldi map)
+--------------------------------------------------------------------------
+backend/src/server.ts                        saare API routes + webhook flow
+backend/src/services/instagram.service.ts    reply/DM bhejna, buttons, cards
+backend/src/services/follow-gate.service.ts  follow gate
+backend/src/services/rule-engine.service.ts  rule match
+backend/src/services/post-mapping.service.ts post -> job links
+backend/src/services/firebase-admin.service.ts  saara Firebase read/write
+backend/src/services/alerts / notifier / token-health / token-status / summary
+backend/src/services/retry / simulator / click-tracking / rate-guard / health-report
+backend/test/                                tests
+hiremind-ai-portal-main/src/admin/automation/
+    pages/        har admin page
+    components/   searchable-picker, dm-preview, info-tip, retry-panel,
+                  simulator-dialog, unmatched-panel, illustrations ...
+    services/automation-service.ts   frontend se backend API calls
+    types.ts
+Deploy order: PEHLE backend, PHIR frontend.
+
+Zip files jo mile (har ek pichhle ke upar): final-patch-v2, update2-only, update3-only,
+update4-only, cap-fix, update5-only. Naya project copy karna ho to latest code
+(proj folder) hi source of truth hai.
+==========================================================================

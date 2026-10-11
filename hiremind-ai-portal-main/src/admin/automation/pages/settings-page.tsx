@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import {
   Instagram, Webhook, Activity, ShieldCheck, CheckCircle2, XCircle, KeyRound, RefreshCw, ScrollText, FlaskConical, BellRing, Send, Loader2, MousePointerClick, Gauge,
 } from "lucide-react";
-import { checkBackendHealth, getSettings, sendTestAlert, sendSummaryNow } from "../services/automation-service";
+import { checkBackendHealth, getSettings, sendTestAlert, sendSummaryNow, saveTokenExpiry } from "../services/automation-service";
+import { InfoTip } from "../components/info-tip";
 import type { TokenState } from "../types";
 import { StatusBadge } from "../components/status-badge";
 import { PageHeader } from "../components/page-header";
@@ -21,12 +22,12 @@ function describeToken(token: TokenState | undefined): { text: string; tone: "ok
     const days = Math.floor((token.expiresAt - Date.now()) / DAY_MS);
     const date = new Date(token.expiresAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
     return {
-      text: `${date} (${days <= 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`})`,
+      text: `${date} (${days <= 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`})${token.expirySource === "manual" ? " · saved by you" : ""}`,
       tone: days <= 3 ? "bad" : days <= 7 ? "warn" : "ok",
       detail: days <= 7 ? "Replace the token before this date." : undefined,
     };
   }
-  return { text: "Unknown", tone: "muted", detail: "Meta did not report an expiry for this token." };
+  return { text: "Not known", tone: "muted", detail: "Meta does not report an expiry for this token type. Save the date yourself below." };
 }
 
 const TONE_TEXT = { ok: "text-emerald-300", warn: "text-amber-300", bad: "text-rose-300", muted: "text-white/60" } as const;
@@ -55,6 +56,39 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
   const { data, isLoading, refetch } = useQuery({ queryKey: ["automation", "settings"], queryFn: getSettings, staleTime: 15_000 });
   const [healthBusy, setHealthBusy] = useState(false);
   const [alertBusy, setAlertBusy] = useState<"test" | "summary" | null>(null);
+  const [editingExpiry, setEditingExpiry] = useState(false);
+  const [expiryInput, setExpiryInput] = useState("");
+  const [expiryBusy, setExpiryBusy] = useState(false);
+
+  const saveExpiry = async (value: string | null) => {
+    setExpiryBusy(true);
+    try {
+      let ts: number | null = null;
+      if (value) {
+        const [y, m, d] = value.split("-").map(Number);
+        ts = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+      }
+      await saveTokenExpiry(ts);
+      toast.success(ts ? "Expiry date saved" : "Expiry date cleared");
+      setEditingExpiry(false);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["automation", "settings"] }),
+        qc.invalidateQueries({ queryKey: ["automation", "health-report"] }),
+      ]);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setExpiryBusy(false);
+    }
+  };
+
+  const plus60 = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 60);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    setExpiryInput(`${d.getFullYear()}-${mm}-${dd}`);
+  };
 
   const runAlert = async (kind: "test" | "summary") => {
     setAlertBusy(kind);
@@ -159,6 +193,28 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
               {describeToken(data?.token).detail && describeToken(data?.token).tone !== "ok" && (
                 <p className={`text-[11px] ${TONE_TEXT[describeToken(data?.token).tone]}`}>{describeToken(data?.token).detail}</p>
               )}
+              {data?.token && !data.token.neverExpires && data.token.expirySource !== "meta" && (
+                editingExpiry ? (
+                  <div className="space-y-2 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
+                    <label className="block text-[11px] text-white/50">Token expiry date</label>
+                    <input type="date" value={expiryInput} onChange={(e) => setExpiryInput(e.target.value)} className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white ring-1 ring-white/10 focus:outline-none focus:ring-[#00e5ff]/50" />
+                    <div className="flex flex-wrap gap-1.5">
+                      <button type="button" onClick={plus60} className="rounded-md px-2 py-1 text-[11px] text-white/60 ring-1 ring-white/10 hover:text-white">Generated today (+60 days)</button>
+                      <button type="button" disabled={!expiryInput || expiryBusy} onClick={() => saveExpiry(expiryInput)} className="btn-glow rounded-md px-3 py-1 text-[11px] disabled:opacity-50">Save</button>
+                      {data.token.expirySource === "manual" && <button type="button" disabled={expiryBusy} onClick={() => saveExpiry(null)} className="rounded-md px-2 py-1 text-[11px] text-rose-300 ring-1 ring-rose-500/25">Clear</button>}
+                      <button type="button" onClick={() => setEditingExpiry(false)} className="rounded-md px-2 py-1 text-[11px] text-white/50">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setExpiryInput(data.token?.expiresAt ? new Date(data.token.expiresAt).toISOString().slice(0, 10) : ""); setEditingExpiry(true); }}
+                    className="text-[11px] text-[#67e8f9] hover:underline"
+                  >
+                    {data.token.expirySource === "manual" ? "Change saved date" : "Set expiry date"}
+                  </button>
+                )
+              )}
             </div>
             <button onClick={refreshConnection} disabled={healthBusy} className="btn-ghost-glow mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm disabled:opacity-60"><RefreshCw className={`h-3.5 w-3.5 ${healthBusy ? "animate-spin" : ""}`} /> Re-check connection</button>
           </div>
@@ -239,7 +295,17 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
-            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><BellRing className="h-3.5 w-3.5" /> Alert channels</p>
+            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><BellRing className="h-3.5 w-3.5" /> Alert channels
+              <InfoTip title="Alert channels">
+                <p>Where HireDaily sends you a message when something breaks (token expired or failing, deleted jobs) and the daily summary. It is optional and currently off until you add one below.</p>
+                <p className="mt-2 font-semibold text-white/80">Variables to set on the backend:</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  <li><b>Telegram:</b> TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID</li>
+                  <li><b>Email (Resend):</b> RESEND_API_KEY, ALERT_EMAIL_TO, optional ALERT_EMAIL_FROM</li>
+                  <li><b>Slack or Discord:</b> ALERT_WEBHOOK_URL (https)</li>
+                </ul>
+                <p className="mt-2">Set them in Vercel, backend project, Settings, Environment Variables, then redeploy. Use Send test alert to confirm.</p>
+              </InfoTip></p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {(data?.alerts?.channels ?? []).length > 0 ? (
                 data!.alerts!.channels.map((c) => (
@@ -249,13 +315,29 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
                 <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300 ring-1 ring-amber-500/25">Not configured</span>
               )}
             </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-white/40">
-              Scheduled checks: {data?.alerts?.cronConfigured ? <span className="text-emerald-300">enabled</span> : <span className="text-amber-300">off (set CRON_SECRET)</span>}
+            <p className="mt-3 flex items-center gap-1.5 text-[11px] leading-relaxed text-white/40">
+              Scheduled checks: {data?.alerts?.cronConfigured ? <span className="text-emerald-300">enabled</span> : <span className="text-amber-300">off</span>}
+              <InfoTip title="Scheduled checks">
+                <p>A timer that opens a private page of your backend once a day (or more often) to: check the token, look for deleted jobs, remove old unmatched comments and send the daily summary.</p>
+                <p className="mt-2">It is only useful together with an alert channel. Without one nothing is sent, so you can leave it off for now.</p>
+                <p className="mt-2 font-semibold text-white/80">To enable later:</p>
+                <ol className="mt-1 list-decimal space-y-1 pl-4">
+                  <li>Set <b>CRON_SECRET</b> (any long random text) on the backend and redeploy.</li>
+                  <li>Make something call <b>/api/cron/daily</b> daily with that secret: Vercel Cron (rename backend/vercel.cron.example.json to vercel.json) or a free site like cron-job.org.</li>
+                </ol>
+                <p className="mt-2">Token failure alerts do not need this. They fire immediately when a reply fails.</p>
+              </InfoTip>
             </p>
           </div>
 
           <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
-            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><MousePointerClick className="h-3.5 w-3.5" /> Link click tracking</p>
+            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><MousePointerClick className="h-3.5 w-3.5" /> Link click tracking
+              <InfoTip title="Link click tracking">
+                <p>Counts how many people tap the job buttons inside your DMs. The button opens your backend for a split second, which adds one to the counter, then sends the person to the job.</p>
+                <p className="mt-2">Results appear in Analytics (clicks, click rate, clicks per post and link).</p>
+                <p className="mt-2 font-semibold text-white/80">Variable:</p>
+                <p><b>TRACKING_BASE_URL</b> = the public address of this backend, for example https://hiredaily-backend.vercel.app (no slash at the end). Remove it to switch tracking off; links then go directly to the job.</p>
+              </InfoTip></p>
             <p className={`mt-2 text-sm ${data?.tracking?.enabled ? "text-emerald-300" : "text-white/60"}`}>{data?.tracking?.enabled ? "On" : "Off"}</p>
             <p className="mt-2 text-[11px] leading-relaxed text-white/40">
               {data?.tracking?.enabled ? "DM buttons count clicks, shown in Analytics." : "Set TRACKING_BASE_URL (this backend's public URL) to count clicks from DM buttons."}
@@ -263,7 +345,17 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
           </div>
 
           <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
-            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><Gauge className="h-3.5 w-3.5" /> Safety limits</p>
+            <p className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40"><Gauge className="h-3.5 w-3.5" /> Safety limits
+              <InfoTip title="Safety limits">
+                <p>Optional guard rails so the account does not behave like a script. Hourly limits count the whole account (all posts together), and are OFF unless you set them.</p>
+                <p className="mt-2 font-semibold text-white/80">Variables:</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  <li><b>AUTOMATION_MAX_COMMENTS_PER_HOUR</b>: most public replies per hour (0 or empty = no limit)</li>
+                  <li><b>AUTOMATION_MAX_DMS_PER_HOUR</b>: most DMs per hour (0 or empty = no limit)</li>
+                  <li><b>AUTOMATION_DELAY_MIN_MS</b> and <b>AUTOMATION_DELAY_MAX_MS</b>: random pause between a reply and its DM, in milliseconds. Set MAX to 0 to switch the pause off.</li>
+                </ul>
+                <p className="mt-2">Anything over the limit is logged as failed and can be sent later from Logs, Retry failed.</p>
+              </InfoTip></p>
             <p className="mt-2 text-sm text-white/80">
               {data?.safety
                 ? !data.safety.maxCommentsPerHour && !data.safety.maxDmsPerHour

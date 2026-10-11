@@ -76,7 +76,8 @@ import {
 } from "./services/firebase-admin.service.js";
 import { reserveSend, pauseBetweenActions, capsFromEnv, delayRangeFromEnv } from "./services/rate-guard.service.js";
 import { notifyIfAuthFailure, runHealthCheck, sendDailySummaryNow, findMissingJobs, countRetryable, dailyHousekeeping } from "./services/alerts.service.js";
-import { checkMetaToken } from "./services/token-health.service.js";
+import { getEffectiveTokenState } from "./services/token-status.service.js";
+import { writeTokenExpiryNote } from "./services/firebase-admin.service.js";
 import { getConfiguredChannels, sendAlert } from "./services/notifier.service.js";
 import { selectRetryable, retryItem, MAX_RETRY_HOURS, DEFAULT_RETRY_HOURS } from "./services/retry.service.js";
 import { simulateComment } from "./services/simulator.service.js";
@@ -1527,7 +1528,7 @@ app.get("/api/automation/settings", async (req, res) => {
     const apiOk = isFirebase && (metaConfigured ? instagram.connected : false);
 
     // Token expiry + alert/safety configuration (no secrets, only flags).
-    const tokenState = await getCachedTokenState();
+    const tokenState = await getCachedTokenState(instagram.connected);
     const caps = capsFromEnv();
     const delay = delayRangeFromEnv();
 
@@ -1576,11 +1577,13 @@ app.get("/api/automation/settings", async (req, res) => {
 // (/r/... and /api/cron/...) have their own protection.
 // ===========================================================================
 
-let tokenStateCache: { at: number; value: Awaited<ReturnType<typeof checkMetaToken>> } | null = null;
-async function getCachedTokenState() {
-  if (tokenStateCache && Date.now() - tokenStateCache.at < 5 * 60 * 1000) return tokenStateCache.value;
-  const value = await checkMetaToken();
-  tokenStateCache = { at: Date.now(), value };
+let tokenStateCache: { at: number; connected: boolean | undefined; value: Awaited<ReturnType<typeof getEffectiveTokenState>> } | null = null;
+async function getCachedTokenState(instagramConnected?: boolean) {
+  if (tokenStateCache && tokenStateCache.connected === instagramConnected && Date.now() - tokenStateCache.at < 5 * 60 * 1000) {
+    return tokenStateCache.value;
+  }
+  const value = await getEffectiveTokenState({ instagramConnected });
+  tokenStateCache = { at: Date.now(), connected: instagramConnected, value };
   return value;
 }
 
@@ -1789,6 +1792,32 @@ app.get("/api/automation/clicks", async (req, res) => {
   } catch (e) {
     logger.error("Failed to read clicks", { error: e });
     res.status(500).json({ error: "failed_to_read_clicks" });
+  }
+});
+
+/**
+ * PUT /api/automation/token-expiry { expiresAt: number | null }
+ * Lets the admin record when the Meta token expires (Meta cannot report this
+ * for Instagram-Login tokens). null clears it.
+ */
+app.put("/api/automation/token-expiry", async (req, res) => {
+  try {
+    const raw = (req.body ?? {}).expiresAt;
+    if (raw !== null && (typeof raw !== "number" || !Number.isFinite(raw))) {
+      res.status(400).json({ error: "expiresAt_must_be_a_number_or_null" });
+      return;
+    }
+    const now = Date.now();
+    if (raw !== null && (raw < now - 24 * 3600 * 1000 || raw > now + 800 * 24 * 3600 * 1000)) {
+      res.status(400).json({ error: "expiresAt_out_of_range" });
+      return;
+    }
+    await writeTokenExpiryNote(raw);
+    tokenStateCache = null;
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    logger.error("Failed to save token expiry", { error: e });
+    res.status(500).json({ error: "failed_to_save_token_expiry" });
   }
 });
 

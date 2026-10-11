@@ -62,42 +62,65 @@ export async function checkMetaToken(
 
   if (!token) return { ...base, valid: false, error: "missing_access_token" };
 
+  let debugSaysInvalid = false;
+
   if (appId && appSecret) {
     try {
       const url = `${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`;
       const res = await fetchImpl(url);
       const json = (await res.json().catch(() => null)) as {
-        data?: { is_valid?: boolean; expires_at?: number; data_access_expires_at?: number; error?: { message?: string } };
-        error?: { code?: number };
+        data?: { is_valid?: boolean; expires_at?: number; data_access_expires_at?: number };
       } | null;
       const data = json?.data;
       if (res.ok && data && typeof data.is_valid === "boolean") {
-        const exp = typeof data.expires_at === "number" ? data.expires_at : null;
-        const da = typeof data.data_access_expires_at === "number" && data.data_access_expires_at > 0 ? data.data_access_expires_at * 1000 : null;
-        return {
-          valid: data.is_valid,
-          expiresAt: exp && exp > 0 ? exp * 1000 : null,
-          neverExpires: exp === 0,
-          dataAccessExpiresAt: da,
-          method: "debug_token",
-          checkedAt: now,
-          error: data.is_valid ? null : "token_invalid_or_expired",
-        };
+        if (data.is_valid) {
+          const exp = typeof data.expires_at === "number" ? data.expires_at : null;
+          const da = typeof data.data_access_expires_at === "number" && data.data_access_expires_at > 0 ? data.data_access_expires_at * 1000 : null;
+          return {
+            valid: true,
+            expiresAt: exp && exp > 0 ? exp * 1000 : null,
+            neverExpires: exp === 0,
+            dataAccessExpiresAt: da,
+            method: "debug_token",
+            checkedAt: now,
+            error: null,
+          };
+        }
+        // debug_token can say "invalid" for token types it does not
+        // understand (e.g. Instagram-Login tokens). Confirm with real calls.
+        debugSaysInvalid = true;
       }
     } catch {
-      // fall through to the probe
+      // fall through to the probes
     }
   }
 
-  try {
-    const res = await fetchImpl(`${GRAPH}/me?fields=id&access_token=${encodeURIComponent(token)}`);
-    if (res.ok) return { ...base, valid: true, method: "probe" };
-    const json = (await res.json().catch(() => null)) as { error?: { code?: number } } | null;
-    if (res.status === 401 || json?.error?.code === 190) {
-      return { ...base, valid: false, method: "probe", error: "token_invalid_or_expired" };
+  // Probe the same two hosts the connection check uses. A token only has to
+  // work on ONE of them (Facebook-Login/Page tokens vs Instagram-Login tokens).
+  const probes = [
+    `${GRAPH}/me?fields=id&access_token=${encodeURIComponent(token)}`,
+    `https://graph.instagram.com/v24.0/me?fields=user_id&access_token=${encodeURIComponent(token)}`,
+  ];
+  let authRejections = 0;
+  let otherFailure: string | null = null;
+  for (const url of probes) {
+    try {
+      const res = await fetchImpl(url);
+      if (res.ok) return { ...base, valid: true, method: "probe" };
+      const json = (await res.json().catch(() => null)) as { error?: { code?: number } } | null;
+      if (res.status === 401 || json?.error?.code === 190) authRejections += 1;
+      else otherFailure = `meta_http_${res.status}`;
+    } catch {
+      otherFailure = "network_error";
     }
-    return { ...base, method: "probe", error: `meta_http_${res.status}` };
-  } catch {
-    return { ...base, method: "probe", error: "network_error" };
   }
+
+  // Invalid only when EVERY host rejected the token as an auth failure.
+  if (authRejections === probes.length) {
+    return { ...base, valid: false, method: "probe", error: "token_invalid_or_expired" };
+  }
+  if (debugSaysInvalid && authRejections > 0 && !otherFailure) {
+    return { ...base, valid: false, method: "probe", error: "token_invalid_or_expired" };
+  }
+  return { ...base, method: "probe", error: otherFailure };
 }

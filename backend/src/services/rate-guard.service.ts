@@ -5,7 +5,7 @@
 //   AUTOMATION_MAX_DMS_PER_HOUR       (default 0 = unlimited)
 // The caps count the WHOLE account (all posts together), not one post.
 // They are opt-in: nothing is limited unless you set them.
-//   AUTOMATION_DELAY_MIN_MS / AUTOMATION_DELAY_MAX_MS (default 800 / 2500, 0/0 = off)
+//   AUTOMATION_DELAY_MIN_MS / AUTOMATION_DELAY_MAX_MS (default 800 / 2500; MAX = 0 turns the pause off)
 
 import { reserveHourlySlot } from "./firebase-admin.service.js";
 
@@ -24,8 +24,11 @@ export function capsFromEnv(values: NodeJS.ProcessEnv = process.env): { comment:
 }
 
 export function delayRangeFromEnv(values: NodeJS.ProcessEnv = process.env): { min: number; max: number } {
+  const rawMax = intEnv(values, "AUTOMATION_DELAY_MAX_MS", 2500);
+  // MAX = 0 switches the pause off completely (no matter what MIN is).
+  if (rawMax === 0) return { min: 0, max: 0 };
   const min = Math.min(intEnv(values, "AUTOMATION_DELAY_MIN_MS", 800), 5000);
-  const max = Math.min(Math.max(intEnv(values, "AUTOMATION_DELAY_MAX_MS", 2500), min), 5000);
+  const max = Math.min(Math.max(rawMax, min), 5000);
   return { min, max };
 }
 
