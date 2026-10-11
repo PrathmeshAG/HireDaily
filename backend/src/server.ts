@@ -81,7 +81,7 @@ import { writeTokenExpiryNote } from "./services/firebase-admin.service.js";
 import { getConfiguredChannels, sendAlert } from "./services/notifier.service.js";
 import { selectRetryable, retryItem, MAX_RETRY_HOURS, DEFAULT_RETRY_HOURS } from "./services/retry.service.js";
 import { simulateComment } from "./services/simulator.service.js";
-import { trackingBaseUrl, isCrawlerUserAgent, lastDates, summarizeClicks } from "./services/click-tracking.service.js";
+import { isCrawlerUserAgent, lastDates, summarizeClicks, getTrackingCheck, siteHostsFromEnv } from "./services/click-tracking.service.js";
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
 
@@ -1543,7 +1543,7 @@ app.get("/api/automation/settings", async (req, res) => {
         channels: getConfiguredChannels(),
         cronConfigured: !!process.env.CRON_SECRET?.trim(),
       },
-      tracking: { enabled: trackingBaseUrl() !== null },
+      tracking: await trackingStatus(),
       safety: {
         maxCommentsPerHour: caps.comment,
         maxDmsPerHour: caps.dm,
@@ -1577,6 +1577,13 @@ app.get("/api/automation/settings", async (req, res) => {
 // (/r/... and /api/cron/...) have their own protection.
 // ===========================================================================
 
+/** configured = env var set; working = verified to point at this backend (null when not configured). */
+async function trackingStatus(): Promise<{ enabled: boolean; working: boolean; problem: string | null; detail: string | null }> {
+  const { base, check } = await getTrackingCheck({ siteHosts: siteHostsFromEnv() }).catch(() => ({ base: null, check: null }));
+  if (!base) return { enabled: false, working: false, problem: null, detail: null };
+  return { enabled: true, working: !!check?.ok, problem: check?.problem ?? null, detail: check?.detail ?? null };
+}
+
 let tokenStateCache: { at: number; connected: boolean | undefined; value: Awaited<ReturnType<typeof getEffectiveTokenState>> } | null = null;
 async function getCachedTokenState(instagramConnected?: boolean) {
   if (tokenStateCache && tokenStateCache.connected === instagramConnected && Date.now() - tokenStateCache.at < 5 * 60 * 1000) {
@@ -1592,6 +1599,11 @@ async function getCachedTokenState(instagramConnected?: boolean) {
  * The destination is ALWAYS read from the post mapping on the server, never
  * from the URL, so this cannot be abused as an open redirect.
  */
+app.use("/r", (_req, res, next) => {
+  // Lets the tracking self-check recognise this route (see verifyTrackingBase).
+  res.setHeader("X-HD-Click-Route", "1");
+  next();
+});
 const clickLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: true, legacyHeaders: false });
 app.get("/r/:mediaId/:idx", clickLimiter, async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
@@ -1783,7 +1795,7 @@ app.delete("/api/automation/unmatched", async (_req, res) => {
 /** GET /api/automation/clicks?days=14 — link click totals (requires TRACKING_BASE_URL). */
 app.get("/api/automation/clicks", async (req, res) => {
   try {
-    const enabled = trackingBaseUrl() !== null;
+    const enabled = (await trackingStatus()).working;
     const days = Math.min(Math.max(Number(req.query.days) || 14, 1), 30);
     const daily = await readClicksForDates(lastDates(days));
     const mappings = await readAllPostMappingsForReport();

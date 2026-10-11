@@ -336,12 +336,28 @@ export function SettingsPage({ onNavigate }: { onNavigate?: (page: "logs") => vo
                 <p>Counts how many people tap the job buttons inside your DMs. The button opens your backend for a split second, which adds one to the counter, then sends the person to the job.</p>
                 <p className="mt-2">Results appear in Analytics (clicks, click rate, clicks per post and link).</p>
                 <p className="mt-2 font-semibold text-white/80">Variable:</p>
-                <p><b>TRACKING_BASE_URL</b> = the public address of this backend, for example https://hiredaily-backend.vercel.app (no slash at the end). Remove it to switch tracking off; links then go directly to the job.</p>
+                <p><b>TRACKING_BASE_URL</b> = the public address of the BACKEND, for example https://hiredaily-backend.vercel.app (no slash at the end). It must NOT be the website address (hire-daily.vercel.app). Remove it to switch tracking off; links then go directly to the job.</p>
               </InfoTip></p>
-            <p className={`mt-2 text-sm ${data?.tracking?.enabled ? "text-emerald-300" : "text-white/60"}`}>{data?.tracking?.enabled ? "On" : "Off"}</p>
-            <p className="mt-2 text-[11px] leading-relaxed text-white/40">
-              {data?.tracking?.enabled ? "DM buttons count clicks, shown in Analytics." : "Set TRACKING_BASE_URL (this backend's public URL) to count clicks from DM buttons."}
-            </p>
+            {data?.tracking?.enabled && data.tracking.working === false ? (
+              <>
+                <p className="mt-2 text-sm text-amber-300">Set, but not working</p>
+                <p className="mt-2 text-[11px] leading-relaxed text-amber-200/80">
+                  {data.tracking.problem === "points_to_website"
+                    ? "TRACKING_BASE_URL points to your website. Set it to the BACKEND address (for example https://hiredaily-backend.vercel.app)."
+                    : data.tracking.problem === "not_this_backend"
+                      ? "TRACKING_BASE_URL does not answer like this backend. Check the address."
+                      : "The tracking address could not be reached right now."}{" "}
+                  Meanwhile DMs use the direct job link, so nothing breaks.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className={`mt-2 text-sm ${data?.tracking?.enabled ? "text-emerald-300" : "text-white/60"}`}>{data?.tracking?.enabled ? "On and verified" : "Off"}</p>
+                <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+                  {data?.tracking?.enabled ? "DM buttons count clicks, shown in Analytics." : "Set TRACKING_BASE_URL (this backend's public URL) to count clicks from DM buttons."}
+                </p>
+              </>
+            )}
           </div>
 
           <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">

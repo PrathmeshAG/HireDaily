@@ -189,7 +189,8 @@ export interface AutomationSettings {
   system?: SystemStatus;
   token?: TokenState;
   alerts?: { channels: ("telegram" | "email" | "webhook")[]; cronConfigured: boolean };
-  tracking?: { enabled: boolean };
+  /** enabled = TRACKING_BASE_URL is set. working = verified to point at this backend. */
+  tracking?: { enabled: boolean; working?: boolean; problem?: string | null; detail?: string | null };
   safety?: { maxCommentsPerHour: number; maxDmsPerHour: number; delayMinMs: number; delayMaxMs: number };
 }
 

@@ -63,3 +63,100 @@ export function summarizeClicks(daily: DailyClicks[], labels: Map<string, string
 
   return { total: days.reduce((a, d) => a + d.clicks, 0), daily: days, byPost };
 }
+
+// ---------------------------------------------------------------------------
+// Self-check: TRACKING_BASE_URL must point at THIS backend. If it points anywhere
+// else (for example at the website) every DM button would 404, so the system
+// verifies the address and silently falls back to direct job links.
+// ---------------------------------------------------------------------------
+
+export interface TrackingCheck {
+  ok: boolean;
+  /** Short machine-readable reason when ok is false. */
+  problem: "points_to_website" | "not_this_backend" | "unreachable" | null;
+  detail: string | null;
+  checkedAt: number;
+}
+
+const DEFAULT_SITE_HOSTS = ["hire-daily.vercel.app"];
+
+export async function verifyTrackingBase(
+  base: string,
+  opts: { fetchImpl?: typeof fetch; siteHosts?: string[]; now?: number } = {},
+): Promise<TrackingCheck> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const now = opts.now ?? Date.now();
+  let host = "";
+  try {
+    host = new URL(base).host.toLowerCase();
+  } catch {
+    return { ok: false, problem: "unreachable", detail: "TRACKING_BASE_URL is not a valid URL", checkedAt: now };
+  }
+  const siteHosts = (opts.siteHosts ?? DEFAULT_SITE_HOSTS).map((h) => h.toLowerCase());
+  if (siteHosts.includes(host)) {
+    return { ok: false, problem: "points_to_website", detail: `${host} is the website, not the backend`, checkedAt: now };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    // Index 9 is out of range, so the route redirects home without counting anything.
+    const res = await fetchImpl(`${base}/r/healthcheck/9`, { redirect: "manual", signal: controller.signal });
+    const isRoute = res.headers.get("x-hd-click-route") === "1";
+    if (isRoute && res.status >= 300 && res.status < 400) {
+      return { ok: true, problem: null, detail: null, checkedAt: now };
+    }
+    return { ok: false, problem: "not_this_backend", detail: `${host} answered ${res.status} without the click route`, checkedAt: now };
+  } catch {
+    return { ok: false, problem: "unreachable", detail: `Could not reach ${host}`, checkedAt: now };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let trackingCheckCache: { base: string; check: TrackingCheck } | null = null;
+
+/** Cached verification: 10 minutes when conclusive, 1 minute when the network failed. */
+export async function getTrackingCheck(
+  opts: { values?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; siteHosts?: string[]; now?: number } = {},
+): Promise<{ base: string | null; check: TrackingCheck | null }> {
+  const base = trackingBaseUrl(opts.values);
+  if (!base) return { base: null, check: null };
+  const now = opts.now ?? Date.now();
+  const cached = trackingCheckCache;
+  if (cached && cached.base === base) {
+    const ttl = cached.check.problem === "unreachable" ? 60_000 : 10 * 60_000;
+    if (now - cached.check.checkedAt < ttl) return { base, check: cached.check };
+  }
+  const check = await verifyTrackingBase(base, { fetchImpl: opts.fetchImpl, siteHosts: opts.siteHosts, now });
+  trackingCheckCache = { base, check };
+  return { base, check };
+}
+
+/** The base URL to use for tracked links, or null when tracking is off or misconfigured. */
+export async function getVerifiedTrackingBase(): Promise<string | null> {
+  try {
+    const { base, check } = await getTrackingCheck({ siteHosts: siteHostsFromEnv() });
+    return base && check?.ok ? base : null;
+  } catch {
+    return null;
+  }
+}
+
+export function siteHostsFromEnv(values: NodeJS.ProcessEnv = process.env): string[] {
+  const hosts = [...DEFAULT_SITE_HOSTS];
+  for (const key of ["PUBLIC_APP_URL", "VITE_PUBLIC_APP_URL", "SITE_URL"]) {
+    try {
+      const v = values[key]?.trim();
+      if (v) hosts.push(new URL(v).host);
+    } catch {
+      // ignore malformed values
+    }
+  }
+  return hosts;
+}
+
+/** Test helper. */
+export function resetTrackingCheckCache(): void {
+  trackingCheckCache = null;
+}

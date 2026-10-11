@@ -28,7 +28,7 @@ import { isTransientHttpStatus, retryTransient } from "../utils/retry.js";
 import { logger } from "../utils/logger.js";
 import type { RuleEngineRule } from "../types/rule-engine.js";
 import type { PostJobResolution } from "./post-mapping.service.js";
-import { buildTrackedUrl, trackingBaseUrl } from "./click-tracking.service.js";
+import { buildTrackedUrl, getVerifiedTrackingBase } from "./click-tracking.service.js";
 import {
   buildLinksBlock,
   buildNamesBlock,
@@ -109,15 +109,14 @@ export function renderCommentReply(
  * redirect (which counts the click). Otherwise links stay direct, unchanged.
  * The plain-text fallback and public comments always use the direct URL.
  */
-function trackUrl(mediaId: string | null | undefined, index: number, url: string | null): string | null {
-  const base = trackingBaseUrl();
+function trackUrl(base: string | null, mediaId: string | null | undefined, index: number, url: string | null): string | null {
   if (!base || !mediaId || !url) return url;
   return buildTrackedUrl(base, mediaId, index);
 }
 
-function trackLinks(mediaId: string | null | undefined, links: ResolvedLink[] | undefined): ResolvedLink[] | undefined {
+function trackLinks(base: string | null, mediaId: string | null | undefined, links: ResolvedLink[] | undefined): ResolvedLink[] | undefined {
   if (!links) return links;
-  return links.map((l, i) => ({ label: l.label, url: trackUrl(mediaId, i, l.url) ?? l.url }));
+  return links.map((l, i) => ({ label: l.label, url: trackUrl(base, mediaId, i, l.url) ?? l.url }));
 }
 
 /**
@@ -1182,6 +1181,11 @@ export async function processDirectMessage(
     };
   }
 
+  // Tracked links only when TRACKING_BASE_URL is set AND verified to be this
+  // backend. A wrong address would 404 every button, so it falls back to the
+  // direct job link instead.
+  const trackingBase = await getVerifiedTrackingBase();
+
   let dmMessage = render.rendered;
   let buttonText: string | undefined;
   if (multiLink) {
@@ -1210,11 +1214,11 @@ export async function processDirectMessage(
   const dm = await sendDirectMessage(input.recipientId, dmMessage, input.accessToken, {
     dryRun: input.dryRun,
     fetchImpl: deps.fetchImpl,
-    ctaUrl: multiLink ? null : trackUrl(input.resolution.mediaId, 0, input.resolution.jobUrl),
+    ctaUrl: multiLink ? null : trackUrl(trackingBase, input.resolution.mediaId, 0, input.resolution.jobUrl),
     commentId: input.commentId,
     instagramBusinessId: env.meta.instagramBusinessId,
     allowDirectRecipient: multiLink,
-    linkButtons: multiLink ? trackLinks(input.resolution.mediaId, input.resolution.links) : undefined,
+    linkButtons: multiLink ? trackLinks(trackingBase, input.resolution.mediaId, input.resolution.links) : undefined,
     buttonText,
   });
 

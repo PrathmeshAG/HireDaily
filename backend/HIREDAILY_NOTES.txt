@@ -73,8 +73,9 @@ Pehle se zaroori (backend/src/config/env.ts mein poori list):
   META_DRY_RUN (true = kuch asli nahi bhejta, sirf test)
 
 Naye, sab OPTIONAL (set nahi karoge to purana behaviour):
-  TRACKING_BASE_URL   backend ka public URL, jaise https://hiredaily-backend.vercel.app
-                      (ye set hai: Settings mein "Link click tracking: On")
+  TRACKING_BASE_URL   BACKEND ka public URL: https://hiredaily-backend.vercel.app
+                      WEBSITE (hire-daily.vercel.app) KABHI NAHI - warna DM ke saare links 404 ho jaate hain.
+                      (Update 5b se backend khud verify karta hai; galat ho to direct job link bhejta hai.)
   CRON_SECRET         lamba random text. Scheduled checks ke liye.
   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID           Telegram alerts
   RESEND_API_KEY, ALERT_EMAIL_TO, ALERT_EMAIL_FROM   Email alerts
@@ -121,7 +122,8 @@ Template se reply nahi ja raha: kisi variable (company/location) ki value khali 
   Job ke bina mapping mein company="the company", location="Online" aata hai.
 DM mein button nahi dikha: Meta ne structured message reject kiya hoga; plain
   text list chali jaati hai (fallback). Logs mein check karo.
-Click count nahi badh raha: TRACKING_BASE_URL sahi hai? DM ka button tap karke dekho.
+Click count nahi badh raha / DM ka link 404: TRACKING_BASE_URL BACKEND ka hona chahiye (Settings > Link click tracking
+  ab "Set, but not working" dikhata hai). DM ka button tap karke dekho.
 Vercel log mein 429 / rate limit: API ka rate limit 120 requests / 15 min.
 Test chalane: backend folder mein "npx tsx test/update4.test.ts" (aur multi-link,
   post-mapping, instagram, automation-final).
@@ -162,6 +164,9 @@ Alternative: cron-job.org (free) se URL call karwao.
 - Token check sirf graph.facebook.com par karta tha, Instagram-Login token ko galat
   "invalid" bolta tha. Ab dono hosts check karta hai, aur connection check ko mante hain.
 - AUTOMATION_DELAY_MAX_MS=0 se pause band nahi hota tha (0.8s fixed ho jaata tha). Ab band hota hai.
+- (11 Oct) TRACKING_BASE_URL website ke domain par set ho gaya tha -> DM ke links hire-daily.vercel.app/r/... (404).
+  Maine koi validation nahi rakhi thi. Ab: backend start mein verify karta hai, galat ho to direct link;
+  website par /r/<media>/<n> rescue route hai jo purane bheje hue links ko backend se job par bhejta hai.
 Seekh: naye "safety" features ka default hamesha OFF rakho aur pehle DRY RUN par dekho.
 
 

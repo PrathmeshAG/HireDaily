@@ -30,6 +30,7 @@ import { Route as PreparationCodingPracticeRouteImport } from './routes/preparat
 import { Route as PreparationInterviewRouteImport } from './routes/preparation.interview'
 import { Route as PreparationStudyMaterialRouteImport } from './routes/preparation.study-material'
 import { Route as PreparationToolsResourcesRouteImport } from './routes/preparation.tools-resources'
+import { Route as RMediaIdIdxRouteImport } from './routes/r.$mediaId.$idx'
 import { Route as JobsLocationRoleCompanyIdRouteImport } from './routes/jobs.$location.$role.$company.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -140,6 +141,11 @@ const PreparationToolsResourcesRoute =
     path: '/preparation/tools-resources',
     getParentRoute: () => rootRouteImport,
   } as any)
+const RMediaIdIdxRoute = RMediaIdIdxRouteImport.update({
+  id: '/r/$mediaId/$idx',
+  path: '/r/$mediaId/$idx',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JobsLocationRoleCompanyIdRoute =
   JobsLocationRoleCompanyIdRouteImport.update({
     id: '/jobs/$location/$role/$company/$id',
@@ -169,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/r/$mediaId/$idx': typeof RMediaIdIdxRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
 export interface FileRoutesByTo {
@@ -192,6 +199,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/blog': typeof BlogIndexRoute
   '/jobs': typeof JobsIndexRoute
+  '/r/$mediaId/$idx': typeof RMediaIdIdxRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
 export interface FileRoutesById {
@@ -217,6 +225,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/r/$mediaId/$idx': typeof RMediaIdIdxRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
 }
 export interface FileRouteTypes {
@@ -243,6 +252,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/blog/'
     | '/jobs/'
+    | '/r/$mediaId/$idx'
     | '/jobs/$location/$role/$company/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/blog'
     | '/jobs'
+    | '/r/$mediaId/$idx'
     | '/jobs/$location/$role/$company/$id'
   id:
     | '__root__'
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/blog/'
     | '/jobs/'
+    | '/r/$mediaId/$idx'
     | '/jobs/$location/$role/$company/$id'
   fileRoutesById: FileRoutesById
 }
@@ -313,6 +325,7 @@ export interface RootRouteChildren {
   PreparationToolsResourcesRoute: typeof PreparationToolsResourcesRoute
   BlogIndexRoute: typeof BlogIndexRoute
   JobsIndexRoute: typeof JobsIndexRoute
+  RMediaIdIdxRoute: typeof RMediaIdIdxRoute
   JobsLocationRoleCompanyIdRoute: typeof JobsLocationRoleCompanyIdRoute
 }
 
@@ -465,6 +478,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PreparationToolsResourcesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/r/$mediaId/$idx': {
+      id: '/r/$mediaId/$idx'
+      path: '/r/$mediaId/$idx'
+      fullPath: '/r/$mediaId/$idx'
+      preLoaderRoute: typeof RMediaIdIdxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/jobs/$location/$role/$company/$id': {
       id: '/jobs/$location/$role/$company/$id'
       path: '/jobs/$location/$role/$company/$id'
@@ -507,6 +527,7 @@ const rootRouteChildren: RootRouteChildren = {
   PreparationToolsResourcesRoute: PreparationToolsResourcesRoute,
   BlogIndexRoute: BlogIndexRoute,
   JobsIndexRoute: JobsIndexRoute,
+  RMediaIdIdxRoute: RMediaIdIdxRoute,
   JobsLocationRoleCompanyIdRoute: JobsLocationRoleCompanyIdRoute,
 }
 export const routeTree = rootRouteImport

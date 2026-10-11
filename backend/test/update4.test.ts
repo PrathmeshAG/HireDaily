@@ -8,7 +8,7 @@ import { buildDailySummary, EMPTY_DAY } from "../src/services/summary.service.js
 import { selectRetryable } from "../src/services/retry.service.js";
 import { simulateComment, buildDmPreview } from "../src/services/simulator.service.js";
 import { findMissingJobMappings } from "../src/services/health-report.service.js";
-import { trackingBaseUrl, buildTrackedUrl, isCrawlerUserAgent, summarizeClicks, lastDates } from "../src/services/click-tracking.service.js";
+import { trackingBaseUrl, buildTrackedUrl, isCrawlerUserAgent, summarizeClicks, lastDates, verifyTrackingBase, getTrackingCheck, resetTrackingCheckCache } from "../src/services/click-tracking.service.js";
 import { capsFromEnv, delayRangeFromEnv, randomDelayMs } from "../src/services/rate-guard.service.js";
 import type { RawLog } from "../src/services/firebase-admin.service.js";
 import type { RuleEngineRule } from "../src/types/rule-engine.js";
@@ -299,6 +299,40 @@ test("click summary groups by day, post and link", () => {
   assert(s.byPost[0].mediaId === "m1" && s.byPost[0].clicks === 6 && s.byPost[0].label === "Dev - Acme" && s.byPost[0].byLink.length === 2, "by post");
   assert(s.byPost[1].mediaId === "m2" && s.byPost[1].label === "Instagram post m2", "fallback label");
   assert(lastDates(3, Date.UTC(2026, 9, 10, 12)).length === 3, "dates");
+});
+
+console.log("Tracking self-check (the 404 bug)");
+function headResp(status: number, routeHeader: boolean): typeof fetch {
+  return (async () => new Response(null, { status, headers: routeHeader ? { "x-hd-click-route": "1" } : {} })) as unknown as typeof fetch;
+}
+test("TRACKING_BASE_URL pointing at the WEBSITE is rejected without any network call", async () => {
+  let called = false;
+  const f = (async () => { called = true; return new Response(null, { status: 404 }); }) as unknown as typeof fetch;
+  const c = await verifyTrackingBase("https://hire-daily.vercel.app", { fetchImpl: f });
+  assert(!c.ok && c.problem === "points_to_website" && !called, "website host blocked");
+});
+test("a host that is not this backend (404, no click-route header) is rejected", async () => {
+  const c = await verifyTrackingBase("https://some-other-app.vercel.app", { fetchImpl: headResp(404, false) });
+  assert(!c.ok && c.problem === "not_this_backend", "wrong host");
+});
+test("the real backend (redirect + click-route header) passes", async () => {
+  const c = await verifyTrackingBase("https://hiredaily-backend.vercel.app", { fetchImpl: headResp(302, true) });
+  assert(c.ok && c.problem === null, "backend ok");
+});
+test("unreachable host fails safe (direct links), and is retried sooner than a conclusive result", async () => {
+  const boom = (async () => { throw new Error("offline"); }) as unknown as typeof fetch;
+  const c = await verifyTrackingBase("https://hiredaily-backend.vercel.app", { fetchImpl: boom });
+  assert(!c.ok && c.problem === "unreachable", "unreachable");
+  resetTrackingCheckCache();
+  let calls = 0;
+  const counting = (async () => { calls++; return new Response(null, { status: 302, headers: { "x-hd-click-route": "1" } }); }) as unknown as typeof fetch;
+  const values = { TRACKING_BASE_URL: "https://hiredaily-backend.vercel.app" } as unknown as NodeJS.ProcessEnv;
+  const a = await getTrackingCheck({ values, fetchImpl: counting, now: 1_000_000 });
+  const b = await getTrackingCheck({ values, fetchImpl: counting, now: 1_000_000 + 5 * 60_000 });
+  assert(a.check?.ok === true  && b.check?.ok === true && calls === 1, "conclusive result is cached for 10 minutes");
+  resetTrackingCheckCache();
+  const off = await getTrackingCheck({ values: {} as NodeJS.ProcessEnv, fetchImpl: counting });
+  assert(off.base === null && off.check === null, "off when not configured");
 });
 
 console.log("Rate guard");
