@@ -28,6 +28,14 @@ function renderPreview(text: string): string {
 }
 
 // Names only: DM buttons never show a URL. Comments get the URL list.
+const SAMPLE_CARDS = [
+  { title: "Frontend Developer", subtitle: "Zynatra Tech · Remote" },
+  { title: "Backend Developer", subtitle: "Globex · Pune" },
+  { title: "Data Analyst", subtitle: "Initech · Bengaluru" },
+  { title: "UI/UX Designer", subtitle: "Hooli · Mumbai" },
+  { title: "QA Engineer", subtitle: "Umbrella · Hyderabad" },
+];
+
 const SAMPLE_NAMES = [
   "Frontend Developer - Zynatra Tech",
   "Backend Developer - Globex",
@@ -461,7 +469,7 @@ function TemplateDialog({
             </div>
             {text.trim() ? (
               kind === "dm" ? (
-                <DmPreview text={built.body} labels={built.labels} singleButtonLabel={built.singleLabel} />
+                <DmPreview text={built.body} labels={built.labels} singleButtonLabel={built.singleLabel} cards={SAMPLE_CARDS.slice(0, built.labels.length)} />
               ) : (
                 <div className="glass rounded-xl p-4 text-sm leading-relaxed text-white/85">
                   <p className="whitespace-pre-wrap break-words">{built.body}</p>
@@ -473,7 +481,7 @@ function TemplateDialog({
             <div className="mt-2 flex items-center justify-between text-[11px]">
               <span className="text-white/35">
                 {previewLinks >= 4 && kind === "dm"
-                  ? "4-5 links are sent as swipeable cards (one message). The text above is not shown with cards."
+                  ? "4-5 links are sent as swipeable cards (one message). Each card shows the role as title and company and location below it. The text above is not shown with cards."
                   : previewLinks > 1 && kind === "dm"
                     ? "2-3 links: one message, one button per link. {{jobLink}} becomes the numbered names list."
                     : kind === "dm"

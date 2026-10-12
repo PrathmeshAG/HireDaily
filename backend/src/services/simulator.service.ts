@@ -13,7 +13,8 @@ export interface DmPreviewResult {
   kind: "text" | "button" | "buttons" | "carousel";
   text: string;
   buttons: string[];
-  cards: string[];
+  /** 4-5 links: one card per link (role as title, company and location as subtitle). */
+  cards: { title: string; subtitle: string }[];
 }
 
 export interface SimulationDeps {
@@ -72,7 +73,7 @@ export function buildDmPreview(
   if (links.length <= MAX_BUTTON_TEMPLATE_LINKS) {
     return { preview: { kind: "buttons", text, buttons: links.map((l, i) => buttonTitle(i, l.label)), cards: [] }, error: null };
   }
-  return { preview: { kind: "carousel", text: "", buttons: [], cards: links.map((l) => clipText(l.label, 80)) }, error: null };
+  return { preview: { kind: "carousel", text: "", buttons: [], cards: links.map((l) => ({ title: clipText(l.title || l.label, 80), subtitle: clipText(l.subtitle || "Tap to view & apply", 80) })) }, error: null };
 }
 
 export async function simulateComment(

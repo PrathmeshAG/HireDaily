@@ -10,6 +10,8 @@ import { simulateComment, buildDmPreview } from "../src/services/simulator.servi
 import { findMissingJobMappings } from "../src/services/health-report.service.js";
 import { trackingBaseUrl, buildTrackedUrl, isCrawlerUserAgent, summarizeClicks, lastDates, verifyTrackingBase, getTrackingCheck, resetTrackingCheckCache } from "../src/services/click-tracking.service.js";
 import { capsFromEnv, delayRangeFromEnv, randomDelayMs } from "../src/services/rate-guard.service.js";
+import { cardElement, sendDirectMessage } from "../src/services/instagram.service.js";
+import { resolvePostJobWithReader, type DataReader } from "../src/services/post-mapping.service.js";
 import type { RawLog } from "../src/services/firebase-admin.service.js";
 import type { RuleEngineRule } from "../src/types/rule-engine.js";
 import type { PostJobResolution } from "../src/services/post-mapping.service.js";
@@ -301,6 +303,43 @@ test("click summary groups by day, post and link", () => {
   assert(lastDates(3, Date.UTC(2026, 9, 10, 12)).length === 3, "dates");
 });
 
+console.log("Cards: role as title, company and location as subtitle");
+const cardJobs: Record<string, { jobTitle: string; company: string; location: string }> = {
+  a: { jobTitle: "Data Analyst", company: "Barclays", location: "Pune" },
+  b: { jobTitle: "QA Engineer", company: "Umbrella", location: "Remote" },
+};
+function cardReader(extra: unknown[]): DataReader {
+  return { getPostMapping: async () => ({ jobId: "a", jobTitleCache: null, status: "active", extraLinks: extra as never }), getJob: async (id) => cardJobs[id] ?? null };
+}
+test("resolved links carry the role (title) and 'Company · Location' (subtitle)", async () => {
+  const r = await resolvePostJobWithReader("m", cardReader([{ type: "job", jobId: "b", label: null }, { type: "external", url: "https://www.careers.example.com/apply", label: "Company careers" }]), "https://site.test");
+  assert(r.mapped && r.links.length === 3, "3 links");
+  assert(r.links[0].title === "Data Analyst" && r.links[0].subtitle === "Barclays · Pune", "primary job");
+  assert(r.links[1].title === "QA Engineer" && r.links[1].subtitle === "Umbrella · Remote", "extra job");
+  assert(r.links[2].title === "Company careers" && r.links[2].subtitle === "careers.example.com", "external: name + host");
+  assert(r.links[0].label === "Data Analyst - Barclays", "label for text/buttons is unchanged");
+});
+test("card element: title, subtitle and one button; image only when DM_CARD_IMAGE_URL is a https URL", () => {
+  const link = { label: "Data Analyst - Barclays", url: "https://x/1", title: "Data Analyst", subtitle: "Barclays · Pune" };
+  const plain = cardElement(link, {} as NodeJS.ProcessEnv);
+  assert(plain.title === "Data Analyst" && plain.subtitle === "Barclays · Pune" && plain.buttons.length === 1 && !("image_url" in plain), "no image by default");
+  const withImg = cardElement(link, { DM_CARD_IMAGE_URL: "https://cdn.example.com/card.png" } as unknown as NodeJS.ProcessEnv);
+  assert(withImg.image_url === "https://cdn.example.com/card.png", "https image used");
+  const http = cardElement(link, { DM_CARD_IMAGE_URL: "http://insecure.example/x.png" } as unknown as NodeJS.ProcessEnv);
+  assert(!("image_url" in http), "http image ignored");
+  const bare = cardElement({ label: "Only a label", url: "https://x/2" }, {} as NodeJS.ProcessEnv);
+  assert(bare.title === "Only a label" && bare.subtitle === "Tap to view & apply", "falls back to the label");
+});
+test("the 5-link carousel really sends role as title and company as subtitle", async () => {
+  const calls: any[] = [];
+  const impl = (async (_u: string, init: any) => { calls.push(JSON.parse(init.body)); return new Response(JSON.stringify({ message_id: "m" }), { status: 200 }); }) as unknown as typeof fetch;
+  const links = Array.from({ length: 5 }, (_, i) => ({ label: `Role ${i} - Co ${i}`, url: `https://x/${i}`, title: `Role ${i}`, subtitle: `Co ${i} · City` }));
+  const r = await sendDirectMessage("u1", "fallback", "tok", { fetchImpl: impl, commentId: "c1", instagramBusinessId: "ig", linkButtons: links });
+  assert(r.success, "sent");
+  const els = calls[0].message.attachment.payload.elements;
+  assert(els.length === 5 && els[0].title === "Role 0" && els[0].subtitle === "Co 0 · City" && els[0].buttons[0].url === "https://x/0", "elements");
+});
+
 console.log("Tracking self-check (the 404 bug)");
 function headResp(status: number, routeHeader: boolean): typeof fetch {
   return (async () => new Response(null, { status, headers: routeHeader ? { "x-hd-click-route": "1" } : {} })) as unknown as typeof fetch;
@@ -329,7 +368,7 @@ test("unreachable host fails safe (direct links), and is retried sooner than a c
   const values = { TRACKING_BASE_URL: "https://hiredaily-backend.vercel.app" } as unknown as NodeJS.ProcessEnv;
   const a = await getTrackingCheck({ values, fetchImpl: counting, now: 1_000_000 });
   const b = await getTrackingCheck({ values, fetchImpl: counting, now: 1_000_000 + 5 * 60_000 });
-  assert(a.check?.ok === true  && b.check?.ok === true && calls === 1, "conclusive result is cached for 10 minutes");
+  assert(a.check?.ok === true && b.check?.ok === true && calls === 1, "conclusive result is cached for 10 minutes");
   resetTrackingCheckCache();
   const off = await getTrackingCheck({ values: {} as NodeJS.ProcessEnv, fetchImpl: counting });
   assert(off.base === null && off.check === null, "off when not configured");

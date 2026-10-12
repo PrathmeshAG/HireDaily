@@ -1812,7 +1812,9 @@ app.get("/api/automation/clicks", async (req, res) => {
  * Lets the admin record when the Meta token expires (Meta cannot report this
  * for Instagram-Login tokens). null clears it.
  */
-app.put("/api/automation/token-expiry", async (req, res) => {
+app.post("/api/automation/token-expiry", saveTokenExpiryHandler);
+app.put("/api/automation/token-expiry", saveTokenExpiryHandler);
+async function saveTokenExpiryHandler(req: express.Request, res: express.Response) {
   try {
     const raw = (req.body ?? {}).expiresAt;
     if (raw !== null && (typeof raw !== "number" || !Number.isFinite(raw))) {
@@ -1831,7 +1833,7 @@ app.put("/api/automation/token-expiry", async (req, res) => {
     logger.error("Failed to save token expiry", { error: e });
     res.status(500).json({ error: "failed_to_save_token_expiry" });
   }
-});
+}
 
 /** POST /api/automation/alerts/test — sends a test alert to every configured channel. */
 app.post("/api/automation/alerts/test", async (_req, res) => {

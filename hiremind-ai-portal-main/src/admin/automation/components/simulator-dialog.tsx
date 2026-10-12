@@ -168,6 +168,7 @@ export function SimulatorDialog({
                     text={result.dm.text}
                     labels={result.dm.kind === "text" || result.dm.kind === "button" ? ["Job"] : linkNames}
                     singleButtonLabel={result.dm.kind === "button" ? result.dm.buttons[0] : null}
+                    cards={result.dm.kind === "carousel" ? result.dm.cards : undefined}
                   />
                 </div>
               )}

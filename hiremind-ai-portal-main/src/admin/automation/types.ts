@@ -233,7 +233,8 @@ export interface DmPreviewResult {
   kind: "text" | "button" | "buttons" | "carousel";
   text: string;
   buttons: string[];
-  cards: string[];
+  /** 4-5 links: role as title, company and location as subtitle. */
+  cards: { title: string; subtitle: string }[];
 }
 
 export interface SimulationResult {

@@ -95,3 +95,15 @@ Saare environment variables.
 Har 2 mahine ka checklist, token renew sabse upar.
 Gadbad ho to kya dekhna hai.
 Meri galtiyan, aur file ka map.
+
+
+
+
+
+CRON_SECRET kya hai:
+Ye ek password hai jo backend ke timer pages (/api/cron/daily, /api/cron/health) ko bachata hai. Abhi iski zaroorat nahi, kyunki alerts off hain aur bina alert channel ke message kahin jayega hi nahi. Jab alerts on karoge tab:
+
+Random text banao: PowerShell mein [guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N").
+Vercel mein backend ke Environment Variables mein CRON_SECRET daalo, phir backend redeploy karo.
+Timer lagao: Vercel Cron (vercel.cron.example.json ko vercel.json naam do) ya cron-job.org (header Authorization: Bearer <secret>).
+Test: curl -H "Authorization: Bearer <secret>" https://hiredaily-backend.vercel.app/api/cron/health. Bina header ke 401 aana chahiye.

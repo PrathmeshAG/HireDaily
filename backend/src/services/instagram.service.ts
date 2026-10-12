@@ -116,7 +116,25 @@ function trackUrl(base: string | null, mediaId: string | null | undefined, index
 
 function trackLinks(base: string | null, mediaId: string | null | undefined, links: ResolvedLink[] | undefined): ResolvedLink[] | undefined {
   if (!links) return links;
-  return links.map((l, i) => ({ label: l.label, url: trackUrl(base, mediaId, i, l.url) ?? l.url }));
+  return links.map((l, i) => ({ ...l, url: trackUrl(base, mediaId, i, l.url) ?? l.url }));
+}
+
+/**
+ * One card of the 4-5 link carousel: the job role as the title, "Company ·
+ * Location" as the subtitle and a single button. An optional https image
+ * (DM_CARD_IMAGE_URL, ideally 1.91:1) is added to every card when configured.
+ */
+export function cardElement(
+  link: ResolvedLink,
+  values: NodeJS.ProcessEnv = process.env,
+): { title: string; subtitle: string; image_url?: string; buttons: { type: "web_url"; url: string; title: string }[] } {
+  const image = values.DM_CARD_IMAGE_URL?.trim();
+  return {
+    title: clipText(link.title || link.label, 80),
+    subtitle: clipText(link.subtitle || "Tap to view & apply", 80),
+    ...(image && /^https:\/\//i.test(image) ? { image_url: image } : {}),
+    buttons: [{ type: "web_url", url: link.url, title: clipText("View & Apply", BUTTON_TITLE_MAX) }],
+  };
 }
 
 /**
@@ -683,11 +701,7 @@ export async function sendDirectMessage(
             type: "template",
             payload: {
               template_type: "generic",
-              elements: links.map((l, i) => ({
-                title: clipText(l.label, 80),
-                subtitle: `Option ${i + 1} of ${links.length} · tap to view & apply`,
-                buttons: [{ type: "web_url", url: l.url, title: clipText("View & Apply", BUTTON_TITLE_MAX) }],
-              })),
+              elements: links.map((l) => cardElement(l)),
             },
           };
 

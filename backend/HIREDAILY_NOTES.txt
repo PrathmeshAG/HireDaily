@@ -59,6 +59,17 @@ UPDATE 4  (reliability + tools)
   - Hourly cap + random delay (safety), Reply variations (rotation),
     Rule start/end date, Daily summary message.
 
+UPDATE 6 / FINAL  (12 Oct)
+  - TRACKING_BASE_URL galat (website) tha -> DM links 404 (11 Oct). Ab backend verify karta hai +
+    website par rescue route /r/<id>/<n> (urgent-link-fix).
+  - Token expiry date save "Failed to fetch" FIX: browser ne PUT request block ki thi (backend CORS mein PUT nahi tha).
+    Ab frontend POST bhejta hai, backend POST + PUT leta hai, CORS mein PUT allowed.
+  - 4-5 links ke cards: pehle sirf link ka naam title mein tha. Ab har card: TITLE = job role, SUBTITLE = "Company · Location",
+    neeche ek button "View & Apply". (External link: title = aapka diya naam, subtitle = site ka naam.)
+    Optional: DM_CARD_IMAGE_URL (https image, 1.91:1) set karo to har card par image bhi lagti hai. (Live verify nahi hua.)
+  - Faisla: {{name}} (pehla naam) NAHI banaya. Username hi rahega, kyunki naam ka andaza kabhi galat dikhta hai.
+  - Faisla: 4-5 links horizontal cards hi rahenge (Instagram ek message mein sirf 3 buttons deta hai).
+
 UPDATE 5  (fixes + Users + Settings)
   - Users page: top commenters, most DMs, newest, follow status explain,
     filters, sorting, CSV.
@@ -80,12 +91,45 @@ Naye, sab OPTIONAL (set nahi karoge to purana behaviour):
   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID           Telegram alerts
   RESEND_API_KEY, ALERT_EMAIL_TO, ALERT_EMAIL_FROM   Email alerts
   ALERT_WEBHOOK_URL                              Slack/Discord alerts
+  DM_CARD_IMAGE_URL   (optional) https image, har carousel card par lagti hai. Verify nahi hua.
   AUTOMATION_MAX_COMMENTS_PER_HOUR   0/khali = limit nahi (poore account par, sab posts milke)
   AUTOMATION_MAX_DMS_PER_HOUR        0/khali = limit nahi
   AUTOMATION_DELAY_MIN_MS, AUTOMATION_DELAY_MAX_MS   reply aur DM ke beech random pause
                       MAX = 0 karo to pause band. (Default 800 - 2500 ms)
 Env change ke baad backend REDEPLOY zaroori hai.
 
+
+3b) TEMPLATE VARIABLES (Templates page mein chips se daal sakte ho)
+--------------------------------------------------------------------------
+{{username}}  Instagram handle, jaise shubham_gore._07  (naam ka andaza nahi lagate, jaanbujh kar)
+{{title}} {{company}} {{location}} {{jobLink}}
+Dhyan: koi variable KHALI ho to reply/DM BHEJA HI NAHI JAATA. (Job ke bina mapping mein
+company="the company", location="Online" automatic aata hai.)
+
+3c) CRON_SECRET KYA HAI AUR KAISE LAGATE HAIN
+--------------------------------------------------------------------------
+Kya hai: ek password jo backend ke "timer" pages (/api/cron/daily aur /api/cron/health) ko
+bachata hai. Ye pages kaam karte hain: token check, deleted jobs check, daily summary message bhejna.
+Agar ye pages bina password khule hote to koi bhi unhe baar baar chala sakta. Isliye CRON_SECRET set
+na ho to ye pages band rehte hain (503).
+KAB ZAROORI: sirf tab jab daily summary / scheduled checks chahiye. Uske liye alert channel
+(Telegram/email/webhook) bhi chahiye, warna message jaayega hi nahi. Abhi alerts off hain, to skip karo.
+Token FAIL hone ka alert CRON ke bina bhi turant aata hai (jab reply fail ho).
+
+Kaise lagayein (jab alerts on karo):
+ 1. Ek lamba random text banao. Windows PowerShell:
+      [guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N")
+ 2. Vercel > hiredaily-backend > Settings > Environment Variables > CRON_SECRET = wo text (Production).
+    Phir backend REDEPLOY.
+ 3. Timer chuno (koi ek):
+    A) Vercel Cron: backend/vercel.cron.example.json ka naam vercel.json karo (backend folder mein), redeploy.
+       Vercel khud "Authorization: Bearer <CRON_SECRET>" bhejta hai. Hobby plan = din mein sirf 1 baar.
+    B) cron-job.org (free): URL https://hiredaily-backend.vercel.app/api/cron/daily
+       Schedule: roz 21:00 IST. Header: Authorization = Bearer <CRON_SECRET>
+ 4. Test (terminal):
+      curl -H "Authorization: Bearer <CRON_SECRET>" https://hiredaily-backend.vercel.app/api/cron/health
+    {"ok":true,...} aaye to sahi. Bina header ke 401 aana chahiye.
+ 5. Settings > "Alerts, tracking and safety" mein "Scheduled checks: enabled" dikhna chahiye.
 
 4) HAR 2 MAHINE MEIN YE KARNA (sabse zaroori)
 --------------------------------------------------------------------------
@@ -167,6 +211,8 @@ Alternative: cron-job.org (free) se URL call karwao.
 - (11 Oct) TRACKING_BASE_URL website ke domain par set ho gaya tha -> DM ke links hire-daily.vercel.app/r/... (404).
   Maine koi validation nahi rakhi thi. Ab: backend start mein verify karta hai, galat ho to direct link;
   website par /r/<media>/<n> rescue route hai jo purane bheje hue links ko backend se job par bhejta hai.
+- Token expiry save "Failed to fetch": maine PUT request banayi thi, par backend CORS mein PUT allowed nahi tha. Ab POST.
+- 4-5 links ke cards mein sirf "Role - Company" ek line mein tha; ab role title, company+location subtitle.
 Seekh: naye "safety" features ka default hamesha OFF rakho aur pehle DRY RUN par dekho.
 
 
@@ -199,6 +245,6 @@ hiremind-ai-portal-main/src/admin/automation/
 Deploy order: PEHLE backend, PHIR frontend.
 
 Zip files jo mile (har ek pichhle ke upar): final-patch-v2, update2-only, update3-only,
-update4-only, cap-fix, update5-only. Naya project copy karna ho to latest code
+update4-only, cap-fix, update5-only, urgent-link-fix, final-backend (ye wali). update6-only wali zip LENI HI NAHI THI (skip). Naya project copy karna ho to latest code
 (proj folder) hi source of truth hai.
 ==========================================================================

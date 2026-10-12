@@ -655,12 +655,23 @@ function MappingDialog({
                   ...extraLinks.map((l) => (l.type === "job" ? (l.label || jobLabel(l.jobId)) : l.label)),
                 ];
                 const intro = "Hi @username! 🙌 Here are your links 👇";
+                // Cards (4-5 links): role as the title, company and location as the subtitle.
+                const hostOf = (u: string) => { try { return new URL(u).host.replace(/^www\./, ""); } catch { return ""; } };
+                const sub = (company?: string | null, location?: string | null) => [company, location].filter(Boolean).join(" · ");
+                const cards = [
+                  ...(jobId ? [selectedJob ? { title: selectedJob.role, subtitle: sub(selectedJob.companyName, selectedJob.location) } : { title: "Primary job", subtitle: "" }] : []),
+                  ...extraLinks.map((l) => {
+                    if (l.type === "external") return { title: l.label, subtitle: hostOf(l.url) };
+                    const j = jobs.find((x) => x.id === l.jobId);
+                    return { title: j?.role ?? (l.label || l.jobId), subtitle: sub(j?.companyName, j?.location) };
+                  }),
+                ];
                 return (
                   <div className="mt-4">
                     <p className="mb-2 text-[11px] text-white/40">How it looks in the DM (names come from your links)</p>
-                    <DmPreview text={`${intro}\n\n${namesBlock(labels)}`} labels={labels} />
+                    <DmPreview text={`${intro}\n\n${namesBlock(labels)}`} labels={labels} cards={cards} />
                     <p className="mt-2 text-[11px] text-white/35">
-                      {totalLinks >= 4 ? "4-5 links go as swipeable cards, one per job." : "Each link gets its own button. Tapping a button opens that link."}
+                      {totalLinks >= 4 ? "4-5 links go as swipeable cards: the role is the title, company and location the subtitle." : "Each link gets its own button. Tapping a button opens that link."}
                     </p>
                   </div>
                 );

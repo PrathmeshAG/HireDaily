@@ -11,7 +11,7 @@ export function createCorsMiddleware(origins: string[] = env.cors.origins) {
       }
       callback(new Error("cors_origin_not_allowed"));
     },
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "X-Hub-Signature-256"],
     maxAge: 600,
   });
