@@ -41,10 +41,10 @@ emergencyRouter.get("/mappings", async (req,res) => {
 });
 emergencyRouter.post("/mappings", writeLimiter, async (req,res) => {
   if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
-  const { mediaId, role, location, experience, applyUrl } = req.body ?? {};
-  if (typeof mediaId !== "string" || !/^\d{5,30}$/.test(mediaId) || typeof role !== "string" || !role.trim() || role.length > 100 || typeof location !== "string" || !location.trim() || location.length > 100 || typeof experience !== "string" || experience.length > 50 || typeof applyUrl !== "string" || applyUrl.length > 2048) return res.status(400).json({ error: "Invalid mapping fields." });
+  const { mediaId, company, role, location, experience, applyUrl } = req.body ?? {};
+  if (typeof mediaId !== "string" || !/^\d{5,30}$/.test(mediaId) || typeof company !== "string" || !company.trim() || company.length > 120 || typeof role !== "string" || !role.trim() || role.length > 100 || typeof location !== "string" || !location.trim() || location.length > 100 || typeof experience !== "string" || experience.length > 50 || typeof applyUrl !== "string" || applyUrl.length > 2048) return res.status(400).json({ error: "Invalid mapping fields." });
   let url: URL; try { url = new URL(applyUrl); } catch { return res.status(400).json({ error: "Invalid apply URL." }); }
   if (url.protocol !== "https:" || url.username || url.password) return res.status(400).json({ error: "Apply URL must be a safe HTTPS URL." });
-  try { await saveEmergencyMapping({ mediaId:mediaId.trim(),role:role.trim(),location:location.trim(),experience:experience.trim(),applyUrl:url.toString() }); return res.json({ message:"Mapping saved to emergency storage." }); }
+  try { await saveEmergencyMapping({ mediaId:mediaId.trim(),company:company.trim(),role:role.trim(),location:location.trim(),experience:experience.trim(),applyUrl:url.toString() }); return res.json({ message:"Mapping saved to emergency storage." }); }
   catch { return res.status(503).json({ error:"Emergency storage unavailable; mapping was not saved." }); }
 });
