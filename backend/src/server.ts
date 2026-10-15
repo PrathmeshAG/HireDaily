@@ -87,8 +87,17 @@ import { simulateComment } from "./services/simulator.service.js";
 import { isCrawlerUserAgent, lastDates, summarizeClicks, getTrackingCheck, siteHostsFromEnv } from "./services/click-tracking.service.js";
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
+import { emergencyRouter } from "./routes/emergency.routes.js";
+import { emergencyConfigured } from "./services/emergency-store.service.js";
 
-validateEnvironment();
+// The emergency admin service uses Cloudflare D1 and must be able to start
+// independently of the legacy Firebase/Meta automation configuration. When
+// its own required Cloudflare/admin settings are present, do not block server
+// startup on unrelated legacy automation variables. If emergency mode is not
+// configured, retain the existing production validation for the main service.
+if (!emergencyConfigured()) {
+  validateEnvironment();
+}
 
 const app = express();
 
@@ -231,6 +240,7 @@ async function isOwnInstagramComment(event: {
 
 app.use(requestContext);
 app.use(corsMiddleware);
+app.use("/api/emergency", emergencyRouter);
 
 // IMPORTANT: Meta signs the exact request bytes. Use route-scoped raw parsers
 // for webhook endpoints so req.body is the original Buffer until signature
