@@ -1,0 +1,52 @@
+import crypto from "node:crypto";
+
+const required = ["EMERGENCY_ADMIN_SECRET", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_D1_DATABASE_ID", "CLOUDFLARE_D1_API_TOKEN"] as const;
+function cfg(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Emergency service is not configured: missing ${name}`);
+  return value;
+}
+export function emergencyConfigured(): boolean {
+  return required.every((name) => !!process.env[name]?.trim());
+}
+function token(): string { return cfg("CLOUDFLARE_D1_API_TOKEN"); }
+async function query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfg("CLOUDFLARE_ACCOUNT_ID"))}/d1/database/${encodeURIComponent(cfg("CLOUDFLARE_D1_DATABASE_ID"))}/query`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ sql, params }),
+  });
+  if (!response.ok) throw new Error("Emergency storage request failed");
+  const payload = await response.json() as { success?: boolean; errors?: unknown[]; result?: Array<{ results?: T[] }> };
+  if (!payload.success) throw new Error("Emergency storage query failed");
+  return payload.result?.[0]?.results ?? [];
+}
+export async function initializeEmergencyStore(): Promise<void> {
+  await query(`CREATE TABLE IF NOT EXISTS emergency_mappings (
+    media_id TEXT PRIMARY KEY, role TEXT NOT NULL, location TEXT NOT NULL,
+    experience TEXT NOT NULL, apply_url TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS emergency_actions (
+    action_id TEXT PRIMARY KEY, created_at TEXT NOT NULL
+  )`);
+}
+export async function saveEmergencyMapping(input: {
+  mediaId: string; role: string; location: string; experience: string; applyUrl: string;
+}): Promise<void> {
+  await initializeEmergencyStore();
+  await query(`INSERT INTO emergency_mappings(media_id,role,location,experience,apply_url,updated_at)
+    VALUES(?,?,?,?,?,?) ON CONFLICT(media_id) DO UPDATE SET role=excluded.role,location=excluded.location,
+    experience=excluded.experience,apply_url=excluded.apply_url,updated_at=excluded.updated_at`,
+    [input.mediaId, input.role, input.location, input.experience, input.applyUrl, new Date().toISOString()]);
+}
+export async function listEmergencyMappings(): Promise<Array<Record<string, unknown>>> {
+  await initializeEmergencyStore();
+  return query("SELECT media_id AS mediaId, role, location, experience, apply_url AS applyUrl, updated_at AS updatedAt FROM emergency_mappings ORDER BY updated_at DESC LIMIT 100");
+}
+export function verifyEmergencySecret(candidate: string): boolean {
+  const expected = cfg("EMERGENCY_ADMIN_SECRET");
+  const a = crypto.createHash("sha256").update(candidate).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
+}
