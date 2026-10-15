@@ -21,7 +21,7 @@ export async function initializeEmergencyStore(): Promise<void> {
   await query(`CREATE TABLE IF NOT EXISTS emergency_mappings (media_id TEXT PRIMARY KEY, role TEXT NOT NULL, location TEXT NOT NULL, experience TEXT NOT NULL, apply_url TEXT NOT NULL, updated_at TEXT NOT NULL)`);
   await query(`CREATE TABLE IF NOT EXISTS emergency_actions (action_id TEXT PRIMARY KEY, created_at TEXT NOT NULL)`);
   // Bootstrap only the one configured admin; authentication checks the stored D1 row.
-  await query("INSERT OR IGNORE INTO emergency_admin_credentials(email,password_hash,updated_at) VALUES(?,?,?)", [cfg("EMERGENCY_ADMIN_EMAIL").toLowerCase(), cfg("EMERGENCY_ADMIN_PASSWORD_HASH").toLowerCase(), new Date().toISOString()]);
+  await query("INSERT INTO emergency_admin_credentials(email,password_hash,updated_at) VALUES(?,?,?) ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash,updated_at=excluded.updated_at", [cfg("EMERGENCY_ADMIN_EMAIL").toLowerCase(), cfg("EMERGENCY_ADMIN_PASSWORD_HASH").toLowerCase(), new Date().toISOString()]);
 }
 export async function verifyEmergencyCredentials(email: string, password: string): Promise<boolean> {
   await initializeEmergencyStore();
