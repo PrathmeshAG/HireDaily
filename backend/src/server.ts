@@ -87,7 +87,7 @@ import { simulateComment } from "./services/simulator.service.js";
 import { isCrawlerUserAgent, lastDates, summarizeClicks, getTrackingCheck, siteHostsFromEnv } from "./services/click-tracking.service.js";
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
-import { emergencyRouter } from "./routes/emergency.routes.js";
+import { emergencyRouter, handleEmergencyInstagramWebhook } from "./routes/emergency.routes.js";
 import { emergencyConfigured } from "./services/emergency-store.service.js";
 
 // The emergency admin service uses Cloudflare D1 and must be able to start
@@ -259,6 +259,10 @@ app.use(
     verify: captureRawBody,
   }),
 );
+app.use(
+  "/webhooks/emergency-instagram",
+  express.raw({ type: "application/json", limit: "1mb", verify: captureRawBody }),
+);
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
@@ -272,6 +276,7 @@ app.use("/api/emergency", emergencyRouter);
 // may legitimately redeliver events during transient failures.
 app.use("/webhook", requireMetaWebhookSignature);
 app.use("/webhooks/instagram", requireMetaWebhookSignature);
+app.use("/webhooks/emergency-instagram", requireMetaWebhookSignature);
 
 // All automation management endpoints are admin-only. Firebase ID tokens are
 // verified server-side; the browser's email/UI gate is never trusted here.
@@ -331,6 +336,21 @@ const expectedToken = process.env.WEBHOOK_VERIFY_TOKEN ?? "";
  * This is the verification counterpart to the existing POST /webhooks/instagram
  * event-ingestion route (which is left unchanged).
  */
+app.get("/webhooks/emergency-instagram", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  const expectedToken = process.env.EMERGENCY_META_VERIFY_TOKEN?.trim() || "";
+  if (mode === "subscribe" && !!expectedToken && token === expectedToken && typeof challenge === "string") {
+    res.status(200).send(challenge);
+    return;
+  }
+  res.status(403).send("Forbidden");
+});
+app.post("/webhooks/emergency-instagram", (req, res) => {
+  void handleEmergencyInstagramWebhook(req, res);
+});
+
 app.get("/webhooks/instagram", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
