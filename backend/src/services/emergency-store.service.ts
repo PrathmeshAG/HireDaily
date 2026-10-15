@@ -95,7 +95,7 @@ export async function processEmergencyInstagramComment(input: { commentId: strin
     "",
     "Good luck with your application! 🍀",
     "— Hire Daily",
-  ].join("\\n");
+  ].join("\n");
   const dmResponse = await fetch(`${graph}/${encodeURIComponent(input.commentId)}/private_replies`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
