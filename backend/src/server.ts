@@ -88,7 +88,7 @@ import { isCrawlerUserAgent, lastDates, summarizeClicks, getTrackingCheck, siteH
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
 import { emergencyRouter, handleEmergencyInstagramWebhook } from "./routes/emergency.routes.js";
-import { emergencyConfigured } from "./services/emergency-store.service.js";
+import { emergencyConfigured, processEmergencyInstagramComment } from "./services/emergency-store.service.js";
 
 // The emergency admin service uses Cloudflare D1 and must be able to start
 // independently of the legacy Firebase/Meta automation configuration. When
@@ -808,6 +808,14 @@ async function ingestWebhook(req: express.Request, res: express.Response): Promi
 
   const events = parseWebhookEvents(req.body);
   for (const event of events) {
+    // Isolated D1-backed job DM sidecar. Only mapped posts are processed; errors never interrupt legacy workflow.
+    if (event.eventType === "comment" && event.commentId && event.mediaId && event.commentText?.trim()) {
+      try {
+        await processEmergencyInstagramComment({ commentId: event.commentId, mediaId: event.mediaId, commentText: event.commentText, username: event.username });
+      } catch (error) {
+        logger.warn("Emergency D1 comment automation failed", { commentId: event.commentId, error: error instanceof Error ? error.message : "unknown_error" });
+      }
+    }
     try {
       await writeAutomationLog(event, "received");
     } catch (error) {
