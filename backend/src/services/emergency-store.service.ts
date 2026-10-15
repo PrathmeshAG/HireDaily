@@ -68,7 +68,10 @@ export async function listEmergencyMappings(): Promise<Array<Record<string, unkn
 }
 export function verifyEmergencySecret(candidate: string): boolean {
   const expected = cfg("EMERGENCY_ADMIN_SECRET");
-  const a = crypto.createHash("sha256").update(candidate).digest();
+  // Match the normalization used when reading/signing the configured secret.
+  // Avoid rejecting a correct code copied with accidental leading/trailing whitespace.
+  const normalizedCandidate = candidate.trim();
+  const a = crypto.createHash("sha256").update(normalizedCandidate).digest();
   const b = crypto.createHash("sha256").update(expected).digest();
   return crypto.timingSafeEqual(a, b);
 }
