@@ -4,17 +4,25 @@ import { rateLimit } from "express-rate-limit";
 import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, verifyEmergencySecret } from "../services/emergency-store.service.js";
 
 export const emergencyRouter = Router();
-const sessions = new Map<string, number>();
 const SESSION_MS = 30 * 60 * 1000;
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false });
 const writeLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false });
+function signSession(expiry: number): string {
+  const payload = Buffer.from(JSON.stringify({ exp: expiry }), "utf8").toString("base64url");
+  const signature = crypto.createHmac("sha256", process.env.EMERGENCY_ADMIN_SECRET!.trim()).update(payload).digest("hex");
+  return `${payload}.${signature}`;
+}
 function authenticated(req: import("express").Request): boolean {
   const raw = req.header("authorization") || "";
-  const match = /^Bearer ([a-f0-9]{64})$/.exec(raw);
-  if (!match) return false;
-  const expiry = sessions.get(match[1]);
-  if (!expiry || expiry < Date.now()) { sessions.delete(match[1]); return false; }
-  return true;
+  const match = /^Bearer ([A-Za-z0-9_-]+)\.([a-f0-9]{64})$/.exec(raw);
+  if (!match || !process.env.EMERGENCY_ADMIN_SECRET?.trim()) return false;
+  const expected = crypto.createHmac("sha256", process.env.EMERGENCY_ADMIN_SECRET.trim()).update(match[1]).digest();
+  const supplied = Buffer.from(match[2], "hex");
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(match[1], "base64url").toString("utf8")) as { exp?: number };
+    return typeof payload.exp === "number" && payload.exp > Date.now();
+  } catch { return false; }
 }
 emergencyRouter.get("/status", (_req, res) => {
   res.json({ configured: emergencyConfigured(), storage: emergencyConfigured() ? "cloudflare-d1" : "not-configured" });
@@ -25,8 +33,7 @@ emergencyRouter.post("/login", loginLimiter, (req, res) => {
   if (secret.length < 1 || secret.length > 256 || !verifyEmergencySecret(secret)) {
     return res.status(401).json({ error: "Invalid access code." });
   }
-  const session = crypto.randomBytes(32).toString("hex");
-  sessions.set(session, Date.now() + SESSION_MS);
+  const session = signSession(Date.now() + SESSION_MS);
   res.setHeader("Cache-Control", "no-store");
   return res.json({ token: session, expiresInSeconds: SESSION_MS / 1000 });
 });
