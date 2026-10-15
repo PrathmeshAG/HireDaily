@@ -12,7 +12,7 @@ export const Route = createFileRoute("/admin/emergency")({
   }),
 });
 
-const emergencyApiBase = (import.meta.env.VITE_EMERGENCY_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") ?? "";
+const emergencyApiBase = String(import.meta.env.VITE_EMERGENCY_API_BASE_URL || "").replace(/\/+$/, "");
 
 type Mapping = {
   mediaId: string;
