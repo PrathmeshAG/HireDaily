@@ -30,7 +30,7 @@ function EmergencyAdminPage() {
   });
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("prathmeshbobade33@gmail.com");
   const [password, setPassword] = useState("");
   const [sessionToken, setSessionToken] = useState("");
   const [mappings, setMappings] = useState<Array<{mediaId:string;role:string;location:string;experience:string;applyUrl:string;updatedAt:string}>>([]);
@@ -139,7 +139,7 @@ function EmergencyAdminPage() {
         <p><strong>Setup status:</strong> {serviceConfigured === null ? "Checking backend…" : serviceConfigured ? "Backend configuration detected; test storage and Meta webhook before use." : "Backend/storage secrets abhi configure nahi hain. Save/login kaam nahi karega."} Ye separate login aur D1 mappings hain. Meta comment/DM webhook integration ko deploy ke baad end-to-end test karna hoga.</p>
       </div>
 
-      {!sessionToken ? <form onSubmit={login} className="mb-5 grid gap-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><label className="text-sm text-slate-200">Admin email<input className={field} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={254} /></label><label className="text-sm text-slate-200">Password<input className={field} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={256} /></label><button disabled={busy} className="w-fit rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit">{busy ? "Checking…" : "Unlock admin"}</button></form> : <button className="mb-5 rounded-xl border border-white/15 px-4 py-2 text-sm" onClick={() => { setSessionToken(""); setStatus("Logged out."); }}>Lock admin</button>}
+      {!sessionToken ? <form onSubmit={login} className="mb-5 grid gap-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><label className="text-sm text-slate-200">Admin email<input className={field} type="email" autoComplete="username" value={email} readOnly required maxLength={254} /></label><label className="text-sm text-slate-200">Password<input className={field} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={256} /></label><button disabled={busy} className="w-fit rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit">{busy ? "Checking…" : "Unlock admin"}</button></form> : <button className="mb-5 rounded-xl border border-white/15 px-4 py-2 text-sm" onClick={() => { setSessionToken(""); setStatus("Logged out."); }}>Lock admin</button>}
       <form onSubmit={save} className="grid gap-5 rounded-2xl border border-white/10 bg-white/[.04] p-5 sm:grid-cols-2">
         <label className="text-sm text-slate-200 sm:col-span-2">Instagram Media/Post ID
           <input className={field} value={mapping.mediaId} onChange={(e) => update("mediaId", e.target.value)} placeholder="e.g. 17900000000000000" required inputMode="numeric" />
