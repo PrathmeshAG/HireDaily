@@ -54,3 +54,59 @@ export async function listEmergencyMappings(): Promise<Array<Record<string, unkn
   await initializeEmergencyStore();
   return (await query("SELECT media_id AS mediaId,company,role,location,experience,apply_url AS applyUrl,updated_at AS updatedAt FROM emergency_mappings ORDER BY updated_at DESC LIMIT 100")).rows;
 }
+
+
+export async function processEmergencyInstagramComment(input: { commentId: string; mediaId: string; commentText: string; username: string | null }): Promise<{ processed: boolean; reason: string }> {
+  if (!input.commentId || !input.mediaId) return { processed: false, reason: "missing_comment_or_media_id" };
+  await initializeEmergencyStore();
+  const claim = await query("INSERT OR IGNORE INTO emergency_actions(action_id,created_at) VALUES(?,?)", ["comment:" + input.commentId, new Date().toISOString()]);
+  if (claim.changes !== 1) return { processed: false, reason: "duplicate" };
+  const mapped = await getEmergencyMapping(input.mediaId);
+  if (!mapped) return { processed: false, reason: "no_job_mapping" };
+  const token = process.env.META_ACCESS_TOKEN?.trim();
+  const igUserId = (process.env.INSTAGRAM_BUSINESS_ID || process.env.INSTAGRAM_USER_ID || process.env.META_INSTAGRAM_USER_ID || "").trim();
+  if (!token || !igUserId) return { processed: false, reason: "meta_credentials_not_configured" };
+
+  const replies = [
+    "Just sent you the details in DM 📩",
+    "Check your DM for the job link! ✨",
+    "Details are in your inbox 📬",
+    "Sent you the application link via DM 🚀",
+  ];
+  const publicReply = replies[Math.floor(Math.random() * replies.length)];
+  const graph = "https://graph.facebook.com/v24.0";
+  const replyResponse = await fetch(`${graph}/${encodeURIComponent(input.commentId)}/replies`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: publicReply }),
+  });
+  if (!replyResponse.ok) {
+    const body = await replyResponse.text().catch(() => "");
+    throw new Error(`Meta public reply failed (${replyResponse.status}): ${body.slice(0, 250)}`);
+  }
+
+  const dm = [
+    "👋 Hi there! Thanks for your interest in this opportunity.",
+    "",
+    `🏢 Company: ${mapped.company}`,
+    `💼 Role: ${mapped.role}`,
+    `📍 Location: ${mapped.location}`,
+    `🎓 Experience: ${mapped.experience}`,
+    "",
+    "🔗 Apply here:",
+    mapped.applyUrl,
+    "",
+    "Good luck with your application! 🍀",
+    "— Hire Daily",
+  ].join("\n");
+  const dmResponse = await fetch(`${graph}/${encodeURIComponent(igUserId)}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ recipient: { comment_id: input.commentId }, message: { text: dm } }),
+  });
+  if (!dmResponse.ok) {
+    const body = await dmResponse.text().catch(() => "");
+    throw new Error(`Meta private reply failed (${dmResponse.status}): ${body.slice(0, 250)}`);
+  }
+  return { processed: true, reason: "reply_and_dm_sent" };
+}
