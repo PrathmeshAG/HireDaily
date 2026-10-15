@@ -40,6 +40,28 @@ export async function saveEmergencyMapping(input: {
     experience=excluded.experience,apply_url=excluded.apply_url,updated_at=excluded.updated_at`,
     [input.mediaId, input.role, input.location, input.experience, input.applyUrl, new Date().toISOString()]);
 }
+
+export async function getEmergencyMapping(mediaId: string): Promise<{ mediaId: string; role: string; location: string; experience: string; applyUrl: string } | null> {
+  await initializeEmergencyStore();
+  const rows = await query<{ mediaId: string; role: string; location: string; experience: string; applyUrl: string }>(
+    "SELECT media_id AS mediaId, role, location, experience, apply_url AS applyUrl FROM emergency_mappings WHERE media_id = ? LIMIT 1",
+    [mediaId],
+  );
+  return rows[0] ?? null;
+}
+export async function claimEmergencyAction(actionId: string): Promise<boolean> {
+  await initializeEmergencyStore();
+  const url = "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(cfg("CLOUDFLARE_ACCOUNT_ID")) + "/d1/database/" + encodeURIComponent(cfg("CLOUDFLARE_D1_DATABASE_ID")) + "/query";
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token(), "Content-Type": "application/json" },
+    body: JSON.stringify({ sql: "INSERT OR IGNORE INTO emergency_actions(action_id,created_at) VALUES(?,?)", params: [actionId, new Date().toISOString()] }),
+  });
+  if (!response.ok) throw new Error("Emergency action claim failed");
+  const payload = await response.json() as { success?: boolean; result?: Array<{ meta?: { changes?: number } }> };
+  if (!payload.success) throw new Error("Emergency action claim failed");
+  return (payload.result?.[0]?.meta?.changes ?? 0) === 1;
+}
 export async function listEmergencyMappings(): Promise<Array<Record<string, unknown>>> {
   await initializeEmergencyStore();
   return query("SELECT media_id AS mediaId, role, location, experience, apply_url AS applyUrl, updated_at AS updatedAt FROM emergency_mappings ORDER BY updated_at DESC LIMIT 100");
