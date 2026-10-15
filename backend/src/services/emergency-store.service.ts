@@ -18,7 +18,8 @@ async function query<T = Record<string, unknown>>(sql: string, params: unknown[]
 }
 export async function initializeEmergencyStore(): Promise<void> {
   await query(`CREATE TABLE IF NOT EXISTS emergency_admin_credentials (email TEXT PRIMARY KEY, password_hash TEXT NOT NULL, updated_at TEXT NOT NULL)`);
-  await query(`CREATE TABLE IF NOT EXISTS emergency_mappings (media_id TEXT PRIMARY KEY, role TEXT NOT NULL, location TEXT NOT NULL, experience TEXT NOT NULL, apply_url TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+  await query(`CREATE TABLE IF NOT EXISTS emergency_mappings (media_id TEXT PRIMARY KEY, company TEXT NOT NULL DEFAULT '', role TEXT NOT NULL, location TEXT NOT NULL, experience TEXT NOT NULL, apply_url TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+  try { await query("ALTER TABLE emergency_mappings ADD COLUMN company TEXT NOT NULL DEFAULT ''"); } catch { /* existing schema already has company */ }
   await query(`CREATE TABLE IF NOT EXISTS emergency_actions (action_id TEXT PRIMARY KEY, created_at TEXT NOT NULL)`);
   // Bootstrap only the one configured admin; authentication checks the stored D1 row.
   await query("INSERT INTO emergency_admin_credentials(email,password_hash,updated_at) VALUES(?,?,?) ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash,updated_at=excluded.updated_at", [cfg("EMERGENCY_ADMIN_EMAIL").toLowerCase(), cfg("EMERGENCY_ADMIN_PASSWORD_HASH").toLowerCase(), new Date().toISOString()]);
@@ -35,13 +36,13 @@ export async function verifyEmergencyCredentials(email: string, password: string
   try { expected = Buffer.from(row.password_hash, "hex"); } catch { return false; }
   return expected.length === supplied.length && crypto.timingSafeEqual(expected, supplied);
 }
-export async function saveEmergencyMapping(input: { mediaId: string; role: string; location: string; experience: string; applyUrl: string }): Promise<void> {
+export async function saveEmergencyMapping(input: { mediaId: string; company: string; role: string; location: string; experience: string; applyUrl: string }): Promise<void> {
   await initializeEmergencyStore();
-  await query(`INSERT INTO emergency_mappings(media_id,role,location,experience,apply_url,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(media_id) DO UPDATE SET role=excluded.role,location=excluded.location,experience=excluded.experience,apply_url=excluded.apply_url,updated_at=excluded.updated_at`, [input.mediaId,input.role,input.location,input.experience,input.applyUrl,new Date().toISOString()]);
+  await query(`INSERT INTO emergency_mappings(media_id,company,role,location,experience,apply_url,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(media_id) DO UPDATE SET company=excluded.company,role=excluded.role,location=excluded.location,experience=excluded.experience,apply_url=excluded.apply_url,updated_at=excluded.updated_at`, [input.mediaId,input.company,input.role,input.location,input.experience,input.applyUrl,new Date().toISOString()]);
 }
-export async function getEmergencyMapping(mediaId: string): Promise<{ mediaId: string; role: string; location: string; experience: string; applyUrl: string } | null> {
+export async function getEmergencyMapping(mediaId: string): Promise<{ mediaId: string; company: string; role: string; location: string; experience: string; applyUrl: string } | null> {
   await initializeEmergencyStore();
-  const result = await query<{ mediaId: string; role: string; location: string; experience: string; applyUrl: string }>("SELECT media_id AS mediaId,role,location,experience,apply_url AS applyUrl FROM emergency_mappings WHERE media_id=? LIMIT 1",[mediaId]);
+  const result = await query<{ mediaId: string; role: string; location: string; experience: string; applyUrl: string }>("SELECT media_id AS mediaId,company,role,location,experience,apply_url AS applyUrl FROM emergency_mappings WHERE media_id=? LIMIT 1",[mediaId]);
   return result.rows[0] ?? null;
 }
 export async function claimEmergencyAction(actionId: string): Promise<boolean> {
@@ -51,5 +52,5 @@ export async function claimEmergencyAction(actionId: string): Promise<boolean> {
 }
 export async function listEmergencyMappings(): Promise<Array<Record<string, unknown>>> {
   await initializeEmergencyStore();
-  return (await query("SELECT media_id AS mediaId,role,location,experience,apply_url AS applyUrl,updated_at AS updatedAt FROM emergency_mappings ORDER BY updated_at DESC LIMIT 100")).rows;
+  return (await query("SELECT media_id AS mediaId,company,role,location,experience,apply_url AS applyUrl,updated_at AS updatedAt FROM emergency_mappings ORDER BY updated_at DESC LIMIT 100")).rows;
 }
