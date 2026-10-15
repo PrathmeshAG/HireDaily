@@ -1,7 +1,8 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { rateLimit } from "express-rate-limit";
-import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, verifyEmergencyCredentials } from "../services/emergency-store.service.js";
+import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, verifyEmergencyCredentials, processEmergencyInstagramComment } from "../services/emergency-store.service.js";
+import { parseWebhookEvents } from "../utils/webhook-parser.js";
 
 export const emergencyRouter = Router();
 const SESSION_MS = 30 * 60 * 1000;
@@ -48,3 +49,23 @@ emergencyRouter.post("/mappings", writeLimiter, async (req,res) => {
   try { await saveEmergencyMapping({ mediaId:mediaId.trim(),company:company.trim(),role:role.trim(),location:location.trim(),experience:experience.trim(),applyUrl:url.toString() }); return res.json({ message:"Mapping saved to emergency storage." }); }
   catch { return res.status(503).json({ error:"Emergency storage unavailable; mapping was not saved." }); }
 });
+
+
+/** Isolated Meta webhook handler; uses only the D1 job mappings. Signature is checked by the server middleware. */
+export async function handleEmergencyInstagramWebhook(req: import("express").Request, res: import("express").Response): Promise<void> {
+  const raw = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : "";
+  let payload: unknown;
+  try { payload = JSON.parse(raw); } catch { res.status(400).json({ error: "invalid_json" }); return; }
+  const events = parseWebhookEvents(payload);
+  let accepted = 0;
+  for (const event of events) {
+    if (event.eventType !== "comment" || !event.commentId || !event.mediaId || !event.commentText?.trim()) continue;
+    try {
+      const outcome = await processEmergencyInstagramComment({ commentId: event.commentId, mediaId: event.mediaId, commentText: event.commentText, username: event.username });
+      if (outcome.processed) accepted += 1;
+    } catch (error) {
+      console.error("Emergency Instagram comment processing failed", error instanceof Error ? error.message : "unknown_error");
+    }
+  }
+  res.status(200).json({ received: events.length, processed: accepted });
+}
