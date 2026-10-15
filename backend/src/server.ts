@@ -240,8 +240,6 @@ async function isOwnInstagramComment(event: {
 
 app.use(requestContext);
 app.use(corsMiddleware);
-app.use("/api/emergency", emergencyRouter);
-
 // IMPORTANT: Meta signs the exact request bytes. Use route-scoped raw parsers
 // for webhook endpoints so req.body is the original Buffer until signature
 // verification has completed. Normal application APIs keep express.json().
@@ -264,6 +262,10 @@ app.use(
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
+
+// This separate admin router uses JSON bodies and its own D1-backed auth.
+// It is intentionally not mounted behind the legacy /api/automation middleware.
+app.use("/api/emergency", emergencyRouter);
 
 // Meta webhook traffic is authenticated by X-Hub-Signature-256 rather than
 // by the admin API auth layer. Never rate-limit webhook ingestion here: Meta
