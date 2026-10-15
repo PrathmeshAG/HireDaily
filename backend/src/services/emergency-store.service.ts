@@ -90,15 +90,13 @@ export async function processEmergencyInstagramComment(input: { commentId: strin
     "",
     `🏢 Company: ${mapped.company}`,
     `💼 Role: ${mapped.role}`,
-    `📍 Location: ${mapped.location}`,
-    `🎓 Experience: ${mapped.experience}`,
     "",
     "🔗 Apply here:",
     mapped.applyUrl,
     "",
     "Good luck with your application! 🍀",
     "— Hire Daily",
-  ].join("\n");
+  ].join("\\n");
   const dmResponse = await fetch(`${graph}/${encodeURIComponent(igUserId)}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
