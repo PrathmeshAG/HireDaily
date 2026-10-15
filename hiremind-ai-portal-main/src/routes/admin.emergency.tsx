@@ -42,7 +42,7 @@ function EmergencyAdminPage() {
     setStatus("");
     setBusy(true);
     try {
-      const response = await fetch(`${emergencyApiBase}/api/emergency/login", {
+      const response = await fetch(`${emergencyApiBase}/api/emergency/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret }),
@@ -55,7 +55,7 @@ function EmergencyAdminPage() {
       setSessionToken(payload.token);
       setSecret("");
       setStatus("Admin session active (30 minutes).");
-      const listResponse = await fetch(`${emergencyApiBase}/api/emergency/mappings", { headers: { Authorization: `Bearer ${payload.token}` }, cache: "no-store" });
+      const listResponse = await fetch(`${emergencyApiBase}/api/emergency/mappings`, { headers: { Authorization: `Bearer ${payload.token}` }, cache: "no-store" });
       if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }
     } catch {
       setStatus("Emergency API reachable nahi hai.");
@@ -66,7 +66,7 @@ function EmergencyAdminPage() {
 
   useEffect(() => {
     let active = true;
-    fetch(`${emergencyApiBase}/api/emergency/status")
+    fetch(`${emergencyApiBase}/api/emergency/status`)
       .then(async (response) => {
         if (!response.ok) throw new Error("status unavailable");
         return response.json();
@@ -101,7 +101,7 @@ function EmergencyAdminPage() {
     }
     setBusy(true);
     try {
-      const response = await fetch(`${emergencyApiBase}/api/emergency/mappings", {
+      const response = await fetch(`${emergencyApiBase}/api/emergency/mappings`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` },
         credentials: "same-origin",
@@ -113,7 +113,7 @@ function EmergencyAdminPage() {
         return;
       }
       setStatus(payload.message || "Mapping save ho gayi.");
-      const listResponse = await fetch(`${emergencyApiBase}/api/emergency/mappings", { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
+      const listResponse = await fetch(`${emergencyApiBase}/api/emergency/mappings`, { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
       if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }
       setMapping({ mediaId: "", role: "", location: "", experience: "Fresher", applyUrl: "" });
     } catch {
