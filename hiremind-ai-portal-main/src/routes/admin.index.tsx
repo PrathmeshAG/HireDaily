@@ -1,18 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { HeroBanner, AnalyticsSection, AuthBackdrop, EmptyArt } from "../components/admin-extras";
 import {
   LayoutDashboard, Plus, List, LogOut, Lock, ShieldAlert, Loader2, Trash2, Pencil,
-  Search, Upload, Save, X, Briefcase, TrendingUp, Calendar, Mail, Eye, EyeOff,
+  Search, Save, X, Briefcase, TrendingUp, Calendar, Mail, Eye, EyeOff,
   BadgeCheck, Clock3, CheckCircle2, ArrowRight, MapPin, Sparkles, AlertTriangle,
   ImagePlus, Building2, Tags, Layers, Link2, FileText, ShieldCheck,
 } from "lucide-react";
 import { auth, ADMIN_EMAIL, type Job } from "../lib/firebase";
 import { useAuth } from "../lib/auth-context";
-import { fetchJobs, createJob, updateJob, deleteJob, uploadLogo } from "../lib/jobs";
+import { fetchJobs, createJob, updateJob, deleteJob } from "../lib/jobs";
+import { BulkJobsTab } from "../components/admin-bulk";
+import { parseJobText } from "../lib/job-parse";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminPage,
@@ -24,7 +26,7 @@ export const Route = createFileRoute("/admin/")({
   }),
 });
 
-type Tab = "dashboard" | "add" | "manage";
+type Tab = "dashboard" | "add" | "bulk" | "manage";
 
 /* ---------- constants & helpers ---------- */
 
@@ -254,6 +256,7 @@ function AdminDashboard() {
   const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "add", label: "Add Job", icon: Plus },
+    { id: "bulk", label: "Bulk Add", icon: Layers },
     { id: "manage", label: "Manage Jobs", icon: List },
   ];
   const idx = tabs.findIndex((t) => t.id === tab);
@@ -311,6 +314,7 @@ function AdminDashboard() {
         <div key={tab} className="ad-tab min-w-0">
           {tab === "dashboard" && <DashboardTab goto={setTab} />}
           {tab === "add" && <AddJobTab onDone={() => setTab("manage")} />}
+          {tab === "bulk" && <BulkJobsTab onDone={() => setTab("manage")} />}
           {tab === "manage" && <ManageJobsTab />}
         </div>
       </div>
@@ -533,44 +537,43 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
     const { id, createdAt, updatedAt, ...rest } = editing;
     return rest;
   });
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState("");
-  const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [paste, setPaste] = useState("");
   const qc = useQueryClient();
 
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
-
-  useEffect(() => {
-    if (!file) {
-      setPreview("");
-      return;
-    }
-    const u = URL.createObjectURL(file);
-    setPreview(u);
-    return () => URL.revokeObjectURL(u);
-  }, [file]);
-
-  const pickFile = (f?: File | null) => {
-    if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      toast.error("Please choose an image file");
-      return;
-    }
-    setFile(f);
-  };
-  const onDrop = (e: DragEvent<HTMLLabelElement>) => {
-    e.preventDefault();
-    setOver(false);
-    pickFile(e.dataTransfer.files?.[0]);
+  const inDays = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
-  const logoSrc = preview || form.companyLogo;
+  // Source name = company name, source URL = apply link (jab tak tum unhe alag se na badlo)
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      if (k === "companyName" && (!f.sourceName || f.sourceName === f.companyName)) next.sourceName = v as string;
+      if (k === "applyLink" && (!f.sourceUrl || f.sourceUrl === f.applyLink)) next.sourceUrl = v as string;
+      return next;
+    });
+
+  const autoFill = () => {
+    if (!paste.trim()) return;
+    const p = parseJobText(paste);
+    setForm((f) => {
+      const next = { ...f, ...p, description: paste.trim() };
+      if (!f.sourceName || f.sourceName === f.companyName) next.sourceName = p.companyName ?? f.companyName;
+      if (!f.sourceUrl || f.sourceUrl === f.applyLink) next.sourceUrl = p.applyLink ?? f.applyLink;
+      return next;
+    });
+    toast.success(`${Object.keys(p).length} fields bhar di. Ek baar check kar lo.`);
+  };
+
+  const logoSrc = form.companyLogo; // sirf purani jobs ka logo dikhane ke liye; naya logo upload nahi hota
   const skills = form.skills.split(",").map((s) => s.trim()).filter(Boolean);
 
   const required = [form.companyName, form.role, form.category, form.applyLink, form.lastDate, form.description];
   const requiredDone = required.filter((v) => v?.trim()).length;
-  const optional = [form.location, form.experience, form.skills, form.salary, form.sourceName, logoSrc];
+  const optional = [form.location, form.experience, form.skills, form.salary, form.sourceName];
   const pct = Math.round(((requiredDone + optional.filter((v) => v?.trim()).length) / (required.length + optional.length)) * 100);
 
   const submit = async (e: FormEvent) => {
@@ -581,14 +584,11 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
         if (!form.sourceName?.trim() || !form.sourceUrl?.trim() || !form.verifiedAt?.trim()) {
           throw new Error("Verified jobs require source name, source URL, and last verified date");
         }
-        const verifiedTime = new Date(`${form.verifiedAt}T23:59:59.999`).getTime();
-        if (!Number.isFinite(verifiedTime) || verifiedTime > Date.now()) {
+        if (form.verifiedAt > inDays(0)) {
           throw new Error("Last verified date cannot be in the future");
         }
       }
-      let logoUrl = form.companyLogo;
-      if (file) logoUrl = await uploadLogo(file);
-      const payload = { ...form, companyLogo: logoUrl };
+      const payload = { ...form };
       if (editing) {
         await updateJob(editing.id, payload);
         toast.success("Job updated");
@@ -596,7 +596,7 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
         await createJob(payload);
         toast.success("Job posted successfully");
         setForm(EMPTY);
-        setFile(null);
+        setPaste("");
       }
       qc.invalidateQueries({ queryKey: ["jobs"] });
       onDone?.();
@@ -625,6 +625,21 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
 
       <div className="grid gap-6 xl:grid-cols-[1fr_330px]">
         <form onSubmit={submit} className="space-y-5">
+          {!editing && (
+            <Section icon={Sparkles} title="Paste job text (auto-fill)" i={0}>
+              <textarea
+                rows={5}
+                value={paste}
+                onChange={(e) => setPaste(e.target.value)}
+                placeholder="Job ka poora text paste karo. Company, role, salary, location, experience, skills, link aur deadline jo mile apne aap bhar jayega."
+                className={inputCls}
+              />
+              <button type="button" onClick={autoFill} className="btn-ghost-glow mt-3 inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm">
+                <Sparkles className="h-4 w-4" /> Auto-fill fields
+              </button>
+            </Section>
+          )}
+
           <Section icon={Building2} title="Basics" i={0}>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Company name" required>
@@ -687,6 +702,13 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
                   onChange={(e) => set("lastDate", e.target.value)}
                   className={inputCls}
                 />
+                <span className="mt-1.5 flex gap-1.5">
+                  {[7, 15, 30].map((n) => (
+                    <button key={n} type="button" onClick={() => set("lastDate", inDays(n))} className="rounded-lg bg-white/5 px-2 py-1 text-[11px] text-white/70 ring-1 ring-white/10 hover:bg-white/10">
+                      +{n} din
+                    </button>
+                  ))}
+                </span>
               </Field>
             </div>
           </Section>
@@ -716,35 +738,24 @@ function AddJobTab({ onDone, editing, onCancel }: { onDone?: () => void; editing
                 </select>
               </Field>
               <Field label="Last verified" hint="Required when status is Verified. Cannot be a future date.">
-                <input type="date" max={todayStr()} value={form.verifiedAt ?? ""} onChange={(e) => set("verifiedAt", e.target.value)} className={inputCls} />
+                <input type="date" max={inDays(0)} value={form.verifiedAt ?? ""} onChange={(e) => set("verifiedAt", e.target.value)} className={inputCls} />
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, verificationStatus: "verified", verifiedAt: inDays(0) }))}
+                  className="mt-1.5 rounded-lg bg-white/5 px-2 py-1 text-[11px] text-white/70 ring-1 ring-white/10 hover:bg-white/10"
+                >
+                  Verified today (source check kar liya)
+                </button>
               </Field>
             </div>
           </Section>
 
-          <Section icon={FileText} title="Description & logo" i={4}>
+          <Section icon={FileText} title="Description" i={4}>
             <Field label="Job description" required>
               <textarea required placeholder="Responsibilities, requirements, how to apply…" value={form.description} onChange={(e) => set("description", e.target.value)} rows={7} className={inputCls} />
               <span className="mt-1 block text-right text-[11px] text-white/35">{form.description.length} characters</span>
             </Field>
 
-            <label
-              onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-              onDragLeave={() => setOver(false)}
-              onDrop={onDrop}
-              className={`ad-drop mt-4 flex cursor-pointer items-center gap-4 rounded-2xl border-2 border-dashed border-white/15 p-5 ${over ? "is-over" : ""}`}
-            >
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10">
-                {logoSrc ? <img src={logoSrc} alt="Logo preview" className="h-full w-full object-cover" /> : <ImagePlus className="h-6 w-6 text-white/40" />}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-medium text-white">
-                  <Upload className="h-4 w-4 text-[#00e5ff]" />
-                  <span className="truncate">{file ? file.name : form.companyLogo ? "Replace logo" : "Upload company logo"}</span>
-                </div>
-                <div className="mt-1 text-xs text-white/45">Drag an image here, or click to browse.</div>
-              </div>
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => pickFile(e.target.files?.[0])} />
-            </label>
           </Section>
 
           <button type="submit" disabled={busy} className="btn-glow ad-shine flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm disabled:opacity-60">
