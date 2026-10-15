@@ -42,7 +42,7 @@ export async function saveEmergencyMapping(input: { mediaId: string; company: st
 }
 export async function getEmergencyMapping(mediaId: string): Promise<{ mediaId: string; company: string; role: string; location: string; experience: string; applyUrl: string } | null> {
   await initializeEmergencyStore();
-  const result = await query<{ mediaId: string; role: string; location: string; experience: string; applyUrl: string }>("SELECT media_id AS mediaId,company,role,location,experience,apply_url AS applyUrl FROM emergency_mappings WHERE media_id=? LIMIT 1",[mediaId]);
+  const result = await query<{ mediaId: string; company: string; role: string; location: string; experience: string; applyUrl: string }>("SELECT media_id AS mediaId,company,role,location,experience,apply_url AS applyUrl FROM emergency_mappings WHERE media_id=? LIMIT 1",[mediaId]);
   return result.rows[0] ?? null;
 }
 export async function claimEmergencyAction(actionId: string): Promise<boolean> {
@@ -59,13 +59,13 @@ export async function listEmergencyMappings(): Promise<Array<Record<string, unkn
 export async function processEmergencyInstagramComment(input: { commentId: string; mediaId: string; commentText: string; username: string | null }): Promise<{ processed: boolean; reason: string }> {
   if (!input.commentId || !input.mediaId) return { processed: false, reason: "missing_comment_or_media_id" };
   await initializeEmergencyStore();
-  const claim = await query("INSERT OR IGNORE INTO emergency_actions(action_id,created_at) VALUES(?,?)", ["comment:" + input.commentId, new Date().toISOString()]);
-  if (claim.changes !== 1) return { processed: false, reason: "duplicate" };
   const mapped = await getEmergencyMapping(input.mediaId);
   if (!mapped) return { processed: false, reason: "no_job_mapping" };
   const token = process.env.META_ACCESS_TOKEN?.trim();
   const igUserId = (process.env.INSTAGRAM_BUSINESS_ID || process.env.INSTAGRAM_USER_ID || process.env.META_INSTAGRAM_USER_ID || "").trim();
   if (!token || !igUserId) return { processed: false, reason: "meta_credentials_not_configured" };
+  const claim = await query("INSERT OR IGNORE INTO emergency_actions(action_id,created_at) VALUES(?,?)", ["comment:" + input.commentId, new Date().toISOString()]);
+  if (claim.changes !== 1) return { processed: false, reason: "duplicate" };
 
   const replies = [
     "Just sent you the details in DM 📩",
