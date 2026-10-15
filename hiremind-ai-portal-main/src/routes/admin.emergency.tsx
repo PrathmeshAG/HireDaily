@@ -30,7 +30,8 @@ function EmergencyAdminPage() {
   });
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [secret, setSecret] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [sessionToken, setSessionToken] = useState("");
   const [mappings, setMappings] = useState<Array<{mediaId:string;role:string;location:string;experience:string;applyUrl:string;updatedAt:string}>>([]);
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
@@ -43,7 +44,7 @@ function EmergencyAdminPage() {
       const response = await fetch(`/api/emergency/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret }),
+        body: JSON.stringify({ email, password }),
       });
       const payload = (await response.json().catch(() => ({}))) as { token?: string; error?: string };
       if (!response.ok || !payload.token) {
@@ -51,7 +52,7 @@ function EmergencyAdminPage() {
         return;
       }
       setSessionToken(payload.token);
-      setSecret("");
+      setPassword("");
       setStatus("Admin session active (30 minutes).");
       const listResponse = await fetch(`/api/emergency/mappings`, { headers: { Authorization: `Bearer ${payload.token}` }, cache: "no-store" });
       if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }
@@ -135,10 +136,10 @@ function EmergencyAdminPage() {
 
       <div className="mb-6 flex gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-        <p><strong>Setup status:</strong> {serviceConfigured === null ? "Checking backend…" : serviceConfigured ? "Backend configuration detected; test storage and Meta webhook before use." : "Backend/storage secrets abhi configure nahi hain. Save/login kaam nahi karega."} Comment/DM webhook integration abhi alag se complete aur test hona zaroori hai.</p>
+        <p><strong>Setup status:</strong> {serviceConfigured === null ? "Checking backend…" : serviceConfigured ? "Backend configuration detected; test storage and Meta webhook before use." : "Backend/storage secrets abhi configure nahi hain. Save/login kaam nahi karega."} Ye separate login aur D1 mappings hain. Meta comment/DM webhook integration ko deploy ke baad end-to-end test karna hoga.</p>
       </div>
 
-      {!sessionToken ? <form onSubmit={login} className="mb-5 grid gap-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><label className="text-sm text-slate-200">Emergency admin access code<input className={field} type="password" autoComplete="current-password" value={secret} onChange={(e) => setSecret(e.target.value)} required maxLength={256} /></label><button disabled={busy} className="w-fit rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit">{busy ? "Checking…" : "Unlock admin"}</button></form> : <button className="mb-5 rounded-xl border border-white/15 px-4 py-2 text-sm" onClick={() => { setSessionToken(""); setStatus("Logged out."); }}>Lock admin</button>}
+      {!sessionToken ? <form onSubmit={login} className="mb-5 grid gap-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><label className="text-sm text-slate-200">Admin email<input className={field} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={254} /></label><label className="text-sm text-slate-200">Password<input className={field} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={256} /></label><button disabled={busy} className="w-fit rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit">{busy ? "Checking…" : "Unlock admin"}</button></form> : <button className="mb-5 rounded-xl border border-white/15 px-4 py-2 text-sm" onClick={() => { setSessionToken(""); setStatus("Logged out."); }}>Lock admin</button>}
       <form onSubmit={save} className="grid gap-5 rounded-2xl border border-white/10 bg-white/[.04] p-5 sm:grid-cols-2">
         <label className="text-sm text-slate-200 sm:col-span-2">Instagram Media/Post ID
           <input className={field} value={mapping.mediaId} onChange={(e) => update("mediaId", e.target.value)} placeholder="e.g. 17900000000000000" required inputMode="numeric" />
@@ -166,7 +167,7 @@ function EmergencyAdminPage() {
         {status && <p role="status" className="rounded-xl bg-white/5 p-3 text-sm sm:col-span-2">{status}</p>}
       </form>
       {sessionToken && <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.04] p-5"><h2 className="text-lg font-semibold">Saved mappings</h2>{mappings.length === 0 ? <p className="mt-3 text-sm text-slate-400">No saved mappings yet.</p> : <div className="mt-3 space-y-3">{mappings.map((item) => <div key={item.mediaId} className="rounded-xl border border-white/10 p-3 text-sm"><p className="font-semibold">{item.role} · {item.location}</p><p className="mt-1 text-xs text-slate-400">Post ID: {item.mediaId} · {item.experience}</p><a className="mt-2 inline-block break-all text-cyan-200 underline" href={item.applyUrl} target="_blank" rel="noopener noreferrer">{item.applyUrl}</a></div>)}</div>}</section>}
-      <div className="mt-5 flex gap-2 text-xs text-slate-400"><Link2 className="h-4 w-4 shrink-0" /><p>Mapping persistence, admin authentication, webhook signature validation, rate limiting, and duplicate-event protection must be implemented server-side before production use. Secret keys must be configured in hosting environment variables, never in this page.</p></div>
+      <div className="mt-5 flex gap-2 text-xs text-slate-400"><Link2 className="h-4 w-4 shrink-0" /><p>Is login ka purane Admin Login se koi relation nahi hai. Credentials aur mapping storage Cloudflare D1 se verify/store honge; secrets hosting environment variables mein hi rakho.</p></div>
     </div>
   );
 }
