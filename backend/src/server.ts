@@ -340,7 +340,7 @@ app.get("/webhooks/emergency-instagram", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
-  const expectedToken = process.env.EMERGENCY_META_VERIFY_TOKEN?.trim() || "";
+  const expectedToken = (process.env.EMERGENCY_META_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN || "").trim();
   if (mode === "subscribe" && !!expectedToken && token === expectedToken && typeof challenge === "string") {
     res.status(200).send(challenge);
     return;
