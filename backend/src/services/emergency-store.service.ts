@@ -62,8 +62,7 @@ export async function processEmergencyInstagramComment(input: { commentId: strin
   const mapped = await getEmergencyMapping(input.mediaId);
   if (!mapped) return { processed: false, reason: "no_job_mapping" };
   const token = process.env.META_ACCESS_TOKEN?.trim();
-  const igUserId = (process.env.INSTAGRAM_BUSINESS_ID || process.env.INSTAGRAM_USER_ID || process.env.META_INSTAGRAM_USER_ID || "").trim();
-  if (!token || !igUserId) return { processed: false, reason: "meta_credentials_not_configured" };
+  if (!token) return { processed: false, reason: "meta_credentials_not_configured" };
   const claim = await query("INSERT OR IGNORE INTO emergency_actions(action_id,created_at) VALUES(?,?)", ["comment:" + input.commentId, new Date().toISOString()]);
   if (claim.changes !== 1) return { processed: false, reason: "duplicate" };
 
@@ -97,10 +96,10 @@ export async function processEmergencyInstagramComment(input: { commentId: strin
     "Good luck with your application! 🍀",
     "— Hire Daily",
   ].join("\\n");
-  const dmResponse = await fetch(`${graph}/${encodeURIComponent(igUserId)}/messages`, {
+  const dmResponse = await fetch(`${graph}/${encodeURIComponent(input.commentId)}/private_replies`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ recipient: { comment_id: input.commentId }, message: { text: dm } }),
+    body: JSON.stringify({ message: dm }),
   });
   if (!dmResponse.ok) {
     const body = await dmResponse.text().catch(() => "");
