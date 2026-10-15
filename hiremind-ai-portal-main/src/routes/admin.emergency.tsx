@@ -30,6 +30,42 @@ function EmergencyAdminPage() {
   });
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [secret, setSecret] = useState("");
+  const [sessionToken, setSessionToken] = useState("");
+  const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus("");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/emergency/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { token?: string; error?: string };
+      if (!response.ok || !payload.token) {
+        setStatus(payload.error || "Access code accept nahi hua.");
+        return;
+      }
+      setSessionToken(payload.token);
+      setSecret("");
+      setStatus("Admin session active (30 minutes).");
+    } catch {
+      setStatus("Emergency API reachable nahi hai.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useState(() => {
+    fetch("/api/emergency/status").then(async (r) => {
+      const data = await r.json();
+      setServiceConfigured(Boolean(data.configured));
+    }).catch(() => setServiceConfigured(false));
+    return null;
+  });
 
   const update = (key: keyof Mapping, value: string) =>
     setMapping((current) => ({ ...current, [key]: value }));
@@ -56,7 +92,7 @@ function EmergencyAdminPage() {
     try {
       const response = await fetch("/api/emergency/mappings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` },
         credentials: "same-origin",
         body: JSON.stringify({ ...mapping, mediaId: mapping.mediaId.trim() }),
       });
@@ -88,9 +124,10 @@ function EmergencyAdminPage() {
 
       <div className="mb-6 flex gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-        <p><strong>Setup status:</strong> UI branch mein hai; secure API, persistent storage aur Meta webhook ko configure/test karna baaki hai. Jab tak backend configure nahi hota, Save kaam nahi karega. Is page ko live automation mat samajhna.</p>
+        <p><strong>Setup status:</strong> {serviceConfigured === null ? "Checking backend…" : serviceConfigured ? "Backend configuration detected; test storage and Meta webhook before use." : "Backend/storage secrets abhi configure nahi hain. Save/login kaam nahi karega."} Comment/DM webhook integration abhi alag se complete aur test hona zaroori hai.</p>
       </div>
 
+      {!sessionToken ? <form onSubmit={login} className="mb-5 grid gap-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><label className="text-sm text-slate-200">Emergency admin access code<input className={field} type="password" autoComplete="current-password" value={secret} onChange={(e) => setSecret(e.target.value)} required maxLength={256} /></label><button disabled={busy} className="w-fit rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit">{busy ? "Checking…" : "Unlock admin"}</button></form> : <button className="mb-5 rounded-xl border border-white/15 px-4 py-2 text-sm" onClick={() => { setSessionToken(""); setStatus("Logged out."); }}>Lock admin</button>}
       <form onSubmit={save} className="grid gap-5 rounded-2xl border border-white/10 bg-white/[.04] p-5 sm:grid-cols-2">
         <label className="text-sm text-slate-200 sm:col-span-2">Instagram Media/Post ID
           <input className={field} value={mapping.mediaId} onChange={(e) => update("mediaId", e.target.value)} placeholder="e.g. 17900000000000000" required inputMode="numeric" />
@@ -112,7 +149,7 @@ function EmergencyAdminPage() {
           <span className="mt-1 block text-xs text-slate-400">HTTPS only. DM button ko direct isi URL par bhejne ke liye use hoga.</span>
         </label>
         <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
-          <button disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit"><Save className="h-4 w-4" />{busy ? "Saving…" : "Save mapping"}</button>
+          <button disabled={busy || !sessionToken} className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit"><Save className="h-4 w-4" />{busy ? "Saving…" : "Save mapping"}</button>
           {mapping.applyUrl.startsWith("https://") && <a href={mapping.applyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-cyan-200 underline"><ExternalLink className="h-4 w-4" />Check apply link</a>}
         </div>
         {status && <p role="status" className="rounded-xl bg-white/5 p-3 text-sm sm:col-span-2">{status}</p>}
