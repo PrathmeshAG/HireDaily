@@ -94,7 +94,7 @@ test("Follow Gate contains the Follow URL and verification postback", async () =
   assert(buttons[1].type === "postback" && buttons[1].payload === FOLLOW_GATE_PAYLOAD, "I've Followed postback");
 });
 
-test("Messaging postback uses message.mid as eventId and sender.id as IGSID", () => {
+test("Messaging postback uses a per-tap eventId, keeps message.mid, and sender.id is the IGSID", () => {
   const events = parseWebhookEvents({
     object: "instagram",
     entry: [{
@@ -110,7 +110,10 @@ test("Messaging postback uses message.mid as eventId and sender.id as IGSID", ()
   });
   const event = events[0];
   assert(event.eventType === "message_interaction", "postback is a messaging interaction");
-  assert(event.eventId === "mid_123", "message.mid is eventId");
+  // Postbacks get a per-tap id (timestamp + sender + button message + payload) so a
+  // second tap of the same button is not swallowed as a duplicate. message.mid is kept as messageId.
+  assert(event.messageId === "mid_123", "message.mid is kept as messageId");
+  assert(event.eventId.startsWith("postback_1700000000000_igsid_123_mid_123_"), "postback eventId is per tap: " + event.eventId);
   assert(event.userId === "igsid_123", "sender.id is IGSID");
   assert(event.username === null, "username remains null for messaging events");
   assert(event.interactionPayload === FOLLOW_GATE_PAYLOAD, "payload parsed");

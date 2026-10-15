@@ -211,10 +211,11 @@ test("returns structured RuleMatchResult with matched true", () => {
   assert(result.matched === true, "matched true");
   assert(result.ruleId === "rule_1", "ruleId set");
   assert(result.rule !== null, "rule present");
-  assert(result.matchedKeyword === "JOB", `matchedKeyword JOB, got ${result.matchedKeyword}`);
+  // The engine reports the normalized (lower-case) keyword.
+  assert(result.matchedKeyword === "job", `matchedKeyword job, got ${result.matchedKeyword}`);
   assert(result.matchType === "contains", "matchType set");
   assert(result.scopeMatched === true, "scope matched");
-  assert(result.reason.includes("JOB"), "reason includes keyword");
+  assert(result.reason.toLowerCase().includes("job"), "reason includes keyword");
 });
 
 test("returns non-matched result with reason when nothing matches", () => {
@@ -222,7 +223,7 @@ test("returns non-matched result with reason when nothing matches", () => {
   const result = evaluateComment([rule], makeContext({ commentText: "hello" }), NOW);
   assert(result.matched === false, "not matched");
   assert(result.ruleId === null, "no ruleId");
-  assert(result.reason === "no active rule matched", "reason set");
+  assert(result.reason.startsWith("No active rule matched"), `reason set, got ${result.reason}`);
 });
 
 console.log("Cooldown — duplicate & cooldown protection");

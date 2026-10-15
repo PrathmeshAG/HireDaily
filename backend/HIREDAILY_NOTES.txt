@@ -59,6 +59,19 @@ UPDATE 4  (reliability + tools)
   - Hourly cap + random delay (safety), Reply variations (rotation),
     Rule start/end date, Daily summary message.
 
+UPDATE 7  (14 Oct: "kuch users ko DM/reply nahi gaya" + Manual Send)
+  - WEBHOOK SIGNATURE BUG: Meta signature escaped-Unicode payload par banata hai (emoji/Hindi/accent wale comments).
+    Code sirf raw bytes se check karta tha ("diagnostic phase" comment), isliye aise webhooks 401 hokar chupchap gir jaate the.
+    Ab raw ya escaped-Unicode, dono mein se koi HMAC match ho to accept. (middleware/webhook-security.ts) Security kam nahi hua:
+    dono HMAC app secret se bante hain, bina secret ke koi forge nahi kar sakta.
+  - Meta ka "An unknown error has occurred" (code 1/2, is_transient) par public reply fail hoti thi (log: "Comment reply failed: An unknown
+    error has occurred."). Ab: 1.5 sec ruko -> check karo ki hamara reply pehle se hai kya -> nahi hai to EK baar dobara. Check na ho paye
+    to retry nahi (duplicate public reply ka risk nahi).
+  - Skip ka kaaran ab Logs mein: "... SKIPPED: cooldown ..." ya "SKIPPED: duplicate delivery". Pehle sirf "rule matched" dikhta tha.
+  - NAYA PAGE "Manual Send": post chuno (+ username) -> Instagram se uske comments aate hain (webhook miss hue bhi) -> har comment par
+    "Job DM + reply", "Job DM only", "Reply only", "Custom DM", "Custom reply". Neeche us username ka log history (7 din).
+  - Purane tests theek kiye (sab green): rule-engine, env-validation, instagram-dm, follow-gate, security. "npm test" ab multi-link aur update4 bhi chalata hai.
+
 UPDATE 6 / FINAL  (12 Oct)
   - TRACKING_BASE_URL galat (website) tha -> DM links 404 (11 Oct). Ab backend verify karta hai +
     website par rescue route /r/<id>/<n> (urgent-link-fix).
@@ -92,6 +105,7 @@ Naye, sab OPTIONAL (set nahi karoge to purana behaviour):
   RESEND_API_KEY, ALERT_EMAIL_TO, ALERT_EMAIL_FROM   Email alerts
   ALERT_WEBHOOK_URL                              Slack/Discord alerts
   DM_CARD_IMAGE_URL   (optional) https image, har carousel card par lagti hai. Verify nahi hua.
+                      Seedha value: https://hire-daily.vercel.app/dm-card.png  (file: hiremind-ai-portal-main/public/dm-card.png, 1200x630)
   AUTOMATION_MAX_COMMENTS_PER_HOUR   0/khali = limit nahi (poore account par, sab posts milke)
   AUTOMATION_MAX_DMS_PER_HOUR        0/khali = limit nahi
   AUTOMATION_DELAY_MIN_MS, AUTOMATION_DELAY_MAX_MS   reply aur DM ke beech random pause
@@ -175,6 +189,35 @@ Test chalane: backend folder mein "npx tsx test/update4.test.ts" (aur multi-link
   env-validation 1. Inhe ignore mat karna, kabhi theek karna.
 
 
+5b) KISI USER KO REPLY/DM NAHI GAYA - KAISE DHUNDHEIN
+--------------------------------------------------------------------------
+Pehle dekho kaunsa case hai:
+ A) Logs mein us username ke liye "Comment reply failed: An unknown error..." = Meta ka temporary error.
+    Ab auto-retry hota hai. Phir bhi fail ho to Logs > "Retry failed" ya Manual Send.
+ B) Logs mein "rule matched ... SKIPPED: cooldown" = rule ka cooldown (default 24 ghante) ne roka, same banda same post par dobara.
+    NOTE: cooldown/duplicate yaad rakhna SERVER KI MEMORY mein hota hai (Vercel serverless), restart par reset ho jaata hai.
+    Rule mein cooldown "None" kar do to ye band.
+ C) Logs mein us username ka KOI entry nahi, par Instagram par comment hai = webhook server tak pahuncha hi nahi, ya reject hua.
+    Vercel > backend > Logs mein /webhooks/instagram par status 401 dhundo. 401 = signature reject (ab fix hua, Update 7).
+ D) Logs mein "Error / no match" = koi rule match nahi hua (Rules > Unmatched comments dekho).
+Har case mein: Manual Send page par jao -> post + username -> comment par buttons se turant bhej do.
+
+MANUAL SEND KI LIMITS (Instagram ke rules, hum badal nahi sakte):
+ - Jisne kabhi message nahi kiya use DM sirf us ke COMMENT ka "private reply" ban kar ja sakta hai: ek comment par ek, aur ~7 din ke andar.
+ - Kisi bhi random username ko seedha DM nahi bhej sakte.
+ - Public reply par ye limit nahi.
+ - "Custom DM" us comment ka ek private reply use karta hai. Pehle se DM ja chuka ho to Instagram mana karega.
+
+5c) DM_CARD_IMAGE_URL KAISE LAGAYEIN (optional, 4-5 links ke cards par image)
+--------------------------------------------------------------------------
+ 1. Image file: hiremind-ai-portal-main/public/dm-card.png (1200x630, 1.91:1) pehle se bani hui hai. Apni chahiye to isi naam se replace karo.
+ 2. Website redeploy karo, phir browser mein https://hire-daily.vercel.app/dm-card.png kholkar check karo ki image dikh rahi hai.
+ 3. Vercel > hiredaily-backend > Settings > Environment Variables:
+      DM_CARD_IMAGE_URL = https://hire-daily.vercel.app/dm-card.png
+    Backend redeploy.
+ 4. Ek 4-5 link wale post par test comment karo. Har card par yahi image aayegi (sabhi cards par same).
+ NOTE: sirf https chalta hai. Instagram par ye asli mein kaisa dikhta hai maine verify nahi kiya.
+
 6) FOLLOW STATUS KA MATLAB (Users page)
 --------------------------------------------------------------------------
 Follower      = Instagram ne confirm kiya ki wo follow karta hai. Link turant mila.
@@ -213,6 +256,8 @@ Alternative: cron-job.org (free) se URL call karwao.
   website par /r/<media>/<n> rescue route hai jo purane bheje hue links ko backend se job par bhejta hai.
 - Token expiry save "Failed to fetch": maine PUT request banayi thi, par backend CORS mein PUT allowed nahi tha. Ab POST.
 - 4-5 links ke cards mein sirf "Role - Company" ek line mein tha; ab role title, company+location subtitle.
+- Webhook signature mein escaped-Unicode check hata hua tha (kisi ne "diagnostic phase" mein). Emoji/Hindi wale webhooks gir rahe the.
+- Skip hone par Logs mein kaaran nahi likha tha (admin ko pata nahi chalta tha). Ab likha aata hai.
 Seekh: naye "safety" features ka default hamesha OFF rakho aur pehle DRY RUN par dekho.
 
 
@@ -234,7 +279,7 @@ backend/src/services/rule-engine.service.ts  rule match
 backend/src/services/post-mapping.service.ts post -> job links
 backend/src/services/firebase-admin.service.ts  saara Firebase read/write
 backend/src/services/alerts / notifier / token-health / token-status / summary
-backend/src/services/retry / simulator / click-tracking / rate-guard / health-report
+backend/src/services/retry / simulator / click-tracking / rate-guard / health-report / manual-send
 backend/test/                                tests
 hiremind-ai-portal-main/src/admin/automation/
     pages/        har admin page
@@ -245,6 +290,6 @@ hiremind-ai-portal-main/src/admin/automation/
 Deploy order: PEHLE backend, PHIR frontend.
 
 Zip files jo mile (har ek pichhle ke upar): final-patch-v2, update2-only, update3-only,
-update4-only, cap-fix, update5-only, urgent-link-fix, final-backend (ye wali). update6-only wali zip LENI HI NAHI THI (skip). Naya project copy karna ho to latest code
+update4-only, cap-fix, update5-only, urgent-link-fix, final-backend, update7 (ye wali). update6-only wali zip LENI HI NAHI THI (skip). Naya project copy karna ho to latest code
 (proj folder) hi source of truth hai.
 ==========================================================================

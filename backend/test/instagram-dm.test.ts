@@ -6,6 +6,7 @@
 // and NEVER write fake data. The Meta network call is injected and stubbed
 // (or never called in dry-run mode).
 
+import "./setup-env.js";
 import {
   sendDirectMessage,
   processDirectMessage,
@@ -87,9 +88,11 @@ function makeResolution(partial: Partial<PostJobResolution> = {}): PostJobResolu
 /** A mock fetch that records the URL it was called with (never hits the network). */
 function makeMockFetch(onUrl?: (url: string) => void) {
   const calls: string[] = [];
-  const impl = async (input: string | Request | URL) => {
+  const bodies: string[] = [];
+  const impl = async (input: string | Request | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push(url);
+    bodies.push(typeof init?.body === "string" ? init.body : "");
     if (onUrl) onUrl(url);
     return {
       ok: true,
@@ -97,7 +100,7 @@ function makeMockFetch(onUrl?: (url: string) => void) {
       json: async () => ({ message_id: "dm_17895617777770001" }),
     } as unknown as Response;
   };
-  return { calls, impl };
+  return { calls, bodies, impl };
 }
 
 /** A mock fetch that always returns a Meta error. */
@@ -147,13 +150,15 @@ test("sendDirectMessage builds the correct Meta DM endpoint and returns success"
   const result = await sendDirectMessage("user_123", "Hello DM", "secret-token", {
     dryRun: false,
     fetchImpl: mock.impl,
+    commentId: "comment_1",
+    instagramBusinessId: "ig_123",
   });
   assert(result.success === true, "success true");
   assert(result.externalId === "dm_17895617777770001", "externalId from Meta");
   assert(result.error === null, "no error");
   assert(mock.calls.length === 1, "one network call");
   assert(
-    mock.calls[0] === `https://graph.instagram.com/${META_GRAPH_VERSION}/user_123/messages`,
+    mock.calls[0] === `https://graph.instagram.com/${META_GRAPH_VERSION}/ig_123/messages`,
     "correct DM endpoint",
   );
 });
@@ -198,6 +203,8 @@ test("sendDirectMessage returns failure for a non-2xx Meta response", async () =
   const result = await sendDirectMessage("user_1", "Hello", "token", {
     dryRun: false,
     fetchImpl: makeErrorFetch(),
+    commentId: "comment_1",
+    instagramBusinessId: "ig_123",
   });
   assert(result.success === false, "success false");
   assert(result.externalId === null, "no externalId");
@@ -219,6 +226,8 @@ test("sendDirectMessage never exposes the access token in errors", async () => {
   const result = await sendDirectMessage("user_1", "Hello", "SUPER_SECRET_TOKEN", {
     dryRun: false,
     fetchImpl: makeErrorFetch(),
+    commentId: "comment_1",
+    instagramBusinessId: "ig_123",
   });
   assert(result.success === false, "success false");
   assert(
@@ -271,7 +280,7 @@ test("correct mapped job URL included in the DM", async () => {
     },
     { reader: readerWithDmTemplate("Apply: {{jobLink}}"), fetchImpl: mock.impl },
   );
-const url = decodeURIComponent(mock.calls[0]);
+const url = mock.bodies[0];
   assert(url.includes("Apply: https://hire-daily.vercel.app/jobs/job_42"), "exact mapped job URL in DM: " + url);
 });
 
@@ -293,7 +302,7 @@ test("username rendered in DM", async () => {
     },
     { reader: readerWithDmTemplate("Hi {{username}}"), fetchImpl: mock.impl },
   );
-  const url = decodeURIComponent(mock.calls[0]);
+  const url = mock.bodies[0];
   assert(url.includes("Hi aditi"), "username rendered: " + url);
 });
 
@@ -315,7 +324,7 @@ test("company rendered in DM", async () => {
     },
     { reader: readerWithDmTemplate("Company: {{company}}"), fetchImpl: mock.impl },
   );
-  const url = decodeURIComponent(mock.calls[0]);
+  const url = mock.bodies[0];
   assert(url.includes("Company: Acme Corp"), "company rendered: " + url);
 });
 
@@ -337,7 +346,7 @@ test("title rendered in DM", async () => {
     },
     { reader: readerWithDmTemplate("Title: {{title}}"), fetchImpl: mock.impl },
   );
-  const url = decodeURIComponent(mock.calls[0]);
+  const url = mock.bodies[0];
   assert(url.includes("Title: Full Stack Engineer"), "title rendered: " + url);
 });
 
@@ -359,7 +368,7 @@ test("location rendered in DM", async () => {
     },
     { reader: readerWithDmTemplate("Location: {{location}}"), fetchImpl: mock.impl },
   );
-  const url = decodeURIComponent(mock.calls[0]);
+  const url = mock.bodies[0];
   assert(url.includes("Location: Remote"), "location rendered: " + url);
 });
 
@@ -635,7 +644,7 @@ test("DM uses exact mapped job URL (never generic /jobs)", async () => {
     },
     { reader: readerWithDmTemplate("Apply: {{jobLink}}"), fetchImpl: mock.impl },
   );
-  const url = decodeURIComponent(mock.calls[0]);
+  const url = mock.bodies[0];
   assert(url.includes("jobs/job_99"), "exact job id in DM");
   assert(!url.includes("/jobs?\""), "no generic jobs query");
 });

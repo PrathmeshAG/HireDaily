@@ -1,6 +1,9 @@
+import "./setup-env.js";
 // Update 4 — alerts, token health, retry selection, simulator, summary,
 // missing jobs, click tracking, rate guard. In-memory stubs only.
 
+import { fetchPostComments, commentStatuses, userTimeline, validateCustomText } from "../src/services/manual-send.service.js";
+import { replyToComment, isTransientMetaError } from "../src/services/instagram.service.js";
 import { sendAlert, getConfiguredChannels } from "../src/services/notifier.service.js";
 import { checkMetaToken, isMetaAuthError, daysUntil } from "../src/services/token-health.service.js";
 import { getEffectiveTokenState } from "../src/services/token-status.service.js";
@@ -340,6 +343,91 @@ test("the 5-link carousel really sends role as title and company as subtitle", a
   assert(els.length === 5 && els[0].title === "Role 0" && els[0].subtitle === "Co 0 · City" && els[0].buttons[0].url === "https://x/0", "elements");
 });
 
+console.log("Manual send");
+function pagedFetch(pages: unknown[]): { impl: typeof fetch; urls: string[] } {
+  const urls: string[] = [];
+  let i = 0;
+  const impl = (async (url: string) => { urls.push(String(url)); return new Response(JSON.stringify(pages[Math.min(i++, pages.length - 1)]), { status: 200 }); }) as unknown as typeof fetch;
+  return { impl, urls };
+}
+test("comments are read from Instagram: paged, filtered by username, own comments skipped, newest first", async () => {
+  const { impl, urls } = pagedFetch([
+    { data: [{ id: "c1", text: "link", username: "Sankhar2003", timestamp: "2026-10-12T04:30:00+0000", from: { id: "U1" } }, { id: "c2", text: "mine", username: "hire_daily", timestamp: "2026-10-12T04:40:00+0000", from: { id: "ig_123" } }],
+      paging: { next: "https://graph.instagram.com/v24.0/m1/comments?after=abc" } },
+    { data: [{ id: "c3", text: "🙌", username: "sankhar2003", timestamp: "2026-10-12T05:00:00+0000", from: { id: "U1" } }, { id: "c4", text: "x", username: "other", timestamp: "2026-10-12T05:10:00+0000", from: { id: "U2" } }],
+      paging: { next: "https://evil.example.com/steal?token=1" } },
+  ]);
+  const r = await fetchPostComments({ mediaId: "m1", token: "tok", ownUserId: "ig_123", username: "@sankhar", fetchImpl: impl });
+  assert(r.error === null && r.comments.map((c) => c.commentId).join() === "c3,c1", "filtered + newest first: " + r.comments.map((c) => c.commentId).join());
+  assert(r.comments[0].userId === "U1", "commenter id kept");
+  assert(urls.length === 2 && !urls.some((u) => u.includes("evil.example.com")), "only graph.instagram.com paging links are followed");
+});
+test("an Instagram error is reported, never thrown", async () => {
+  const f = (async () => new Response(JSON.stringify({ error: { message: "Invalid OAuth access token" } }), { status: 400 })) as unknown as typeof fetch;
+  const r = await fetchPostComments({ mediaId: "m1", token: "tok", fetchImpl: f });
+  assert(r.comments.length === 0 && /Invalid OAuth/.test(r.error ?? ""), "error text");
+});
+test("per-comment status and the user's timeline come from the logs", () => {
+  const logs = [
+    L({ commentId: "c1", type: "comment_sent", commentStatus: "failed", error: "An unknown error has occurred.", timestamp: 2000, username: "Sankhar2003" }),
+    L({ commentId: "c1", type: "dm_sent", dmStatus: "success", timestamp: 2100, username: "Sankhar2003" }),
+    L({ commentId: "c9", type: "dm_sent", dmStatus: "failed", timestamp: 2200, username: "other" }),
+    L({ commentId: null, type: "keyword_matched", detail: "any_comment rule matched — SKIPPED: cooldown", timestamp: 1900, username: "sankhar2003" }),
+  ];
+  const st = commentStatuses(["c1", "c2"], logs);
+  assert(st.get("c1")!.reply === "failed" && st.get("c1")!.dm === "success" && st.get("c1")!.lastError === "An unknown error has occurred.", "c1 status");
+  assert(st.get("c2")!.reply === "none" && st.get("c2")!.dm === "none", "c2 untouched");
+  const tl = userTimeline(logs, "@SANKHAR2003");
+  assert(tl.length === 3 && tl[0].at === 2100 && tl[2].detail!.includes("SKIPPED"), "timeline newest first, case-insensitive, includes the skip reason");
+  assert(userTimeline(logs, "").length === 0, "no username, no timeline");
+});
+test("custom text is validated (required, DM max 1000, reply max 2200)", () => {
+  assert(!validateCustomText("dm", "   ").ok && !validateCustomText("dm", 5).ok, "required");
+  assert(validateCustomText("dm", "x".repeat(1000)).ok && !validateCustomText("dm", "x".repeat(1001)).ok, "dm limit");
+  assert(validateCustomText("reply", "x".repeat(2200)).ok && !validateCustomText("reply", "x".repeat(2201)).ok, "reply limit");
+  const v = validateCustomText("dm", "  hi  ");
+  assert(v.ok && v.text === "hi", "trimmed");
+});
+
+console.log("Public reply: Meta unknown-error retry (never creates a duplicate)");
+const UNKNOWN = { error: { message: "An unknown error has occurred.", code: 2, is_transient: true } };
+function replyStub(script: { method: string; status: number; body: unknown }[]) {
+  const calls: { method: string; url: string }[] = [];
+  let i = 0;
+  const impl = (async (url: string, init?: any) => {
+    const method = init?.method ?? "GET";
+    calls.push({ method, url: String(url) });
+    const step = script[Math.min(i++, script.length - 1)];
+    return new Response(JSON.stringify(step.body), { status: step.status });
+  }) as unknown as typeof fetch;
+  return { calls, impl };
+}
+test("which Meta errors count as transient", () => {
+  assert(isTransientMetaError(500, null) && isTransientMetaError(400, UNKNOWN) && isTransientMetaError(400, { error: { code: 1 } }), "transient");
+  assert(!isTransientMetaError(400, { error: { code: 100 } }) && !isTransientMetaError(401, { error: { code: 190 } }), "permanent");
+});
+test("transient error + no reply exists yet -> exactly one retry, then success", async () => {
+  const { calls, impl } = replyStub([{ method: "POST", status: 400, body: UNKNOWN }, { method: "GET", status: 200, body: { data: [] } }, { method: "POST", status: 200, body: { id: "r1" } }]);
+  const r = await replyToComment("c1", "Check your DM", "tok", { fetchImpl: impl, retryDelayMs: 0 });
+  assert(r.success && r.externalId === "r1", "success after retry: " + r.error);
+  assert(calls.filter((c) => c.method === "POST").length === 2 && calls.some((c) => c.url.includes("/replies")), "checked replies, posted twice");
+});
+test("transient error but our reply is already there -> NO second post (no duplicate)", async () => {
+  const { calls, impl } = replyStub([{ method: "POST", status: 400, body: UNKNOWN }, { method: "GET", status: 200, body: { data: [{ id: "mine1", from: { id: "ig_123" } }] } }]);
+  const r = await replyToComment("c1", "Check your DM", "tok", { fetchImpl: impl, retryDelayMs: 0 });
+  assert(r.success && r.externalId === "mine1" && calls.filter((c) => c.method === "POST").length === 1, "adopted existing reply");
+});
+test("transient error and the replies lookup itself fails -> no retry (never risk a duplicate)", async () => {
+  const { calls, impl } = replyStub([{ method: "POST", status: 400, body: UNKNOWN }, { method: "GET", status: 500, body: {} }]);
+  const r = await replyToComment("c1", "Check your DM", "tok", { fetchImpl: impl, retryDelayMs: 0 });
+  assert(!r.success && calls.filter((c) => c.method === "POST").length === 1, "failed, one post only");
+});
+test("permanent errors are not retried", async () => {
+  const { calls, impl } = replyStub([{ method: "POST", status: 400, body: { error: { message: "Invalid parameter", code: 100 } } }]);
+  const r = await replyToComment("c1", "Hi", "tok", { fetchImpl: impl, retryDelayMs: 0 });
+  assert(!r.success && calls.length === 1, "one call");
+});
+
 console.log("Tracking self-check (the 404 bug)");
 function headResp(status: number, routeHeader: boolean): typeof fetch {
   return (async () => new Response(null, { status, headers: routeHeader ? { "x-hd-click-route": "1" } : {} })) as unknown as typeof fetch;
@@ -368,7 +456,7 @@ test("unreachable host fails safe (direct links), and is retried sooner than a c
   const values = { TRACKING_BASE_URL: "https://hiredaily-backend.vercel.app" } as unknown as NodeJS.ProcessEnv;
   const a = await getTrackingCheck({ values, fetchImpl: counting, now: 1_000_000 });
   const b = await getTrackingCheck({ values, fetchImpl: counting, now: 1_000_000 + 5 * 60_000 });
-  assert(a.check?.ok === true && b.check?.ok === true && calls === 1, "conclusive result is cached for 10 minutes");
+  assert(a.check?.ok && b.check?.ok && calls === 1, "conclusive result is cached for 10 minutes");
   resetTrackingCheckCache();
   const off = await getTrackingCheck({ values: {} as NodeJS.ProcessEnv, fetchImpl: counting });
   assert(off.base === null && off.check === null, "off when not configured");

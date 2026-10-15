@@ -284,11 +284,21 @@ export async function writeRuleMatchLog(
   const timestamp = Date.now();
   const ref = db().ref("automation/logs").push();
 
+  // When cooldown / duplicate protection stopped the reply, say so in the log text.
+  // Previously the Logs page only showed "rule matched", so the admin could not
+  // tell why a person received nothing.
+  const skipNote =
+    result.matched && result.duplicate
+      ? " — SKIPPED: this exact comment was already processed (duplicate delivery)"
+      : result.matched && result.cooldownApplied
+        ? " — SKIPPED: cooldown, the same person already triggered this rule on this post recently"
+        : "";
+
   const record = {
     channel: "instagram",
     type: result.matched ? "keyword_matched" : "error",
     username: context.username ?? "unknown",
-    detail: result.reason,
+    detail: `${result.reason}${skipNote}`,
     ruleKeyword: result.matchedKeyword,
     timestamp,
     eventId: context.eventId,
@@ -1474,6 +1484,8 @@ export interface RawLog {
   commentStatus: string | null;
   dmStatus: string | null;
   error: string | null;
+  /** Human-readable log text (e.g. "SKIPPED: cooldown"). */
+  detail: string | null;
   dryRun: boolean;
   timestamp: number;
 }
@@ -1499,6 +1511,7 @@ export async function readLogsSince(since: number, limit = 1500): Promise<RawLog
       commentStatus: str(l.commentStatus),
       dmStatus: str(l.dmStatus),
       error: str(l.error),
+      detail: str(l.detail),
       dryRun: l.dryRun === true,
       timestamp: typeof l.timestamp === "number" ? l.timestamp : 0,
     });

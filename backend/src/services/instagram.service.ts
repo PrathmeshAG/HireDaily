@@ -176,6 +176,39 @@ async function fetchJson(
   return { ok: res.ok, status: res.status, json };
 }
 
+/** True for Meta errors that are worth one more attempt (5xx, is_transient, code 1/2). */
+export function isTransientMetaError(status: number, json: unknown): boolean {
+  if (status >= 500) return true;
+  const err = (json as { error?: { code?: number; is_transient?: boolean } } | null)?.error;
+  return err?.is_transient === true || err?.code === 1 || err?.code === 2;
+}
+
+/**
+ * Looks for a reply already posted by this account under a comment. `known` is
+ * false when the lookup itself failed (then nothing is retried, to avoid duplicates).
+ */
+export async function findOwnReply(
+  fetchImpl: typeof fetch,
+  commentId: string,
+  accessToken: string,
+  ownId: string = env.meta.instagramBusinessId,
+): Promise<{ known: boolean; id: string | null }> {
+  if (!ownId) return { known: false, id: null };
+  try {
+    const res = await fetchImpl(
+      `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies?fields=id,from&limit=25`,
+      { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) return { known: false, id: null };
+    const json = (await res.json().catch(() => null)) as { data?: { id?: string; from?: { id?: string } }[] } | null;
+    if (!json || !Array.isArray(json.data)) return { known: false, id: null };
+    const mine = json.data.find((r) => r.from?.id === ownId);
+    return { known: true, id: mine?.id ?? null };
+  } catch {
+    return { known: false, id: null };
+  }
+}
+
 /**
  * Sends a public reply to an Instagram comment via the Meta Graph API:
  *   POST https://graph.facebook.com/{version}/{comment_id}/replies
@@ -190,7 +223,7 @@ export async function replyToComment(
   commentId: string,
   message: string,
   accessToken: string,
-  opts: { dryRun?: boolean; fetchImpl?: typeof fetch; ctaUrl?: string | null } = {},
+  opts: { dryRun?: boolean; fetchImpl?: typeof fetch; ctaUrl?: string | null; retryDelayMs?: number } = {},
 ): Promise<ReplyResult> {
   const dryRun = opts.dryRun ?? false;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -216,14 +249,32 @@ export async function replyToComment(
     `https://graph.instagram.com/${META_GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`;
 
   try {
-    const { ok, status, json } = await fetchJson(fetchImpl, url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ message }),
-    });
+    const post = () =>
+      fetchJson(fetchImpl, url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ message }),
+      });
+    let { ok, status, json } = await post();
+
+    // Meta sometimes answers a reply with a transient "An unknown error has
+    // occurred" (code 1/2, is_transient) even though the service is fine.
+    // A POST is never retried blindly (it could create a duplicate public reply),
+    // so: wait a moment, check that no reply from the account exists yet, and
+    // only then try once more.
+    if (!ok && isTransientMetaError(status, json)) {
+      await new Promise((resolve) => setTimeout(resolve, opts.retryDelayMs ?? 1500));
+      const existing = await findOwnReply(fetchImpl, commentId, accessToken);
+      if (existing.known && existing.id) {
+        return { success: true, externalId: existing.id, error: null, dryRun: false };
+      }
+      if (existing.known) {
+        ({ ok, status, json } = await post());
+      }
+    }
 
     if (ok) {
       const id = (json as { id?: string } | null)?.id ?? null;

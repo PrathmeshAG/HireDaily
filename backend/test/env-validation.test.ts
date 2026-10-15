@@ -26,6 +26,7 @@ const validProductionEnv: NodeJS.ProcessEnv = {
   FIREBASE_PROJECT_ID: "test-project",
   FIREBASE_CLIENT_EMAIL: "firebase@example.com",
   FIREBASE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----",
+  META_APP_ID: "test-app-id",
   META_APP_SECRET: "test-app-secret",
   ADMIN_EMAIL: "admin@example.com",
   CORS_ORIGINS: "https://hire-daily.vercel.app",

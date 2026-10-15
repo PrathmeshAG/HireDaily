@@ -26,6 +26,9 @@ AutomationUser,
   UnmatchedComment,
   ClickStats,
   AlertSendResult,
+  ManualLookup,
+  ManualSendBody,
+  ManualSendResult,
   Template,
 } from "../types";
 
@@ -499,4 +502,25 @@ export async function sendSummaryNow(): Promise<AlertSendResult> {
 /** Saves the token expiry date by hand (null clears it). Meta cannot report it for Instagram-Login tokens. */
 export async function saveTokenExpiry(expiresAt: number | null): Promise<void> {
   await request("/api/automation/token-expiry", { method: "POST", body: JSON.stringify({ expiresAt }) });
+}
+
+/** Reads a post's comments from Instagram (optionally filtered by username) plus that person's log timeline. */
+export async function lookupManual(mediaId: string, username: string): Promise<ManualLookup> {
+  const qs = new URLSearchParams();
+  if (mediaId) qs.set("mediaId", mediaId);
+  if (username.trim()) qs.set("username", username.trim());
+  return request<ManualLookup>(`/api/automation/manual/comments?${qs.toString()}`);
+}
+
+/**
+ * The backend answers 422 for "no matching rule" / "could not find user" with a message.
+ * request() throws on non-2xx, so surface those as a normal result instead.
+ */
+export async function manualSend(body: ManualSendBody): Promise<ManualSendResult> {
+  try {
+    return await request<ManualSendResult>("/api/automation/manual/send", { method: "POST", body: JSON.stringify(body) });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Request failed";
+    return { ok: false, error: message, message };
+  }
 }

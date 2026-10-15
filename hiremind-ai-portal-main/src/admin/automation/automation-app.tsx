@@ -5,7 +5,7 @@ import { signOut } from "firebase/auth";
 import { toast } from "sonner";
 import {
   LayoutDashboard, Link2, ListChecks, MessageSquareText, Users, ScrollText,
-  BarChart3, Settings, LogOut, Loader2, ArrowLeft, Instagram,
+  BarChart3, Settings, LogOut, Loader2, ArrowLeft, Instagram, Send as SendIcon,
 } from "lucide-react";
 import { auth } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth-context";
@@ -15,6 +15,7 @@ import { getSettings } from "./services/automation-service";
 import { DashboardPage } from "./pages/dashboard-page";
 import { PostMappingPage } from "./pages/post-mapping-page";
 import { RulesPage } from "./pages/rules-page";
+import { ManualSendPage } from "./pages/manual-send-page";
 import { TemplatesPage } from "./pages/templates-page";
 import { UsersPage } from "./pages/users-page";
 import { LogsPage } from "./pages/logs-page";
@@ -22,7 +23,7 @@ import { AnalyticsPage } from "./pages/analytics-page";
 import { SettingsPage } from "./pages/settings-page";
 
 export type PageId =
-  | "dashboard" | "mappings" | "rules" | "templates" | "users" | "logs" | "analytics" | "settings";
+  | "dashboard" | "mappings" | "rules" | "templates" | "users" | "logs" | "manual" | "analytics" | "settings";
 
 // Top-level export for the /admin/automation route. Reuses the exact same
 // auth gate as /admin (LoginCard / AccessDenied / loading spinner) — nothing
@@ -62,6 +63,7 @@ function AutomationDashboard() {
     { id: "templates", label: "Templates", icon: MessageSquareText },
     { id: "users", label: "Users", icon: Users },
     { id: "logs", label: "Logs", icon: ScrollText },
+    { id: "manual", label: "Manual Send", icon: SendIcon },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "settings", label: "Settings", icon: Settings },
   ];
@@ -127,6 +129,7 @@ function AutomationDashboard() {
           {page === "templates" && <TemplatesPage />}
           {page === "users" && <UsersPage />}
           {page === "logs" && <LogsPage />}
+          {page === "manual" && <ManualSendPage />}
           {page === "analytics" && <AnalyticsPage />}
           {page === "settings" && <SettingsPage onNavigate={(target) => setPage(target)} />}
         </div>

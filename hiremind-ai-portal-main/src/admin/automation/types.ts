@@ -283,3 +283,51 @@ export interface DashboardSummary {
   todaysDMs: number;
   failedAutomations: number;
 }
+
+// ---------- Manual send ----------
+
+export interface ManualComment {
+  commentId: string;
+  text: string;
+  username: string;
+  userId: string | null;
+  timestamp: number;
+  status: { reply: "success" | "failed" | "none"; dm: "success" | "failed" | "none"; lastError: string | null };
+}
+
+export interface TimelineEntry {
+  at: number;
+  type: string;
+  detail: string | null;
+  error: string | null;
+  mediaId: string | null;
+  commentStatus: string | null;
+  dmStatus: string | null;
+}
+
+export interface ManualLookup {
+  comments: ManualComment[];
+  timeline: TimelineEntry[];
+  fetchError: string | null;
+}
+
+export interface ManualSendBody {
+  action: "job" | "custom_dm" | "custom_reply";
+  commentId: string;
+  mediaId?: string;
+  username?: string;
+  userId?: string | null;
+  commentText?: string;
+  ruleId?: string;
+  parts?: ("comment" | "dm")[];
+  text?: string;
+}
+
+export interface ManualSendResult {
+  ok: boolean;
+  error?: string | null;
+  message?: string;
+  dryRun?: boolean;
+  ruleId?: string;
+  outcome?: { comment: string | null; dm: string | null; error: string | null };
+}

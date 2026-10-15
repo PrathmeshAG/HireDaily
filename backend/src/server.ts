@@ -35,7 +35,10 @@ import { resolvePostJob } from "./services/post-mapping.service.js";
 import {
   processCommentReplyProduction,
   resolveCommenterId,
+  replyToComment,
+  sendDirectMessage,
 } from "./services/instagram.service.js";
+import { fetchPostComments, commentStatuses, userTimeline, validateCustomText } from "./services/manual-send.service.js";
 import { writeCommentReplyLog, writeDmLog } from "./services/firebase-admin.service.js";
 import {
   makeFirebaseUserStore,
@@ -1834,6 +1837,179 @@ async function saveTokenExpiryHandler(req: express.Request, res: express.Respons
     res.status(500).json({ error: "failed_to_save_token_expiry" });
   }
 }
+
+/**
+ * GET /api/automation/manual/comments?mediaId=&username=
+ * Reads the comments of a post straight from Instagram (so comments the webhook
+ * never delivered are found too) and joins them with what the automation logged.
+ * With only a username it returns just that person's log timeline.
+ */
+app.get("/api/automation/manual/comments", async (req, res) => {
+  try {
+    const mediaId = typeof req.query.mediaId === "string" ? req.query.mediaId.trim() : "";
+    const username = typeof req.query.username === "string" ? req.query.username.trim() : "";
+    const logs = await readLogsSince(Date.now() - 7 * 24 * 60 * 60 * 1000, 1500);
+    const timeline = userTimeline(logs, username);
+
+    let comments: Awaited<ReturnType<typeof fetchPostComments>>["comments"] = [];
+    let fetchError: string | null = null;
+    if (mediaId) {
+      const found = await fetchPostComments({
+        mediaId,
+        token: process.env.META_ACCESS_TOKEN?.trim() ?? "",
+        ownUserId: env.meta.instagramBusinessId,
+        username,
+      });
+      comments = found.comments;
+      fetchError = found.error;
+    }
+    const statuses = commentStatuses(comments.map((c) => c.commentId), logs);
+    res.status(200).json({
+      comments: comments.map((c) => ({ ...c, status: statuses.get(c.commentId) ?? { reply: "none", dm: "none", lastError: null } })),
+      timeline,
+      fetchError,
+    });
+  } catch (e) {
+    logger.error("Manual comment lookup failed", { error: e });
+    res.status(500).json({ error: "failed_manual_lookup" });
+  }
+});
+
+/**
+ * POST /api/automation/manual/send
+ *   { action: "job" | "custom_dm" | "custom_reply", commentId, mediaId, username, userId?,
+ *     commentText?, ruleId?, parts?: ("comment"|"dm")[], text? }
+ * job          -> runs the normal pipeline (rule, templates, mapping links, follow gate) for ONE comment
+ * custom_dm    -> sends the admin's own text as a private reply to the comment
+ * custom_reply -> posts the admin's own text as a public reply
+ */
+app.post("/api/automation/manual/send", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+    const action = str(body.action);
+    const commentId = str(body.commentId);
+    const mediaId = str(body.mediaId);
+    const username = str(body.username).replace(/^@/, "") || null;
+    const token = process.env.META_ACCESS_TOKEN?.trim() ?? "";
+    const dryRun = env.meta.dryRun;
+    if (!commentId) {
+      res.status(400).json({ error: "commentId_required" });
+      return;
+    }
+
+    if (action === "job") {
+      if (!mediaId) {
+        res.status(400).json({ error: "mediaId_required" });
+        return;
+      }
+      const rules = await readAllRules();
+      let rule = rules.find((r) => r.id === str(body.ruleId)) ?? null;
+      let keyword: string | null = null;
+      if (!rule) {
+        const now = Date.now();
+        const matched = evaluateComment(
+          rules,
+          { commentText: str(body.commentText), mediaId, userId: str(body.userId) || null, username, commentId, receivedAt: now } as never,
+          now,
+        );
+        if (matched.matched && matched.rule) {
+          rule = matched.rule;
+          keyword = matched.matchedKeyword;
+        }
+      }
+      if (!rule) {
+        res.status(422).json({ error: "no_matching_rule", message: "No rule matches this comment. Choose a rule to use." });
+        return;
+      }
+      const rawParts = Array.isArray(body.parts) ? body.parts : ["comment", "dm"];
+      const parts = (["comment", "dm"] as const).filter((p) => rawParts.includes(p));
+      if (parts.length === 0) {
+        res.status(400).json({ error: "parts_required" });
+        return;
+      }
+      const outcome = await retryItem({
+        commentId,
+        userId: str(body.userId) || null,
+        username,
+        mediaId,
+        ruleId: rule.id,
+        keyword,
+        parts: [...parts],
+        lastError: null,
+        lastFailedAt: Date.now(),
+      });
+      res.status(200).json({ ok: !outcome.error && outcome.comment !== "failed" && outcome.dm !== "failed", outcome, ruleId: rule.id });
+      return;
+    }
+
+    if (action === "custom_reply") {
+      const v = validateCustomText("reply", body.text);
+      if (!v.ok) {
+        res.status(400).json({ error: v.error });
+        return;
+      }
+      const sent = await replyToComment(commentId, v.text, token, { dryRun });
+      await writeCommentReplyLog({
+        userId: str(body.userId) || null,
+        username,
+        mediaId: mediaId || null,
+        commentId,
+        jobId: null,
+        ruleId: null,
+        keyword: null,
+        commentStatus: sent.success ? "success" : "failed",
+        error: sent.error,
+        dryRun,
+        externalId: sent.externalId,
+        timestamp: Date.now(),
+      } as never);
+      if (sent.success && sent.externalId && !dryRun) await rememberBotComment(sent.externalId);
+      res.status(200).json({ ok: sent.success, error: sent.error, dryRun });
+      return;
+    }
+
+    if (action === "custom_dm") {
+      const v = validateCustomText("dm", body.text);
+      if (!v.ok) {
+        res.status(400).json({ error: v.error });
+        return;
+      }
+      const userId = str(body.userId) || (await resolveCommenterId(commentId, token));
+      if (!userId) {
+        res.status(422).json({ error: "could_not_find_user", message: "Instagram did not return the commenter. The comment may be deleted." });
+        return;
+      }
+      const sent = await sendDirectMessage(userId, v.text, token, {
+        dryRun,
+        commentId,
+        instagramBusinessId: env.meta.instagramBusinessId,
+        allowDirectRecipient: true,
+      });
+      await writeDmLog({
+        userId,
+        username,
+        mediaId: mediaId || null,
+        commentId,
+        jobId: null,
+        ruleId: null,
+        keyword: null,
+        commentStatus: "skipped",
+        dmStatus: sent.success ? "success" : "failed",
+        error: sent.error,
+        dryRun,
+        timestamp: Date.now(),
+      } as never);
+      res.status(200).json({ ok: sent.success, error: sent.error, dryRun });
+      return;
+    }
+
+    res.status(400).json({ error: "unknown_action" });
+  } catch (e) {
+    logger.error("Manual send failed", { error: e });
+    res.status(500).json({ error: "failed_manual_send" });
+  }
+});
 
 /** POST /api/automation/alerts/test — sends a test alert to every configured channel. */
 app.post("/api/automation/alerts/test", async (_req, res) => {

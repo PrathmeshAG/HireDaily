@@ -13,6 +13,23 @@ export function computeMetaSignature(
     .digest("hex")}`;
 }
 
+/**
+ * Meta signs the payload with every non-ASCII character escaped as a lowercase
+ * \\uXXXX sequence (their documentation says so), but delivers the body with the
+ * real characters. A comment containing an emoji or accented/Hindi text therefore
+ * never matches a digest computed over the raw bytes and was rejected with 401.
+ * UTF-16 code units are escaped one by one, so an emoji becomes a surrogate pair.
+ */
+export function escapeUnicodeForMetaSignature(rawBody: Buffer | string): Buffer {
+  const text = Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : rawBody;
+  let out = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    out += code > 0x7f ? `\\u${code.toString(16).padStart(4, "0")}` : text[i];
+  }
+  return Buffer.from(out, "utf8");
+}
+
 function computeMetaDigest(rawBody: Buffer, appSecret: string): string {
   return createHmac("sha256", appSecret).update(rawBody).digest("hex");
 }
@@ -81,11 +98,11 @@ export function verifyMetaWebhookSignature(
     ? rawBody
     : Buffer.from(rawBody, "utf8");
 
-  // Diagnostic phase intentionally uses ONLY the exact raw bytes for the
-  // actual security decision. No guessed normalization is accepted.
-  const expectedDigest = computeMetaDigest(body, secret);
-
-  return safeEqualHex(expectedDigest, providedDigest);
+  // Accept the signature when it matches EITHER the exact raw bytes OR Meta's
+  // escaped-Unicode form. Both are HMACs with the app secret, so a forged
+  // request still cannot pass: only someone holding the secret can produce either.
+  if (safeEqualHex(computeMetaDigest(body, secret), providedDigest)) return true;
+  return safeEqualHex(computeMetaDigest(escapeUnicodeForMetaSignature(body), secret), providedDigest);
 }
 
 export function requireMetaWebhookSignature(
