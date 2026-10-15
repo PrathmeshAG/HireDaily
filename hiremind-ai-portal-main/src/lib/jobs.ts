@@ -1,9 +1,12 @@
-import { ref, push, set, update, remove, get, onValue, off } from "firebase/database";
+import { ref, push, set, update, remove, get, onValue, off, query, orderByChild, limitToLast } from "firebase/database";
 import { ref as sRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage, type Job } from "./firebase";
 
 export async function fetchJobs(): Promise<Job[]> {
-  const snap = await get(ref(db, "jobs"));
+  // Bound public page reads to the 200 newest jobs instead of downloading the entire node.
+  // Add .indexOn: ["createdAt"] under jobs in Firebase Realtime Database rules.
+  const jobsQuery = query(ref(db, "jobs"), orderByChild("createdAt"), limitToLast(200));
+  const snap = await get(jobsQuery);
   if (!snap.exists()) return [];
   const raw = snap.val() as Record<string, Omit<Job, "id">>;
   return Object.entries(raw)
