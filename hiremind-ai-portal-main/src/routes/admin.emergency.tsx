@@ -14,6 +14,7 @@ export const Route = createFileRoute("/admin/emergency")({
 
 type Mapping = {
   mediaId: string;
+  company: string;
   role: string;
   location: string;
   experience: string;
@@ -23,6 +24,7 @@ type Mapping = {
 function EmergencyAdminPage() {
   const [mapping, setMapping] = useState<Mapping>({
     mediaId: "",
+    company: "",
     role: "",
     location: "",
     experience: "Fresher",
@@ -33,7 +35,7 @@ function EmergencyAdminPage() {
   const [email, setEmail] = useState("prathmeshbobade33@gmail.com");
   const [password, setPassword] = useState("");
   const [sessionToken, setSessionToken] = useState("");
-  const [mappings, setMappings] = useState<Array<{mediaId:string;role:string;location:string;experience:string;applyUrl:string;updatedAt:string}>>([]);
+  const [mappings, setMappings] = useState<Array<{mediaId:string;company:string;role:string;location:string;experience:string;applyUrl:string;updatedAt:string}>>([]);
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
 
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -114,7 +116,7 @@ function EmergencyAdminPage() {
       setStatus(payload.message || "Mapping save ho gayi.");
       const listResponse = await fetch(`/api/emergency/mappings`, { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
       if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }
-      setMapping({ mediaId: "", role: "", location: "", experience: "Fresher", applyUrl: "" });
+      setMapping({ mediaId: "", company: "", role: "", location: "", experience: "Fresher", applyUrl: "" });
     } catch {
       setStatus("Emergency API reachable nahi hai. Koi mapping save nahi hui.");
     } finally {
@@ -145,6 +147,9 @@ function EmergencyAdminPage() {
           <input className={field} value={mapping.mediaId} onChange={(e) => update("mediaId", e.target.value)} placeholder="e.g. 17900000000000000" required inputMode="numeric" />
           <span className="mt-1 block text-xs text-slate-400">Post ka numeric media ID; public post URL alag ho sakta hai.</span>
         </label>
+        <label className="text-sm text-slate-200">Company name
+          <input className={field} value={mapping.company} onChange={(e) => update("company", e.target.value)} placeholder="e.g. Quest Global" required maxLength={120} />
+        </label>
         <label className="text-sm text-slate-200">Job role
           <input className={field} value={mapping.role} onChange={(e) => update("role", e.target.value)} placeholder="Data Analyst" required maxLength={100} />
         </label>
@@ -166,7 +171,7 @@ function EmergencyAdminPage() {
         </div>
         {status && <p role="status" className="rounded-xl bg-white/5 p-3 text-sm sm:col-span-2">{status}</p>}
       </form>
-      {sessionToken && <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.04] p-5"><h2 className="text-lg font-semibold">Saved mappings</h2>{mappings.length === 0 ? <p className="mt-3 text-sm text-slate-400">No saved mappings yet.</p> : <div className="mt-3 space-y-3">{mappings.map((item) => <div key={item.mediaId} className="rounded-xl border border-white/10 p-3 text-sm"><p className="font-semibold">{item.role} · {item.location}</p><p className="mt-1 text-xs text-slate-400">Post ID: {item.mediaId} · {item.experience}</p><a className="mt-2 inline-block break-all text-cyan-200 underline" href={item.applyUrl} target="_blank" rel="noopener noreferrer">{item.applyUrl}</a></div>)}</div>}</section>}
+      {sessionToken && <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.04] p-5"><h2 className="text-lg font-semibold">Saved mappings</h2>{mappings.length === 0 ? <p className="mt-3 text-sm text-slate-400">No saved mappings yet.</p> : <div className="mt-3 space-y-3">{mappings.map((item) => <div key={item.mediaId} className="rounded-xl border border-white/10 p-3 text-sm"><p className="font-semibold">{item.company} · {item.role}</p><p className="text-xs text-slate-400">{item.location}</p><p className="mt-1 text-xs text-slate-400">Post ID: {item.mediaId} · {item.experience}</p><a className="mt-2 inline-block break-all text-cyan-200 underline" href={item.applyUrl} target="_blank" rel="noopener noreferrer">{item.applyUrl}</a></div>)}</div>}</section>}
       <div className="mt-5 flex gap-2 text-xs text-slate-400"><Link2 className="h-4 w-4 shrink-0" /><p>Is login ka purane Admin Login se koi relation nahi hai. Credentials aur mapping storage Cloudflare D1 se verify/store honge; secrets hosting environment variables mein hi rakho.</p></div>
     </div>
   );
