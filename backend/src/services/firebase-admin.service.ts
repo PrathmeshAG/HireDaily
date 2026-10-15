@@ -1212,7 +1212,9 @@ export async function readAllLogs(limit = 200): Promise<
     dryRun: boolean | null;
   }[]
 > {
-  const snap = await db().ref("automation/logs").get();
+  // Bound the database read itself; sorting/slicing after get() still downloads all history.
+  // Add .indexOn: ["timestamp"] under automation/logs in Firebase Realtime Database rules.
+  const snap = await db().ref("automation/logs").orderByChild("timestamp").limitToLast(Math.max(1, limit)).get();
   if (!snap.exists()) return [];
 
   const raw = snap.val() as Record<string, unknown>;
