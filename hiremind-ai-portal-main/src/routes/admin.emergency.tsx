@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, ShieldCheck, Link2, Save, ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/admin/emergency")({
@@ -59,13 +59,19 @@ function EmergencyAdminPage() {
     }
   }
 
-  useState(() => {
-    fetch("/api/emergency/status").then(async (r) => {
-      const data = await r.json();
-      setServiceConfigured(Boolean(data.configured));
-    }).catch(() => setServiceConfigured(false));
-    return null;
-  });
+  useEffect(() => {
+    let active = true;
+    fetch("/api/emergency/status")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("status unavailable");
+        return response.json();
+      })
+      .then((data: { configured?: boolean }) => {
+        if (active) setServiceConfigured(Boolean(data.configured));
+      })
+      .catch(() => { if (active) setServiceConfigured(false); });
+    return () => { active = false; };
+  }, []);
 
   const update = (key: keyof Mapping, value: string) =>
     setMapping((current) => ({ ...current, [key]: value }));
