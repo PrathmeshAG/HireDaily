@@ -6,6 +6,10 @@ const allowedMethods = new Set(["GET", "POST"]);
 async function proxyEmergencyRequest(request: Request, splat: string | undefined) {
   const path = (splat || "").replace(/^\/+|\/+$/g, "");
   const method = request.method.toUpperCase();
+  const origin = request.headers.get("origin");
+  if (method === "POST" && origin && origin !== new URL(request.url).origin) {
+    return Response.json({ error: "Cross-origin request blocked." }, { status: 403 });
+  }
 
   if (!allowedPaths.has(path) || !allowedMethods.has(method)) {
     return Response.json({ error: "Not found" }, { status: 404 });
