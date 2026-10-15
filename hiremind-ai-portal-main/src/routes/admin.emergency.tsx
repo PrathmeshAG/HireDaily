@@ -12,8 +12,6 @@ export const Route = createFileRoute("/admin/emergency")({
   }),
 });
 
-const EMERGENCY_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "https://hiredaily-backend.vercel.app";
-
 type Mapping = {
   mediaId: string;
   role: string;
@@ -43,7 +41,7 @@ function EmergencyAdminPage() {
     setStatus("");
     setBusy(true);
     try {
-      const response = await fetch(`${EMERGENCY_API_BASE}/api/emergency/login`, {
+      const response = await fetch(`/api/emergency/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
