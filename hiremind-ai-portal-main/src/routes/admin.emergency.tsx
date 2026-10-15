@@ -12,10 +12,14 @@ export const Route = createFileRoute("/admin/emergency")({
   }),
 });
 
-const DEFAULT_COMMENT =
-  "Thanks for your interest! Apply using the official company link below. Comment LINK if you need help. 👇";
+const DEFAULT_COMMENT_VARIANTS = [
+  "Thanks for your interest! Apply using the official company link below. 👇",
+  "Hey! 👋 We’ve shared the official application link with you via DM.",
+  "Interested in this role? Check the official apply link in our DM. 🚀",
+  "Thanks for checking this opportunity! The official application link is in our DM. 💼",
+];
 const DEFAULT_DM =
-  "Hi! 👋 Thanks for your interest in the {role} opportunity at {company}.\n\n📍 Location: {location}\n🎓 Experience: {experience}\n\nApply here: {apply_url}\n\nGood luck! — Hire Daily";
+  "Hi! 👋 Thanks for your interest in the {role} opportunity at {company}.\\n\\n📍 Location: {location}\\n🎓 Experience: {experience}\\n\\nApply here: {apply_url}\\n\\nGood luck! — Hire Daily";
 
 function EmergencyAdminPreviewPage() {
   const [postUrl, setPostUrl] = useState("");
@@ -24,7 +28,7 @@ function EmergencyAdminPreviewPage() {
   const [location, setLocation] = useState("");
   const [experience, setExperience] = useState("Fresher");
   const [applyUrl, setApplyUrl] = useState("");
-  const [commentTemplate, setCommentTemplate] = useState(DEFAULT_COMMENT);
+  const [commentTemplates, setCommentTemplates] = useState<string[]>(DEFAULT_COMMENT_VARIANTS);
   const [dmTemplate, setDmTemplate] = useState(DEFAULT_DM);
   const [preview, setPreview] = useState(false);
 
@@ -38,7 +42,7 @@ function EmergencyAdminPreviewPage() {
     setLocation("");
     setExperience("Fresher");
     setApplyUrl("");
-    setCommentTemplate(DEFAULT_COMMENT);
+    setCommentTemplates(DEFAULT_COMMENT_VARIANTS);
     setDmTemplate(DEFAULT_DM);
     setPreview(false);
   }
@@ -102,10 +106,27 @@ function EmergencyAdminPreviewPage() {
           <span className="mt-1 block text-xs text-slate-400">Use the official company application link (HTTPS).</span>
         </label>
 
-        <label className="text-sm text-slate-200 sm:col-span-2">Public comment reply template
-          <textarea className={field} rows={3} value={commentTemplate} onChange={(event) => { setCommentTemplate(event.target.value); setPreview(false); }} required maxLength={1000} />
-          <span className="mt-1 block text-xs text-slate-400">Example: “Thanks! We’ll DM you the official application link. 👋”</span>
-        </label>
+        <section className="sm:col-span-2">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-100">Auto comment replies (up to 4)</h2>
+              <p className="mt-1 text-xs text-slate-400">Set up to four reply options for the automation to choose from.</p>
+            </div>
+            <span className="rounded-full border border-cyan-400/30 px-3 py-1 text-xs text-cyan-200">{commentTemplates.filter((item) => item.trim()).length}/4</span>
+          </div>
+          <div className="grid gap-3">
+            {commentTemplates.map((template, index) => (
+              <label key={index} className="text-sm text-slate-200">
+                <span className="mb-1 block font-medium">Comment option {index + 1}</span>
+                <textarea className={field} rows={2} value={template} onChange={(event) => {
+                  setCommentTemplates((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item));
+                  setPreview(false);
+                }} placeholder={`Enter comment reply ${index + 1}`} maxLength={1000} />
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-400">These are four choices, not four replies posted to the same comment. The live integration should choose one per eligible event and prevent duplicate replies.</p>
+        </section>
 
         <label className="text-sm text-slate-200 sm:col-span-2">DM template
           <textarea className={field} rows={7} value={dmTemplate} onChange={(event) => { setDmTemplate(event.target.value); setPreview(false); }} required maxLength={3000} />
@@ -123,7 +144,7 @@ function EmergencyAdminPreviewPage() {
         <section className="mt-6 space-y-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5" aria-live="polite">
           <p className="text-xs font-semibold uppercase tracking-[.16em] text-cyan-300">Local preview · Not saved or sent</p>
           <div><h2 className="font-semibold">Post URL</h2><p className="mt-1 break-all text-sm text-slate-300">{postUrl}</p></div>
-          <div><h2 className="font-semibold">Comment reply</h2><p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{commentTemplate}</p></div>
+          <div><h2 className="font-semibold">Comment reply options</h2><ol className="mt-2 list-decimal space-y-2 pl-5">{commentTemplates.filter((item) => item.trim()).map((item, index) => <li key={index} className="whitespace-pre-wrap text-sm text-slate-300">{item}</li>)}</ol></div>
           <div><h2 className="font-semibold">Rendered DM</h2><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-300">{previewDm}</p></div>
           {!validHttpsUrl(applyUrl) && <p className="text-sm text-amber-200">Enter a valid HTTPS official apply URL.</p>}
         </section>
