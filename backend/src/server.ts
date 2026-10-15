@@ -88,8 +88,16 @@ import { isCrawlerUserAgent, lastDates, summarizeClicks, getTrackingCheck, siteH
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
 import { emergencyRouter } from "./routes/emergency.routes.js";
+import { emergencyConfigured } from "./services/emergency-store.service.js";
 
-validateEnvironment();
+// The emergency admin service uses Cloudflare D1 and must be able to start
+// independently of the legacy Firebase/Meta automation configuration. When
+// its own required Cloudflare/admin settings are present, do not block server
+// startup on unrelated legacy automation variables. If emergency mode is not
+// configured, retain the existing production validation for the main service.
+if (!emergencyConfigured()) {
+  validateEnvironment();
+}
 
 const app = express();
 
