@@ -14,6 +14,7 @@ import { auth, ADMIN_EMAIL, type Job } from "../lib/firebase";
 import { useAuth } from "../lib/auth-context";
 import { fetchJobs, createJob, updateJob, deleteJob } from "../lib/jobs";
 import { BulkJobsTab } from "../components/admin-bulk";
+import { DownloadsTab } from "../components/admin-downloads";
 import { parseJobText } from "../lib/job-parse";
 
 export const Route = createFileRoute("/admin/")({
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/admin/")({
   }),
 });
 
-type Tab = "dashboard" | "add" | "bulk" | "manage";
+type Tab = "dashboard" | "add" | "bulk" | "downloads" | "manage";
 
 /* ---------- constants & helpers ---------- */
 
@@ -257,6 +258,7 @@ function AdminDashboard() {
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "add", label: "Add Job", icon: Plus },
     { id: "bulk", label: "Bulk Add", icon: Layers },
+    { id: "downloads", label: "PDFs", icon: FileText },
     { id: "manage", label: "Manage Jobs", icon: List },
   ];
   const idx = tabs.findIndex((t) => t.id === tab);
@@ -315,6 +317,7 @@ function AdminDashboard() {
           {tab === "dashboard" && <DashboardTab goto={setTab} />}
           {tab === "add" && <AddJobTab onDone={() => setTab("manage")} />}
           {tab === "bulk" && <BulkJobsTab onDone={() => setTab("manage")} />}
+          {tab === "downloads" && <DownloadsTab />}
           {tab === "manage" && <ManageJobsTab />}
         </div>
       </div>

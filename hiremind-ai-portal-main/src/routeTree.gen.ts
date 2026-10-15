@@ -24,6 +24,8 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminAutomationRouteImport } from './routes/admin.automation'
 import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
+import { Route as DownloadsIndexRouteImport } from './routes/downloads.index'
+import { Route as DownloadsSlugRouteImport } from './routes/downloads.$slug'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
 import { Route as JobsIdRouteImport } from './routes/jobs.$id'
 import { Route as PreparationCodingPracticeRouteImport } from './routes/preparation.coding-practice'
@@ -108,6 +110,16 @@ const BlogSlugRoute = BlogSlugRouteImport.update({
   path: '/blog/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DownloadsIndexRoute = DownloadsIndexRouteImport.update({
+  id: '/downloads/',
+  path: '/downloads/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadsSlugRoute = DownloadsSlugRouteImport.update({
+  id: '/downloads/$slug',
+  path: '/downloads/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JobsIndexRoute = JobsIndexRouteImport.update({
   id: '/jobs/',
   path: '/jobs/',
@@ -167,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/downloads/$slug': typeof DownloadsSlugRoute
   '/jobs/$id': typeof JobsIdRoute
   '/preparation/coding-practice': typeof PreparationCodingPracticeRoute
   '/preparation/interview': typeof PreparationInterviewRoute
@@ -174,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin/': typeof AdminIndexRoute
   '/blog/': typeof BlogIndexRoute
+  '/downloads/': typeof DownloadsIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/r/$mediaId/$idx': typeof RMediaIdIdxRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
@@ -191,6 +205,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/downloads/$slug': typeof DownloadsSlugRoute
   '/jobs/$id': typeof JobsIdRoute
   '/preparation/coding-practice': typeof PreparationCodingPracticeRoute
   '/preparation/interview': typeof PreparationInterviewRoute
@@ -198,6 +213,7 @@ export interface FileRoutesByTo {
   '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin': typeof AdminIndexRoute
   '/blog': typeof BlogIndexRoute
+  '/downloads': typeof DownloadsIndexRoute
   '/jobs': typeof JobsIndexRoute
   '/r/$mediaId/$idx': typeof RMediaIdIdxRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
@@ -217,6 +233,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/downloads/$slug': typeof DownloadsSlugRoute
   '/jobs/$id': typeof JobsIdRoute
   '/preparation/coding-practice': typeof PreparationCodingPracticeRoute
   '/preparation/interview': typeof PreparationInterviewRoute
@@ -224,6 +241,7 @@ export interface FileRoutesById {
   '/preparation/tools-resources': typeof PreparationToolsResourcesRoute
   '/admin/': typeof AdminIndexRoute
   '/blog/': typeof BlogIndexRoute
+  '/downloads/': typeof DownloadsIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/r/$mediaId/$idx': typeof RMediaIdIdxRoute
   '/jobs/$location/$role/$company/$id': typeof JobsLocationRoleCompanyIdRoute
@@ -244,6 +262,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/automation'
     | '/blog/$slug'
+    | '/downloads/$slug'
     | '/jobs/$id'
     | '/preparation/coding-practice'
     | '/preparation/interview'
@@ -251,6 +270,7 @@ export interface FileRouteTypes {
     | '/preparation/tools-resources'
     | '/admin/'
     | '/blog/'
+    | '/downloads/'
     | '/jobs/'
     | '/r/$mediaId/$idx'
     | '/jobs/$location/$role/$company/$id'
@@ -268,6 +288,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/automation'
     | '/blog/$slug'
+    | '/downloads/$slug'
     | '/jobs/$id'
     | '/preparation/coding-practice'
     | '/preparation/interview'
@@ -275,6 +296,7 @@ export interface FileRouteTypes {
     | '/preparation/tools-resources'
     | '/admin'
     | '/blog'
+    | '/downloads'
     | '/jobs'
     | '/r/$mediaId/$idx'
     | '/jobs/$location/$role/$company/$id'
@@ -293,6 +315,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/automation'
     | '/blog/$slug'
+    | '/downloads/$slug'
     | '/jobs/$id'
     | '/preparation/coding-practice'
     | '/preparation/interview'
@@ -300,6 +323,7 @@ export interface FileRouteTypes {
     | '/preparation/tools-resources'
     | '/admin/'
     | '/blog/'
+    | '/downloads/'
     | '/jobs/'
     | '/r/$mediaId/$idx'
     | '/jobs/$location/$role/$company/$id'
@@ -318,12 +342,14 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   BlogSlugRoute: typeof BlogSlugRoute
+  DownloadsSlugRoute: typeof DownloadsSlugRoute
   JobsIdRoute: typeof JobsIdRoute
   PreparationCodingPracticeRoute: typeof PreparationCodingPracticeRoute
   PreparationInterviewRoute: typeof PreparationInterviewRoute
   PreparationStudyMaterialRoute: typeof PreparationStudyMaterialRoute
   PreparationToolsResourcesRoute: typeof PreparationToolsResourcesRoute
   BlogIndexRoute: typeof BlogIndexRoute
+  DownloadsIndexRoute: typeof DownloadsIndexRoute
   JobsIndexRoute: typeof JobsIndexRoute
   RMediaIdIdxRoute: typeof RMediaIdIdxRoute
   JobsLocationRoleCompanyIdRoute: typeof JobsLocationRoleCompanyIdRoute
@@ -436,6 +462,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BlogSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/downloads/': {
+      id: '/downloads/'
+      path: '/downloads'
+      fullPath: '/downloads/'
+      preLoaderRoute: typeof DownloadsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/downloads/$slug': {
+      id: '/downloads/$slug'
+      path: '/downloads/$slug'
+      fullPath: '/downloads/$slug'
+      preLoaderRoute: typeof DownloadsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/jobs/': {
       id: '/jobs/'
       path: '/jobs'
@@ -520,12 +560,14 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   BlogSlugRoute: BlogSlugRoute,
+  DownloadsSlugRoute: DownloadsSlugRoute,
   JobsIdRoute: JobsIdRoute,
   PreparationCodingPracticeRoute: PreparationCodingPracticeRoute,
   PreparationInterviewRoute: PreparationInterviewRoute,
   PreparationStudyMaterialRoute: PreparationStudyMaterialRoute,
   PreparationToolsResourcesRoute: PreparationToolsResourcesRoute,
   BlogIndexRoute: BlogIndexRoute,
+  DownloadsIndexRoute: DownloadsIndexRoute,
   JobsIndexRoute: JobsIndexRoute,
   RMediaIdIdxRoute: RMediaIdIdxRoute,
   JobsLocationRoleCompanyIdRoute: JobsLocationRoleCompanyIdRoute,

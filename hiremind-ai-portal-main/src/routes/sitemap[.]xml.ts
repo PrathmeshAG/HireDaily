@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { fetchJobs } from "../lib/jobs";
+import { fetchDownloads, downloadPath } from "../lib/downloads";
 import { liveArticles } from "../data/articles";
 import { getJobDateState } from "../lib/job-dates";
 import { getJobPath } from "../lib/job-url";
@@ -33,6 +34,7 @@ export const Route = createFileRoute("/sitemap.xml")({
     handlers: {
       GET: async () => {
         const jobs = await fetchJobs();
+        const downloads = await fetchDownloads().catch(() => []);
         const now = Date.now();
 
         const staticEntries: SitemapEntry[] = [
@@ -44,6 +46,13 @@ export const Route = createFileRoute("/sitemap.xml")({
           { path: "/terms", changefreq: "yearly", priority: "0.3" },
           { path: "/how-we-verify-jobs", changefreq: "monthly", priority: "0.6" },
           { path: "/blog", changefreq: "weekly", priority: "0.7" },
+          { path: "/downloads", changefreq: "weekly", priority: "0.6" },
+          ...downloads.map((d) => ({
+            path: downloadPath(d),
+            changefreq: "monthly" as const,
+            priority: "0.5",
+            lastModified: d.updatedAt ?? d.createdAt,
+          })),
           { path: "/preparation/interview", changefreq: "monthly", priority: "0.6" },
           { path: "/preparation/study-material", changefreq: "monthly", priority: "0.6" },
           { path: "/preparation/coding-practice", changefreq: "monthly", priority: "0.6" },
