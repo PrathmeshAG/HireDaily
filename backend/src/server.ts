@@ -87,6 +87,7 @@ import { simulateComment } from "./services/simulator.service.js";
 import { isCrawlerUserAgent, lastDates, summarizeClicks, getTrackingCheck, siteHostsFromEnv } from "./services/click-tracking.service.js";
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
+import { emergencyRouter } from "./routes/emergency.routes.js";
 
 validateEnvironment();
 
@@ -231,6 +232,7 @@ async function isOwnInstagramComment(event: {
 
 app.use(requestContext);
 app.use(corsMiddleware);
+app.use("/api/emergency", emergencyRouter);
 
 // IMPORTANT: Meta signs the exact request bytes. Use route-scoped raw parsers
 // for webhook endpoints so req.body is the original Buffer until signature
