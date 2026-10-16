@@ -45,7 +45,7 @@ emergencyRouter.get("/mappings", async (req,res) => {
 emergencyRouter.delete("/mappings/:mediaId", writeLimiter, async (req,res) => {
   if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
   const mediaId = req.params.mediaId;
-  if (!/^\\d{5,30}$/.test(mediaId)) return res.status(400).json({ error: "Invalid Instagram media ID." });
+  if (mediaId.length < 5 || mediaId.length > 30 || [...mediaId].some((char) => char < "0" || char > "9")) return res.status(400).json({ error: "Invalid Instagram media ID." });
   try {
     const deleted = await deleteEmergencyMapping(mediaId);
     return deleted ? res.json({ message: "Saved mapping deleted." }) : res.status(404).json({ error: "Mapping not found." });
