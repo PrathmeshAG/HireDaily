@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-const allowedPaths = new Set(["status", "login", "mappings", "instagram-media", "automation-status"]);
+const allowedPaths = new Set(["status", "login", "mappings", "instagram-media", "automation-status", "webhook-subscription"]);
 const allowedMethods = new Set(["GET", "POST", "DELETE"]);
 
 async function proxyEmergencyRequest(request: Request, splat: string | undefined) {
