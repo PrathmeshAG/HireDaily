@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertTriangle, ShieldCheck, Link2, Save, ExternalLink } from "lucide-react";
+import { AlertTriangle, ShieldCheck, Link2, Save, ExternalLink, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/admin/emergency")({
   component: EmergencyAdminPage,
@@ -11,6 +11,8 @@ export const Route = createFileRoute("/admin/emergency")({
     ],
   }),
 });
+
+type InstagramPost = { id: string; caption: string; media_type?: string; permalink?: string; timestamp?: string };
 
 type Mapping = {
   mediaId: string;
@@ -37,6 +39,8 @@ function EmergencyAdminPage() {
   const [sessionToken, setSessionToken] = useState("");
   const [mappings, setMappings] = useState<Array<{mediaId:string;company:string;role:string;location:string;experience:string;applyUrl:string;updatedAt:string}>>([]);
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
+  const [availablePosts, setAvailablePosts] = useState<InstagramPost[]>([]);
+  const [postsBusy, setPostsBusy] = useState(false);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,7 +61,7 @@ function EmergencyAdminPage() {
       setPassword("");
       setStatus("Admin session active (30 minutes).");
       const listResponse = await fetch(`/api/emergency/mappings`, { headers: { Authorization: `Bearer ${payload.token}` }, cache: "no-store" });
-      if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }
+      if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }\n      await refreshPosts(payload.token);
     } catch {
       setStatus("Emergency API reachable nahi hai.");
     } finally {
@@ -142,7 +146,7 @@ function EmergencyAdminPage() {
       </div>
 
       {!sessionToken ? <form onSubmit={login} className="mb-5 grid gap-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><label className="text-sm text-slate-200">Admin email<input className={field} type="email" autoComplete="username" value={email} readOnly required maxLength={254} /></label><label className="text-sm text-slate-200">Password<input className={field} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={256} /></label><button disabled={busy} className="w-fit rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-50" type="submit">{busy ? "Checking…" : "Unlock admin"}</button></form> : <button className="mb-5 rounded-xl border border-white/15 px-4 py-2 text-sm" onClick={() => { setSessionToken(""); setStatus("Logged out."); }}>Lock admin</button>}
-      <form onSubmit={save} className="grid gap-5 rounded-2xl border border-white/10 bg-white/[.04] p-5 sm:grid-cols-2">
+      {sessionToken && <section className="mb-5 rounded-2xl border border-cyan-400/25 bg-white/[.04] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><label className="min-w-0 flex-1 text-sm font-semibold text-slate-100">Available Instagram Posts<select className={field} value={mapping.mediaId} onChange={(e) => selectPost(e.target.value)}><option value="">Select a recent Instagram post…</option>{availablePosts.map((post) => <option key={post.id} value={post.id}>{(post.caption || "No caption").replace(/\\s+/g, " ").slice(0, 100)} · {post.id}</option>)}</select></label><button type="button" onClick={() => refreshPosts()} disabled={postsBusy} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-sm disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${postsBusy ? "animate-spin" : ""}`} />{postsBusy ? "Refreshing…" : "Refresh posts"}</button></div><p className="mt-2 text-xs text-slate-400">Latest posts Instagram Graph API se load hote hain. Caption mein Company:, Role: aur apply URL ho toh auto-fill hoga.</p></section>}\n      <form onSubmit={save} className="grid gap-5 rounded-2xl border border-white/10 bg-white/[.04] p-5 sm:grid-cols-2">
         <label className="text-sm text-slate-200 sm:col-span-2">Instagram Media/Post ID
           <input className={field} value={mapping.mediaId} onChange={(e) => update("mediaId", e.target.value)} placeholder="e.g. 17900000000000000" required inputMode="numeric" />
           <span className="mt-1 block text-xs text-slate-400">Post ka numeric media ID; public post URL alag ho sakta hai.</span>
