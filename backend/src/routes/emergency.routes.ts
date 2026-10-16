@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { rateLimit } from "express-rate-limit";
 import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, verifyEmergencyCredentials, processEmergencyInstagramComment } from "../services/emergency-store.service.js";
 import { parseWebhookEvents } from "../utils/webhook-parser.js";
+import { fetchInstagramMedia } from "../services/instagram-media.service.js";
 
 export const emergencyRouter = Router();
 const SESSION_MS = 30 * 60 * 1000;
@@ -36,6 +37,7 @@ emergencyRouter.post("/login", loginLimiter, async (req,res) => {
     return res.json({ token: signSession(Date.now()+SESSION_MS), expiresInSeconds: SESSION_MS/1000 });
   } catch { return res.status(503).json({ error: "Emergency login database unavailable." }); }
 });
+emergencyRouter.get("/instagram-media", async (req,res) => { if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." }); try { const posts = await fetchInstagramMedia(50); res.setHeader("Cache-Control","no-store"); return res.json({ posts: posts.map((post) => ({ id: post.id, caption: post.caption ?? "", media_type: post.mediaType, permalink: post.permalink, timestamp: post.timestamp })) }); } catch (error) { return res.status(502).json({ error: error instanceof Error ? error.message : "Instagram media could not be loaded." }); } });
 emergencyRouter.get("/mappings", async (req,res) => {
   if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
   try { return res.json({ mappings: await listEmergencyMappings() }); } catch { return res.status(503).json({ error: "Emergency storage unavailable." }); }
