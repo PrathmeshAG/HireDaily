@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { rateLimit } from "express-rate-limit";
-import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, verifyEmergencyCredentials, processEmergencyInstagramComment } from "../services/emergency-store.service.js";
+import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, deleteEmergencyMapping, verifyEmergencyCredentials, processEmergencyInstagramComment } from "../services/emergency-store.service.js";
 import { parseWebhookEvents } from "../utils/webhook-parser.js";
 import { fetchInstagramMedia } from "../services/instagram-media.service.js";
 
@@ -41,6 +41,17 @@ emergencyRouter.get("/instagram-media", async (req,res) => { if (!authenticated(
 emergencyRouter.get("/mappings", async (req,res) => {
   if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
   try { return res.json({ mappings: await listEmergencyMappings() }); } catch { return res.status(503).json({ error: "Emergency storage unavailable." }); }
+});
+emergencyRouter.delete("/mappings/:mediaId", writeLimiter, async (req,res) => {
+  if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
+  const mediaId = req.params.mediaId;
+  if (!/^\\d{5,30}$/.test(mediaId)) return res.status(400).json({ error: "Invalid Instagram media ID." });
+  try {
+    const deleted = await deleteEmergencyMapping(mediaId);
+    return deleted ? res.json({ message: "Saved mapping deleted." }) : res.status(404).json({ error: "Mapping not found." });
+  } catch {
+    return res.status(503).json({ error: "Emergency storage unavailable; mapping was not deleted." });
+  }
 });
 emergencyRouter.post("/mappings", writeLimiter, async (req,res) => {
   if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
