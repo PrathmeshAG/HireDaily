@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 const allowedPaths = new Set(["status", "login", "mappings", "instagram-media"]);
-const allowedMethods = new Set(["GET", "POST"]);
+const allowedMethods = new Set(["GET", "POST", "DELETE"]);
 
 async function proxyEmergencyRequest(request: Request, splat: string | undefined) {
   const path = (splat || "").replace(/^\/+|\/+$/g, "");
@@ -11,7 +11,7 @@ async function proxyEmergencyRequest(request: Request, splat: string | undefined
     return Response.json({ error: "Cross-origin request blocked." }, { status: 403 });
   }
 
-  if (!allowedPaths.has(path) || !allowedMethods.has(method)) {
+  const mappingDelete = /^mappings\\/\\d{5,30}$/.test(path) && method === "DELETE";\n  if ((!allowedPaths.has(path) && !mappingDelete) || !allowedMethods.has(method)) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -33,7 +33,7 @@ async function proxyEmergencyRequest(request: Request, splat: string | undefined
   });
   const contentType = request.headers.get("content-type");
   const authorization = request.headers.get("authorization");
-  if (contentType && method === "POST") headers.set("content-type", contentType);
+  if (contentType && (method === "POST" || method === "DELETE")) headers.set("content-type", contentType);
   if (authorization) headers.set("authorization", authorization);
 
   let body: string | undefined;
@@ -77,7 +77,7 @@ export const Route = createFileRoute("/api/emergency/$")({
   server: {
     handlers: {
       GET: ({ request, params }) => proxyEmergencyRequest(request, params._splat),
-      POST: ({ request, params }) => proxyEmergencyRequest(request, params._splat),
+      POST: ({ request, params }) => proxyEmergencyRequest(request, params._splat),\n      DELETE: ({ request, params }) => proxyEmergencyRequest(request, params._splat),
     },
   },
 });
