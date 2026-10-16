@@ -87,6 +87,8 @@ import { simulateComment } from "./services/simulator.service.js";
 import { isCrawlerUserAgent, lastDates, summarizeClicks, getTrackingCheck, siteHostsFromEnv } from "./services/click-tracking.service.js";
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
+import { emergencyRouter } from "./routes/emergency.routes.js";
+import { emergencyConfigured, getEmergencyMapping, processEmergencyInstagramComment } from "./services/emergency-store.service.js";
 
 validateEnvironment();
 
@@ -264,6 +266,9 @@ app.use("/webhooks/instagram", requireMetaWebhookSignature);
 // All automation management endpoints are admin-only. Firebase ID tokens are
 // verified server-side; the browser's email/UI gate is never trusted here.
 app.use("/api/automation", apiRateLimiter, requireFirebaseAuth, requireAdmin);
+
+// Isolated emergency admin API; legacy Firebase routes remain untouched.
+app.use("/api/emergency", emergencyRouter);
 
 /** GET / — friendly 200 for uptime pingers (previously a 404 every few minutes). */
 app.get("/", (_req, res) => {
@@ -776,6 +781,45 @@ async function ingestWebhook(req: express.Request, res: express.Response): Promi
 
   const events = parseWebhookEvents(req.body);
   for (const event of events) {
+    // D1 sidecar is opt-in. Existing webhook behavior stays unchanged until
+    // EMERGENCY_D1_WEBHOOK_ENABLED=true and D1/admin settings are configured.
+    if (
+      process.env.EMERGENCY_D1_WEBHOOK_ENABLED === "true" &&
+      emergencyConfigured() &&
+      event.eventType === "comment" &&
+      event.mediaId &&
+      event.commentId &&
+      event.commentText?.trim()
+    ) {
+      try {
+        const mapping = await getEmergencyMapping(event.mediaId);
+        if (mapping) {
+          const outcome = await processEmergencyInstagramComment({
+            commentId: event.commentId,
+            mediaId: event.mediaId,
+            commentText: event.commentText,
+            username: event.username,
+          });
+          logger.info("Emergency D1 Instagram comment handled", {
+            eventId: event.eventId,
+            commentId: event.commentId,
+            processed: outcome.processed,
+            reason: outcome.reason,
+          });
+          continue;
+        }
+      } catch (error) {
+        // Do not fall through to legacy automation after a D1 processing
+        // error: a Meta side effect may already have succeeded.
+        logger.error("Emergency D1 Instagram processing failed; suppressing legacy fallback", {
+          eventId: event.eventId,
+          commentId: event.commentId,
+          error: error instanceof Error ? error.message : "unknown_error",
+        });
+        continue;
+      }
+    }
+
     try {
       await writeAutomationLog(event, "received");
     } catch (error) {
