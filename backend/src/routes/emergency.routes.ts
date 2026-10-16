@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { rateLimit } from "express-rate-limit";
-import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, deleteEmergencyMapping, verifyEmergencyCredentials, processEmergencyInstagramComment } from "../services/emergency-store.service.js";
+import { emergencyConfigured, listEmergencyMappings, saveEmergencyMapping, deleteEmergencyMapping, verifyEmergencyCredentials, getEmergencyInstagramSubscription, processEmergencyInstagramComment } from "../services/emergency-store.service.js";
 import { parseWebhookEvents } from "../utils/webhook-parser.js";
 import { fetchInstagramMedia } from "../services/instagram-media.service.js";
 
@@ -36,6 +36,26 @@ emergencyRouter.post("/login", loginLimiter, async (req,res) => {
     res.setHeader("Cache-Control","no-store");
     return res.json({ token: signSession(Date.now()+SESSION_MS), expiresInSeconds: SESSION_MS/1000 });
   } catch { return res.status(503).json({ error: "Emergency login database unavailable." }); }
+});
+emergencyRouter.get("/webhook-subscription", async (req,res) => {
+  if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
+  try {
+    const subscription = await getEmergencyInstagramSubscription(false);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ ...subscription, callbackPath: "/webhooks/emergency-instagram" });
+  } catch (error) {
+    return res.status(502).json({ error: error instanceof Error ? error.message : "Meta subscription check failed." });
+  }
+});
+emergencyRouter.post("/webhook-subscription", writeLimiter, async (req,res) => {
+  if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
+  try {
+    const subscription = await getEmergencyInstagramSubscription(true);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ ...subscription, callbackPath: "/webhooks/emergency-instagram" });
+  } catch (error) {
+    return res.status(502).json({ error: error instanceof Error ? error.message : "Meta subscription failed." });
+  }
 });
 emergencyRouter.get("/automation-status", async (req,res) => {
   if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
