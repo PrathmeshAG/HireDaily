@@ -41,6 +41,8 @@ function EmergencyAdminPage() {
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
   const [availablePosts, setAvailablePosts] = useState<InstagramPost[]>([]);
   const [postsBusy, setPostsBusy] = useState(false);
+  const [webhookSubscription, setWebhookSubscription] = useState<{subscribed:boolean;subscribedFields:string[];message:string;callbackPath:string;error?:string}|null>(null);
+  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [automationChecks, setAutomationChecks] = useState<{d1Reachable:boolean;mappingCount:number|null;metaAccessTokenConfigured:boolean;metaAppSecretConfigured:boolean;emergencyVerifyTokenConfigured:boolean;instagramBusinessIdConfigured:boolean;webhookCallbackPath:string;readyForCommentAutomation:boolean} | null>(null);
 
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -65,6 +67,7 @@ function EmergencyAdminPage() {
       if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }
       await refreshPosts(payload.token);
       await refreshAutomationStatus(payload.token);
+      await checkWebhookSubscription();
     } catch {
       setStatus("Emergency API reachable nahi hai.");
     } finally {
@@ -72,6 +75,28 @@ function EmergencyAdminPage() {
     }
   }
 
+
+  async function checkWebhookSubscription() {
+    if (!sessionToken) return;
+    setSubscriptionBusy(true);
+    try {
+      const response = await fetch("/api/emergency/webhook-subscription", { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
+      const payload = await response.json().catch(() => ({})) as {subscribed?:boolean;subscribedFields?:string[];message?:string;callbackPath?:string;error?:string};
+      setWebhookSubscription({...payload,subscribed:Boolean(payload.subscribed),subscribedFields:payload.subscribedFields || [],message:payload.message || "",callbackPath:payload.callbackPath || "/webhooks/emergency-instagram"});
+    } catch { setWebhookSubscription({subscribed:false,subscribedFields:[],message:"Subscription status check failed.",callbackPath:"/webhooks/emergency-instagram"}); }
+    finally { setSubscriptionBusy(false); }
+  }
+
+  async function subscribeEmergencyWebhook() {
+    if (!sessionToken || !window.confirm("Subscribe this Instagram account to comments and messages for the emergency automation? This changes only the Instagram account's Meta webhook subscription; it does not edit the legacy automation code.")) return;
+    setSubscriptionBusy(true);
+    try {
+      const response = await fetch("/api/emergency/webhook-subscription", { method: "POST", headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
+      const payload = await response.json().catch(() => ({})) as {subscribed?:boolean;subscribedFields?:string[];message?:string;callbackPath?:string;error?:string};
+      setWebhookSubscription({...payload,subscribed:Boolean(payload.subscribed),subscribedFields:payload.subscribedFields || [],message:payload.message || "",callbackPath:payload.callbackPath || "/webhooks/emergency-instagram"});
+    } catch { setWebhookSubscription({subscribed:false,subscribedFields:[],message:"Subscription request failed.",callbackPath:"/webhooks/emergency-instagram"}); }
+    finally { setSubscriptionBusy(false); }
+  }
 
   async function refreshAutomationStatus(token = sessionToken) {
     if (!token) return;
@@ -256,6 +281,16 @@ function EmergencyAdminPage() {
           </ul>
           <p className="mt-3 break-all text-xs text-slate-400">Meta callback URL: backend base URL + {automationChecks.webhookCallbackPath}</p>
           <button type="button" onClick={() => void refreshAutomationStatus()} className="mt-3 rounded-lg border border-white/15 px-3 py-2 text-xs">Refresh automation checks</button>
+          <div className="mt-4 rounded-xl border border-white/10 p-3">
+            <p className="text-sm font-semibold">Meta webhook subscription</p>
+            <p className="mt-1 text-xs text-slate-400">{webhookSubscription ? (webhookSubscription.error || webhookSubscription.message) : "Not checked yet."}</p>
+            {webhookSubscription && <p className="mt-1 break-all text-xs text-slate-400">Subscribed fields: {webhookSubscription.subscribedFields.join(", ") || "none returned"} · Callback path: {webhookSubscription.callbackPath}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" disabled={subscriptionBusy} onClick={() => void checkWebhookSubscription()} className="rounded-lg border border-white/15 px-3 py-2 text-xs disabled:opacity-50">Check Meta subscription</button>
+              <button type="button" disabled={subscriptionBusy} onClick={() => void subscribeEmergencyWebhook()} className="rounded-lg border border-cyan-400/30 px-3 py-2 text-xs text-cyan-100 disabled:opacity-50">Subscribe comments + messages</button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">Meta App Dashboard mein callback URL/verify token aur webhook field subscriptions bhi configure hone chahiye.</p>
+          </div>
         </>}
       </section>}
       {sessionToken && <section className="mb-5 rounded-2xl border border-cyan-400/25 bg-white/[.04] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><label className="min-w-0 flex-1 text-sm font-semibold text-slate-100">Available Instagram Posts<select className={field} value={mapping.mediaId} onChange={(e) => selectPost(e.target.value)}><option value="">Select a recent Instagram post…</option>{availablePosts.map((post) => <option key={post.id} value={post.id}>{(post.caption || "No caption").replace(/\\s+/g, " ").slice(0, 100)} · {post.id}</option>)}</select></label><button type="button" onClick={() => refreshPosts()} disabled={postsBusy} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-sm disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${postsBusy ? "animate-spin" : ""}`} />{postsBusy ? "Refreshing…" : "Refresh posts"}</button></div><p className="mt-2 text-xs text-slate-400">Latest posts Instagram Graph API se load hote hain. Caption mein Company:, Role: aur apply URL ho toh auto-fill hoga.</p></section>}\n      <form onSubmit={save} className="grid gap-5 rounded-2xl border border-white/10 bg-white/[.04] p-5 sm:grid-cols-2">
