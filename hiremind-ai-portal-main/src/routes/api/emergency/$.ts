@@ -11,7 +11,8 @@ async function proxyEmergencyRequest(request: Request, splat: string | undefined
     return Response.json({ error: "Cross-origin request blocked." }, { status: 403 });
   }
 
-  const mappingDelete = /^mappings\\/\\d{5,30}$/.test(path) && method === "DELETE";\n  if ((!allowedPaths.has(path) && !mappingDelete) || !allowedMethods.has(method)) {
+  const mappingDelete = method === "DELETE" && path.startsWith("mappings/") && /^[0-9]{5,30}$/.test(path.slice("mappings/".length));
+  if ((!allowedPaths.has(path) && !mappingDelete) || !allowedMethods.has(method)) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -77,7 +78,8 @@ export const Route = createFileRoute("/api/emergency/$")({
   server: {
     handlers: {
       GET: ({ request, params }) => proxyEmergencyRequest(request, params._splat),
-      POST: ({ request, params }) => proxyEmergencyRequest(request, params._splat),\n      DELETE: ({ request, params }) => proxyEmergencyRequest(request, params._splat),
+      POST: ({ request, params }) => proxyEmergencyRequest(request, params._splat),
+      DELETE: ({ request, params }) => proxyEmergencyRequest(request, params._splat),
     },
   },
 });
