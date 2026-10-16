@@ -316,7 +316,8 @@ export async function processEmergencyInstagramComment(input: {
     return { processed: false, reason: "duplicate" };
   }
 
-  const graph = "https://graph.facebook.com/v24.0";
+  // Instagram API with Instagram Login must use graph.instagram.com.
+  const graph = "https://graph.instagram.com/v24.0";
 
   const replies = [
     "Just sent you the details in DM 📩",
@@ -430,15 +431,34 @@ export async function processEmergencyInstagramComment(input: {
     "— Hire Daily",
   ].join("\n");
 
+  const instagramUserId =
+    process.env.INSTAGRAM_BUSINESS_ID?.trim() ||
+    process.env.INSTAGRAM_USER_ID?.trim() ||
+    process.env.META_INSTAGRAM_USER_ID?.trim();
+
+  if (!instagramUserId) {
+    await query(
+      `UPDATE emergency_actions SET dm_status='pending',updated_at=?
+       WHERE action_id=? AND dm_status='sending'`,
+      [new Date().toISOString(), actionId],
+    );
+    throw new Error("Instagram Login DM requires INSTAGRAM_BUSINESS_ID (or INSTAGRAM_USER_ID)");
+  }
+
+  // Instagram Login private replies use the Instagram Send API with
+  // recipient.comment_id; the Facebook Login /private_replies route is not used.
   const dmResponse = await fetch(
-    `${graph}/${encodeURIComponent(input.commentId)}/private_replies`,
+    `${graph}/${encodeURIComponent(instagramUserId)}/messages`,
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message: dm }),
+      body: JSON.stringify({
+        recipient: { comment_id: input.commentId },
+        message: { text: dm },
+      }),
     },
   );
 
