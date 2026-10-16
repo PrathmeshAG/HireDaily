@@ -61,7 +61,8 @@ function EmergencyAdminPage() {
       setPassword("");
       setStatus("Admin session active (30 minutes).");
       const listResponse = await fetch(`/api/emergency/mappings`, { headers: { Authorization: `Bearer ${payload.token}` }, cache: "no-store" });
-      if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }\n      await refreshPosts(payload.token);
+      if (listResponse.ok) { const listPayload = await listResponse.json() as { mappings?: typeof mappings }; setMappings(listPayload.mappings || []); }
+      await refreshPosts(payload.token);
     } catch {
       setStatus("Emergency API reachable nahi hai.");
     } finally {
