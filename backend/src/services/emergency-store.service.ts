@@ -319,11 +319,13 @@ export async function processEmergencyInstagramComment(input: {
   // Instagram API with Instagram Login must use graph.instagram.com.
   const graph = "https://graph.instagram.com/v24.0";
 
+  // Select exactly one public reply per comment; persist it before sending so retries never choose a different reply.
   const replies = [
     "Just sent you the details in DM 📩",
     "Check your DM for the job link! ✨",
     "Details are in your inbox 📬",
     "Sent you the application link via DM 🚀",
+    "Application details are on the way—check your inbox! 💼",
   ];
 
   // Step 1: public reply
