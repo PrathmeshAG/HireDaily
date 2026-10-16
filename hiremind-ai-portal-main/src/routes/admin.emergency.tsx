@@ -70,6 +70,50 @@ function EmergencyAdminPage() {
     }
   }
 
+
+  async function refreshPosts(token = sessionToken) {
+    if (!token) return;
+    setPostsBusy(true);
+    try {
+      const response = await fetch("/api/emergency/instagram-media", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({})) as { posts?: InstagramPost[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || `Instagram API failed (${response.status})`);
+      const posts = Array.isArray(payload.posts) ? payload.posts : [];
+      setAvailablePosts(posts);
+      setStatus(posts.length ? `${posts.length} Instagram posts loaded.` : "Instagram API ne 0 posts return kiye. Account/token/permissions check karo.");
+    } catch (error) {
+      setAvailablePosts([]);
+      setStatus(error instanceof Error ? error.message : "Instagram posts load nahi hue.");
+    } finally {
+      setPostsBusy(false);
+    }
+  }
+
+  function selectPost(mediaId: string) {
+    const post = availablePosts.find((item) => item.id === mediaId);
+    if (!post) {
+      update("mediaId", mediaId);
+      return;
+    }
+    const caption = post.caption || "";
+    const company = caption.match(/(?:company|company name)\s*[:—-]\s*([^\n|]+)/i)?.[1]?.trim() || "";
+    const role = caption.match(/(?:role|job title|position)\s*[:—-]\s*([^\n|]+)/i)?.[1]?.trim() || "";
+    const applyUrl = caption.match(/https?:\/\/[^\s<>\]]+/i)?.[0]?.replace(/[),.]+$/, "") || "";
+    setMapping((current) => ({
+      ...current,
+      mediaId: post.id,
+      company: company || current.company,
+      role: role || current.role,
+      applyUrl: applyUrl || current.applyUrl,
+    }));
+    setStatus(company && role && applyUrl
+      ? "Post selected; ID, company, role aur apply link auto-filled."
+      : "Post select hua. Caption mein jo fields mile fill kiye; baaki manually complete karo.");
+  }
+
   useEffect(() => {
     let active = true;
     fetch(`/api/emergency/status`)
