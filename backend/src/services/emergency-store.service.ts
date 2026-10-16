@@ -265,6 +265,20 @@ export async function listEmergencyMappings(): Promise<
   ).rows;
 }
 
+export async function getEmergencyInstagramSubscription(subscribe = false): Promise<{ subscribedFields: string[]; subscribed: boolean; message: string }> {
+  const token = process.env.META_ACCESS_TOKEN?.trim();
+  if (!token) throw new Error("META_ACCESS_TOKEN is not configured");
+  const endpoint = "https://graph.instagram.com/v24.0/me/subscribed_apps";
+  const response = await fetch(endpoint, {
+    method: subscribe ? "POST" : "GET",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+    ...(subscribe ? { body: new URLSearchParams({ subscribed_fields: "comments,messages" }).toString() } : {}),
+  });
+  const body = await response.json().catch(() => ({})) as { data?: Array<{ subscribed_fields?: string[] }>; subscribed_fields?: string[]; success?: boolean; error?: { message?: string } };
+  if (!response.ok || body.error) throw new Error(`Meta subscription check failed (${response.status}): ${body.error?.message || "Meta API rejected request"}`);
+  const fields = Array.isArray(body.data) ? body.data.flatMap((row) => Array.isArray(row.subscribed_fields) ? row.subscribed_fields : []) : Array.isArray(body.subscribed_fields) ? body.subscribed_fields : [];
+  return { subscribedFields: [...new Set(fields)], subscribed: fields.includes("comments"), message: subscribe ? "Subscription request sent; verify callback URL and fields in Meta Dashboard." : "Subscription fields read from Meta." };
+}
 export async function processEmergencyInstagramComment(input: {
   commentId: string;
   mediaId: string;
