@@ -80,9 +80,9 @@ function EmergencyAdminPage() {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-      const payload = await response.json().catch(() => ({})) as { checks?: typeof automationChecks; error?: string };
+      const payload = await response.json().catch(() => ({})) as { checks?: Omit<NonNullable<typeof automationChecks>, "readyForCommentAutomation">; readyForCommentAutomation?: boolean; error?: string };
       if (!response.ok || !payload.checks) throw new Error(payload.error || "Automation status unavailable");
-      setAutomationChecks(payload.checks);
+      setAutomationChecks({ ...payload.checks, readyForCommentAutomation: Boolean(payload.readyForCommentAutomation) });
     } catch {
       setAutomationChecks(null);
     }
