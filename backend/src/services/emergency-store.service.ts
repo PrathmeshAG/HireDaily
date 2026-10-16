@@ -207,6 +207,12 @@ export async function saveEmergencyMapping(input: {
   );
 }
 
+export async function deleteEmergencyMapping(mediaId: string): Promise<boolean> {
+  await initializeEmergencyStore();
+  const result = await query("DELETE FROM emergency_mappings WHERE media_id=?", [mediaId]);
+  return result.changes === 1;
+}
+
 export async function getEmergencyMapping(mediaId: string): Promise<{
   mediaId: string;
   company: string;
