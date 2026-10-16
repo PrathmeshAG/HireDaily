@@ -37,6 +37,27 @@ emergencyRouter.post("/login", loginLimiter, async (req,res) => {
     return res.json({ token: signSession(Date.now()+SESSION_MS), expiresInSeconds: SESSION_MS/1000 });
   } catch { return res.status(503).json({ error: "Emergency login database unavailable." }); }
 });
+emergencyRouter.get("/automation-status", async (req,res) => {
+  if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
+  let d1Reachable = false;
+  let mappingCount: number | null = null;
+  try {
+    const mappings = await listEmergencyMappings();
+    d1Reachable = true;
+    mappingCount = mappings.length;
+  } catch { /* report connectivity without leaking database details */ }
+  const checks = {
+    d1Reachable,
+    mappingCount,
+    metaAccessTokenConfigured: !!process.env.META_ACCESS_TOKEN?.trim(),
+    metaAppSecretConfigured: !!process.env.META_APP_SECRET?.trim(),
+    emergencyVerifyTokenConfigured: !!(process.env.EMERGENCY_META_VERIFY_TOKEN?.trim() || process.env.META_VERIFY_TOKEN?.trim()),
+    instagramBusinessIdConfigured: !!(process.env.INSTAGRAM_BUSINESS_ID?.trim() || process.env.INSTAGRAM_USER_ID?.trim() || process.env.META_INSTAGRAM_USER_ID?.trim()),
+    webhookCallbackPath: "/webhooks/emergency-instagram",
+  };
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ checks, readyForCommentAutomation: checks.d1Reachable && checks.metaAccessTokenConfigured && checks.metaAppSecretConfigured && checks.emergencyVerifyTokenConfigured && checks.instagramBusinessIdConfigured });
+});
 emergencyRouter.get("/instagram-media", async (req,res) => { if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." }); try { const posts = await fetchInstagramMedia(50); res.setHeader("Cache-Control","no-store"); return res.json({ posts: posts.map((post) => ({ id: post.id, caption: post.caption ?? "", media_type: post.mediaType, permalink: post.permalink, timestamp: post.timestamp })) }); } catch (error) { return res.status(502).json({ error: error instanceof Error ? error.message : "Instagram media could not be loaded." }); } });
 emergencyRouter.get("/mappings", async (req,res) => {
   if (!authenticated(req)) return res.status(401).json({ error: "Separate emergency admin session required." });
