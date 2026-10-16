@@ -213,6 +213,11 @@ export async function deleteEmergencyMapping(mediaId: string): Promise<boolean> 
   return result.changes === 1;
 }
 
+export async function hasEmergencyMapping(mediaId: string): Promise<boolean> {
+  const mapping = await getEmergencyMapping(mediaId);
+  return mapping !== null;
+}
+
 export async function getEmergencyMapping(mediaId: string): Promise<{
   mediaId: string;
   company: string;
