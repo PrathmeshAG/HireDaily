@@ -1,36 +1,40 @@
-# Emergency Instagram automation setup (feature branch)
+# HireDaily emergency D1 automation — preview-only setup
 
-This feature is intentionally isolated and is **not production-ready until every checklist item below is completed and tested**.
+This is a separate admin path. **Do not enable it in production until preview checks pass.** The existing Meta callback stays `/webhooks/instagram`; do not change it.
 
-## Environment variables (backend only; never use VITE_ prefixes)
-- `EMERGENCY_ADMIN_SECRET`: generate a random secret of at least 32 characters and configure it in the hosting provider's server environment.
+## Backend-only environment variables
+- `EMERGENCY_ADMIN_EMAIL`
+- `EMERGENCY_ADMIN_PASSWORD_HASH` — SHA-256 hex digest of the chosen admin password; never store the plaintext password here.
+- `EMERGENCY_SESSION_SECRET` — long random secret used to sign admin sessions.
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_D1_DATABASE_ID`
-- `CLOUDFLARE_D1_API_TOKEN`: token scoped to the intended D1 database with the minimum permissions needed to run SQL queries.
+- `CLOUDFLARE_D1_API_TOKEN` — minimum required D1 query permissions.
+- `META_ACCESS_TOKEN`
+- `META_APP_SECRET`
+- `META_VERIFY_TOKEN` (or `EMERGENCY_META_VERIFY_TOKEN`)
+- `INSTAGRAM_BUSINESS_ID` (or supported Instagram user ID variable)
+- `EMERGENCY_D1_WEBHOOK_ENABLED=true` — leave unset/false until preview tests pass.
 
-Do not put these values in source control, frontend variables, screenshots, or chat. The backend currently creates the mapping tables automatically when the mappings API is used.
+## Frontend server-side proxy variables
+- `EMERGENCY_BACKEND_URL` — preview backend URL.
+- `VERCEL_AUTOMATION_BYPASS_SECRET` — only if the preview backend is protected by Vercel deployment protection.
 
-## Current implemented scope
-- `GET /api/emergency/status` reports whether the required variables are present.
-- `POST /api/emergency/login` exchanges the secret for a signed, 30-minute stateless bearer token and is rate-limited.
-- `GET/POST /api/emergency/mappings` read/write post-to-apply-link mappings in Cloudflare D1.
-- Apply URLs must be HTTPS and cannot contain embedded credentials.
-- The admin page lives at `/admin/emergency` on the feature branch.
+Never put any of these secrets in client-side `VITE_*` variables or commit them to Git.
 
-## Not implemented yet — do not enable live usage
-- Emergency webhook processing that reads D1 mappings and sends Instagram comment replies and DMs.
-- Atomic durable action claims and webhook-event deduplication for the emergency path.
-- Meta webhook subscription/signature and Graph API end-to-end tests for this emergency path.
-- Browser/backend build and automated test run for this branch.
-- Production deployment and a controlled test on a post you own.
+## Safe behavior
+- Admin API is mounted at `/api/emergency`; the page is `/admin/emergency`.
+- D1 webhook routing is opt-in. Until `EMERGENCY_D1_WEBHOOK_ENABLED=true`, the existing Firebase automation remains unchanged.
+- For a comment whose media ID has a D1 mapping, the D1 processor owns that event; the legacy processor is skipped to prevent duplicate replies/DMs.
+- If D1 processing errors after a mapping is found, the handler does not fall through to legacy automation because a Meta side effect may already have succeeded.
+- Posts without a D1 mapping continue through the legacy automation.
 
-The existing Instagram webhook handler relies on Firebase for mappings, logs, and durable idempotency. Do not route the same webhook to both the existing handler and an emergency handler unless explicit event ownership/deduplication is implemented; otherwise users may receive duplicate replies or DMs.
+## Required preview checks before production consideration
+1. Build/typecheck backend and frontend.
+2. Confirm login and authenticated mapping read/write/delete.
+3. Confirm the latest-post dropdown fills company, role and apply URL.
+4. On a controlled test post, verify one public reply and one DM with the exact apply URL.
+5. Replay the same webhook and verify no duplicate reply/DM.
+6. Verify an unmapped post still uses legacy automation.
+7. Confirm production env variables and callback settings remain unchanged.
 
-## Rollout checklist
-1. Configure D1 and server-only environment variables on a preview deployment.
-2. Confirm unauthenticated mapping reads/writes return 401 and bad access codes are rate-limited.
-3. Verify the mapping survives separate serverless invocations.
-4. Implement and test the emergency webhook path with Meta's documented payloads and signed requests.
-5. Confirm durable dedupe across concurrent duplicate deliveries.
-6. Test comment reply and DM button against a controlled Instagram post and verify the destination is the exact official URL.
-7. Only then consider merging/deploying. Keep the existing automation untouched until the emergency path passes.
+No production deployment or production environment changes should be made as part of this PR.
