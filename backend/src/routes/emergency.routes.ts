@@ -42,7 +42,7 @@ emergencyRouter.get("/webhook-subscription", async (req,res) => {
   try {
     const subscription = await getEmergencyInstagramSubscription(false);
     res.setHeader("Cache-Control", "no-store");
-    return res.json({ ...subscription, callbackPath: "/webhooks/emergency-instagram" });
+    return res.json({ ...subscription, callbackPath: "/webhooks/instagram" });
   } catch (error) {
     return res.status(502).json({ error: error instanceof Error ? error.message : "Meta subscription check failed." });
   }
@@ -52,7 +52,7 @@ emergencyRouter.post("/webhook-subscription", writeLimiter, async (req,res) => {
   try {
     const subscription = await getEmergencyInstagramSubscription(true);
     res.setHeader("Cache-Control", "no-store");
-    return res.json({ ...subscription, callbackPath: "/webhooks/emergency-instagram" });
+    return res.json({ ...subscription, callbackPath: "/webhooks/instagram" });
   } catch (error) {
     return res.status(502).json({ error: error instanceof Error ? error.message : "Meta subscription failed." });
   }
@@ -73,7 +73,7 @@ emergencyRouter.get("/automation-status", async (req,res) => {
     metaAppSecretConfigured: !!process.env.META_APP_SECRET?.trim(),
     emergencyVerifyTokenConfigured: !!(process.env.EMERGENCY_META_VERIFY_TOKEN?.trim() || process.env.META_VERIFY_TOKEN?.trim()),
     instagramBusinessIdConfigured: !!(process.env.INSTAGRAM_BUSINESS_ID?.trim() || process.env.INSTAGRAM_USER_ID?.trim() || process.env.META_INSTAGRAM_USER_ID?.trim()),
-    webhookCallbackPath: "/webhooks/emergency-instagram",
+    webhookCallbackPath: "/webhooks/instagram",
   };
   res.setHeader("Cache-Control", "no-store");
   return res.json({ checks, readyForCommentAutomation: checks.d1Reachable && checks.metaAccessTokenConfigured && checks.metaAppSecretConfigured && checks.emergencyVerifyTokenConfigured && checks.instagramBusinessIdConfigured });
