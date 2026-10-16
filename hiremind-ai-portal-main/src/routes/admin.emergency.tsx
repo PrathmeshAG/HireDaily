@@ -82,8 +82,8 @@ function EmergencyAdminPage() {
     try {
       const response = await fetch("/api/emergency/webhook-subscription", { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as {subscribed?:boolean;subscribedFields?:string[];message?:string;callbackPath?:string;error?:string};
-      setWebhookSubscription({...payload,subscribed:Boolean(payload.subscribed),subscribedFields:payload.subscribedFields || [],message:payload.message || "",callbackPath:payload.callbackPath || "/webhooks/emergency-instagram"});
-    } catch { setWebhookSubscription({subscribed:false,subscribedFields:[],message:"Subscription status check failed.",callbackPath:"/webhooks/emergency-instagram"}); }
+      setWebhookSubscription({...payload,subscribed:Boolean(payload.subscribed),subscribedFields:payload.subscribedFields || [],message:payload.message || "",callbackPath:payload.callbackPath || "/webhooks/instagram"});
+    } catch { setWebhookSubscription({subscribed:false,subscribedFields:[],message:"Subscription status check failed.",callbackPath:"/webhooks/instagram"}); }
     finally { setSubscriptionBusy(false); }
   }
 
@@ -93,8 +93,8 @@ function EmergencyAdminPage() {
     try {
       const response = await fetch("/api/emergency/webhook-subscription", { method: "POST", headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as {subscribed?:boolean;subscribedFields?:string[];message?:string;callbackPath?:string;error?:string};
-      setWebhookSubscription({...payload,subscribed:Boolean(payload.subscribed),subscribedFields:payload.subscribedFields || [],message:payload.message || "",callbackPath:payload.callbackPath || "/webhooks/emergency-instagram"});
-    } catch { setWebhookSubscription({subscribed:false,subscribedFields:[],message:"Subscription request failed.",callbackPath:"/webhooks/emergency-instagram"}); }
+      setWebhookSubscription({...payload,subscribed:Boolean(payload.subscribed),subscribedFields:payload.subscribedFields || [],message:payload.message || "",callbackPath:payload.callbackPath || "/webhooks/instagram"});
+    } catch { setWebhookSubscription({subscribed:false,subscribedFields:[],message:"Subscription request failed.",callbackPath:"/webhooks/instagram"}); }
     finally { setSubscriptionBusy(false); }
   }
 
