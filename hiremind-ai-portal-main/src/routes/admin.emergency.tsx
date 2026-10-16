@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertTriangle, ShieldCheck, Link2, Save, ExternalLink, RefreshCw } from "lucide-react";
+import { AlertTriangle, ShieldCheck, Link2, Save, ExternalLink, RefreshCw, Trash2 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/emergency")({
   component: EmergencyAdminPage,
@@ -131,6 +131,28 @@ function EmergencyAdminPage() {
   const update = (key: keyof Mapping, value: string) =>
     setMapping((current) => ({ ...current, [key]: value }));
 
+  async function deleteMapping(mediaId: string) {
+    if (!window.confirm(`Delete saved mapping for post ${mediaId}? This does not delete the Instagram post.`)) return;
+    setBusy(true);
+    setStatus("");
+    try {
+      const response = await fetch(`/api/emergency/mappings/${encodeURIComponent(mediaId)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({})) as { message?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Mapping delete nahi hui.");
+      setMappings((current) => current.filter((item) => item.mediaId !== mediaId));
+      setAvailablePosts((current) => [...current]);
+      setStatus(payload.message || "Saved mapping deleted.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Mapping delete nahi hui.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("");
@@ -220,7 +242,7 @@ function EmergencyAdminPage() {
         </div>
         {status && <p role="status" className="rounded-xl bg-white/5 p-3 text-sm sm:col-span-2">{status}</p>}
       </form>
-      {sessionToken && <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.04] p-5"><h2 className="text-lg font-semibold">Saved mappings</h2>{mappings.length === 0 ? <p className="mt-3 text-sm text-slate-400">No saved mappings yet.</p> : <div className="mt-3 space-y-3">{mappings.map((item) => <div key={item.mediaId} className="rounded-xl border border-white/10 p-3 text-sm"><p className="font-semibold">{item.company} · {item.role}</p><p className="text-xs text-slate-400">{item.location}</p><p className="mt-1 text-xs text-slate-400">Post ID: {item.mediaId} · {item.experience}</p><a className="mt-2 inline-block break-all text-cyan-200 underline" href={item.applyUrl} target="_blank" rel="noopener noreferrer">{item.applyUrl}</a></div>)}</div>}</section>}
+      {sessionToken && <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.04] p-5"><h2 className="text-lg font-semibold">Saved mappings</h2>{mappings.length === 0 ? <p className="mt-3 text-sm text-slate-400">No saved mappings yet.</p> : <div className="mt-3 space-y-3">{mappings.map((item) => <div key={item.mediaId} className="rounded-xl border border-white/10 p-3 text-sm"><p className="font-semibold">{item.company} · {item.role}</p><p className="text-xs text-slate-400">{item.location}</p><p className="mt-1 text-xs text-slate-400">Post ID: {item.mediaId} · {item.experience}</p><a className="mt-2 inline-block break-all text-cyan-200 underline" href={item.applyUrl} target="_blank" rel="noopener noreferrer">{item.applyUrl}</a><div className="mt-3"><button type="button" disabled={busy} onClick={() => void deleteMapping(item.mediaId)} className="inline-flex items-center gap-2 rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-200 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />Delete mapping</button></div></div>)}</div>}</section>}
       <div className="mt-5 flex gap-2 text-xs text-slate-400"><Link2 className="h-4 w-4 shrink-0" /><p>Is login ka purane Admin Login se koi relation nahi hai. Credentials aur mapping storage Cloudflare D1 se verify/store honge; secrets hosting environment variables mein hi rakho.</p></div>
     </div>
   );
