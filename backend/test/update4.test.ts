@@ -258,6 +258,7 @@ test("2-3 links preview as buttons, 4-5 as cards", () => {
   const five = { ...resMulti, links: [...resMulti.links, { label: "Four", url: "https://d" }, { label: "Five", url: "https://e" }] };
   const c = buildDmPreview("Hi {{username}}", five, "sam");
   assert(c.preview?.kind === "carousel" && c.preview.cards.length === 5, "carousel");
+  assert(c.preview.cards[0].subtitle === "Option 1 of 5 · tap to view & apply" && c.preview.cards[0].title === "Dev - Acme", "card text matches what is sent");
 });
 test("template that cannot render is reported (empty variable refuses to send)", async () => {
   const r = await simulateComment({ mediaId: "m1", commentText: "job" }, deps([rule()], { ...res1, location: "" }, "At {{location}}"));
@@ -306,41 +307,30 @@ test("click summary groups by day, post and link", () => {
   assert(lastDates(3, Date.UTC(2026, 9, 10, 12)).length === 3, "dates");
 });
 
-console.log("Cards: role as title, company and location as subtitle");
-const cardJobs: Record<string, { jobTitle: string; company: string; location: string }> = {
-  a: { jobTitle: "Data Analyst", company: "Barclays", location: "Pune" },
-  b: { jobTitle: "QA Engineer", company: "Umbrella", location: "Remote" },
-};
-function cardReader(extra: unknown[]): DataReader {
-  return { getPostMapping: async () => ({ jobId: "a", jobTitleCache: null, status: "active", extraLinks: extra as never }), getJob: async (id) => cardJobs[id] ?? null };
-}
-test("resolved links carry the role (title) and 'Company · Location' (subtitle)", async () => {
-  const r = await resolvePostJobWithReader("m", cardReader([{ type: "job", jobId: "b", label: null }, { type: "external", url: "https://www.careers.example.com/apply", label: "Company careers" }]), "https://site.test");
-  assert(r.mapped && r.links.length === 3, "3 links");
-  assert(r.links[0].title === "Data Analyst" && r.links[0].subtitle === "Barclays · Pune", "primary job");
-  assert(r.links[1].title === "QA Engineer" && r.links[1].subtitle === "Umbrella · Remote", "extra job");
-  assert(r.links[2].title === "Company careers" && r.links[2].subtitle === "careers.example.com", "external: name + host");
-  assert(r.links[0].label === "Data Analyst - Barclays", "label for text/buttons is unchanged");
+console.log("Carousel cards: 'Role - Company' title and 'Option i of n' subtitle");
+test("card element: title is the full job name, subtitle numbers the option, one button", () => {
+  const link = { label: "Data Analyst - Barclays", url: "https://x/1" };
+  const card = cardElement(link, 0, 5, {} as NodeJS.ProcessEnv);
+  assert(card.title === "Data Analyst - Barclays", "title = label");
+  assert(card.subtitle === "Option 1 of 5 · tap to view & apply", "subtitle: " + card.subtitle);
+  assert(card.buttons.length === 1 && card.buttons[0].url === "https://x/1" && card.buttons[0].title === "View & Apply", "one button");
+  assert(cardElement(link, 4, 5, {} as NodeJS.ProcessEnv).subtitle === "Option 5 of 5 · tap to view & apply", "numbering");
 });
-test("card element: title, subtitle and one button; image only when DM_CARD_IMAGE_URL is a https URL", () => {
-  const link = { label: "Data Analyst - Barclays", url: "https://x/1", title: "Data Analyst", subtitle: "Barclays · Pune" };
-  const plain = cardElement(link, {} as NodeJS.ProcessEnv);
-  assert(plain.title === "Data Analyst" && plain.subtitle === "Barclays · Pune" && plain.buttons.length === 1 && !("image_url" in plain), "no image by default");
-  const withImg = cardElement(link, { DM_CARD_IMAGE_URL: "https://cdn.example.com/card.png" } as unknown as NodeJS.ProcessEnv);
-  assert(withImg.image_url === "https://cdn.example.com/card.png", "https image used");
-  const http = cardElement(link, { DM_CARD_IMAGE_URL: "http://insecure.example/x.png" } as unknown as NodeJS.ProcessEnv);
-  assert(!("image_url" in http), "http image ignored");
-  const bare = cardElement({ label: "Only a label", url: "https://x/2" }, {} as NodeJS.ProcessEnv);
-  assert(bare.title === "Only a label" && bare.subtitle === "Tap to view & apply", "falls back to the label");
+test("card image only when DM_CARD_IMAGE_URL is a https URL", () => {
+  const link = { label: "Data Analyst - Barclays", url: "https://x/1" };
+  assert(!("image_url" in cardElement(link, 0, 4, {} as NodeJS.ProcessEnv)), "no image by default");
+  assert(cardElement(link, 0, 4, { DM_CARD_IMAGE_URL: "https://cdn.example.com/c.png" } as unknown as NodeJS.ProcessEnv).image_url === "https://cdn.example.com/c.png", "https image used");
+  assert(!("image_url" in cardElement(link, 0, 4, { DM_CARD_IMAGE_URL: "http://insecure.example/x.png" } as unknown as NodeJS.ProcessEnv)), "http image ignored");
 });
-test("the 5-link carousel really sends role as title and company as subtitle", async () => {
+test("the 5-link carousel sends 'Role - Company' as title and numbers every card", async () => {
   const calls: any[] = [];
   const impl = (async (_u: string, init: any) => { calls.push(JSON.parse(init.body)); return new Response(JSON.stringify({ message_id: "m" }), { status: 200 }); }) as unknown as typeof fetch;
-  const links = Array.from({ length: 5 }, (_, i) => ({ label: `Role ${i} - Co ${i}`, url: `https://x/${i}`, title: `Role ${i}`, subtitle: `Co ${i} · City` }));
+  const links = Array.from({ length: 5 }, (_, i) => ({ label: `Role ${i} - Co ${i}`, url: `https://x/${i}` }));
   const r = await sendDirectMessage("u1", "fallback", "tok", { fetchImpl: impl, commentId: "c1", instagramBusinessId: "ig", linkButtons: links });
   assert(r.success, "sent");
   const els = calls[0].message.attachment.payload.elements;
-  assert(els.length === 5 && els[0].title === "Role 0" && els[0].subtitle === "Co 0 · City" && els[0].buttons[0].url === "https://x/0", "elements");
+  assert(els.length === 5 && els[0].title === "Role 0 - Co 0" && els[0].subtitle === "Option 1 of 5 · tap to view & apply", "first card");
+  assert(els[4].subtitle === "Option 5 of 5 · tap to view & apply" && els[2].buttons[0].url === "https://x/2", "last card + url");
 });
 
 console.log("Manual send");

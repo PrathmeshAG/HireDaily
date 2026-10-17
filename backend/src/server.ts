@@ -1707,8 +1707,9 @@ app.get("/api/automation/retry/failed", async (req, res) => {
     const items = selectRetryable(await readLogsSince(since), since);
     res.status(200).json({ hours, items });
   } catch (e) {
-    logger.error("Failed to list retryable comments", { error: e });
-    res.status(500).json({ error: "failed_to_list_retryable" });
+    const detail = e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200);
+    logger.error("Failed to list retryable comments", { message: detail });
+    res.status(500).json({ error: "failed_to_list_retryable", detail });
   }
 });
 
@@ -1848,7 +1849,15 @@ app.get("/api/automation/manual/comments", async (req, res) => {
   try {
     const mediaId = typeof req.query.mediaId === "string" ? req.query.mediaId.trim() : "";
     const username = typeof req.query.username === "string" ? req.query.username.trim() : "";
-    const logs = await readLogsSince(Date.now() - 7 * 24 * 60 * 60 * 1000, 1500);
+    // The history is a nice-to-have: if reading the logs fails, still list the comments.
+    let logs: Awaited<ReturnType<typeof readLogsSince>> = [];
+    let logsError: string | null = null;
+    try {
+      logs = await readLogsSince(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    } catch (logErr) {
+      logsError = logErr instanceof Error ? logErr.message.slice(0, 160) : "could_not_read_logs";
+      logger.error("Manual lookup could not read logs", { message: logsError });
+    }
     const timeline = userTimeline(logs, username);
 
     let comments: Awaited<ReturnType<typeof fetchPostComments>>["comments"] = [];
@@ -1868,10 +1877,12 @@ app.get("/api/automation/manual/comments", async (req, res) => {
       comments: comments.map((c) => ({ ...c, status: statuses.get(c.commentId) ?? { reply: "none", dm: "none", lastError: null } })),
       timeline,
       fetchError,
+      logsError,
     });
   } catch (e) {
-    logger.error("Manual comment lookup failed", { error: e });
-    res.status(500).json({ error: "failed_manual_lookup" });
+    const detail = e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200);
+    logger.error("Manual comment lookup failed", { message: detail });
+    res.status(500).json({ error: "failed_manual_lookup", detail });
   }
 });
 
@@ -2006,8 +2017,9 @@ app.post("/api/automation/manual/send", async (req, res) => {
 
     res.status(400).json({ error: "unknown_action" });
   } catch (e) {
-    logger.error("Manual send failed", { error: e });
-    res.status(500).json({ error: "failed_manual_send" });
+    const detail = e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200);
+    logger.error("Manual send failed", { message: detail });
+    res.status(500).json({ error: "failed_manual_send", detail });
   }
 });
 

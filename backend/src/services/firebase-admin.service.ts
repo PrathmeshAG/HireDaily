@@ -1212,9 +1212,7 @@ export async function readAllLogs(limit = 200): Promise<
     dryRun: boolean | null;
   }[]
 > {
-  // Bound the database read itself; sorting/slicing after get() still downloads all history.
-  // Add .indexOn: ["timestamp"] under automation/logs in Firebase Realtime Database rules.
-  const snap = await db().ref("automation/logs").orderByChild("timestamp").limitToLast(Math.max(1, limit)).get();
+  const snap = await db().ref("automation/logs").get();
   if (!snap.exists()) return [];
 
   const raw = snap.val() as Record<string, unknown>;
@@ -1493,14 +1491,17 @@ export interface RawLog {
 }
 
 /** Reads log entries newer than `since` (unix ms), including the ids needed to retry. */
-export async function readLogsSince(since: number, limit = 1500): Promise<RawLog[]> {
-  const snap = await db().ref("automation/logs").orderByChild("timestamp").startAt(since).limitToLast(limit).get();
+export async function readLogsSince(since: number, limit = 6000): Promise<RawLog[]> {
+  // Log keys come from push(), so they are chronological. Ordering by key needs no
+  // database index (ordering by the "timestamp" child did, and failed without one).
+  const snap = await db().ref("automation/logs").orderByKey().limitToLast(limit).get();
   if (!snap.exists()) return [];
   const out: RawLog[] = [];
   snap.forEach((child) => {
     const l = child.val() as Record<string, unknown>;
     if (!l || typeof l !== "object") return;
     const str = (v: unknown) => (typeof v === "string" ? v : null);
+    if (typeof l.timestamp === "number" && l.timestamp < since) return;
     out.push({
       id: child.key ?? "",
       type: typeof l.type === "string" ? l.type : "",

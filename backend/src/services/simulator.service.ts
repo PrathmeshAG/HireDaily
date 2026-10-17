@@ -73,7 +73,7 @@ export function buildDmPreview(
   if (links.length <= MAX_BUTTON_TEMPLATE_LINKS) {
     return { preview: { kind: "buttons", text, buttons: links.map((l, i) => buttonTitle(i, l.label)), cards: [] }, error: null };
   }
-  return { preview: { kind: "carousel", text: "", buttons: [], cards: links.map((l) => ({ title: clipText(l.title || l.label, 80), subtitle: clipText(l.subtitle || "Tap to view & apply", 80) })) }, error: null };
+  return { preview: { kind: "carousel", text: "", buttons: [], cards: links.map((l, i) => ({ title: clipText(l.label, 80), subtitle: `Option ${i + 1} of ${links.length} · tap to view & apply` })) }, error: null };
 }
 
 export async function simulateComment(

@@ -64,7 +64,7 @@ export function DmPreview({ text, labels, singleButtonLabel, cards, className = 
                 <div className="flex h-16 items-center justify-center bg-gradient-to-br from-[#00e5ff]/25 to-[#7c3aed]/30 text-2xl">💼</div>
                 <div className="p-3">
                   <p className="line-clamp-2 text-xs font-semibold leading-snug text-white">{clip(card.title, 80)}</p>
-                  <p className="mt-1 line-clamp-2 text-[10px] text-white/55">{card.subtitle ? clip(card.subtitle, 80) : "Tap to view & apply"}</p>
+                  <p className="mt-1 line-clamp-2 text-[10px] text-white/55">{card.subtitle ? clip(card.subtitle, 80) : `Option ${i + 1} of ${count} · tap to view & apply`}</p>
                 </div>
                 <div className="border-t border-white/10 px-3 py-2 text-center text-xs font-semibold text-[#67e8f9]">View &amp; Apply</div>
               </div>

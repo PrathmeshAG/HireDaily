@@ -120,18 +120,20 @@ function trackLinks(base: string | null, mediaId: string | null | undefined, lin
 }
 
 /**
- * One card of the 4-5 link carousel: the job role as the title, "Company ·
- * Location" as the subtitle and a single button. An optional https image
- * (DM_CARD_IMAGE_URL, ideally 1.91:1) is added to every card when configured.
+ * One card of the 4-5 link carousel: "Role - Company" as the title, "Option i of n"
+ * as the subtitle and a single button. An optional https image (DM_CARD_IMAGE_URL,
+ * shown square by Instagram) is added to every card when configured.
  */
 export function cardElement(
   link: ResolvedLink,
+  index: number,
+  total: number,
   values: NodeJS.ProcessEnv = process.env,
 ): { title: string; subtitle: string; image_url?: string; buttons: { type: "web_url"; url: string; title: string }[] } {
   const image = values.DM_CARD_IMAGE_URL?.trim();
   return {
-    title: clipText(link.title || link.label, 80),
-    subtitle: clipText(link.subtitle || "Tap to view & apply", 80),
+    title: clipText(link.label, 80),
+    subtitle: clipText(`Option ${index + 1} of ${total} · tap to view & apply`, 80),
     ...(image && /^https:\/\//i.test(image) ? { image_url: image } : {}),
     buttons: [{ type: "web_url", url: link.url, title: clipText("View & Apply", BUTTON_TITLE_MAX) }],
   };
@@ -752,7 +754,7 @@ export async function sendDirectMessage(
             type: "template",
             payload: {
               template_type: "generic",
-              elements: links.map((l) => cardElement(l)),
+              elements: links.map((l, i) => cardElement(l, i, links.length)),
             },
           };
 

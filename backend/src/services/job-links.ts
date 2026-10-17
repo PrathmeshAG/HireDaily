@@ -16,27 +16,9 @@ export type MappingExtraLink =
   | { type: "external"; url: string; label: string };
 
 export interface ResolvedLink {
-  /** Full name, e.g. "Data Analyst - Barclays". Used in text, buttons and previews. */
+  /** Full name, e.g. "Data Analyst - Barclays". Used in text, buttons, previews and as the card title. */
   label: string;
   url: string;
-  /** Card title for 4-5 links: the job role (or the external link's name). */
-  title?: string;
-  /** Card subtitle for 4-5 links: "Company · Location" (or the external site's host). */
-  subtitle?: string;
-}
-
-/** "Company · Location" for a card subtitle. Empty parts are skipped. */
-export function cardSubtitle(company: string | null | undefined, location: string | null | undefined): string {
-  return [company, location].filter((p): p is string => !!p && p.trim().length > 0).join(" · ");
-}
-
-/** Host of a URL without "www.", for the subtitle of an external link card. */
-export function hostOf(url: string): string {
-  try {
-    return new URL(url).host.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
 }
 
 /** Accepts only http(s) URLs without embedded credentials. */

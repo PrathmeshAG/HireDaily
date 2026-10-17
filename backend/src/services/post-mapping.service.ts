@@ -15,7 +15,7 @@
 
 import { env } from "../config/env.js";
 import { readPostMapping, readJob } from "./firebase-admin.service.js";
-import { cardSubtitle, hostOf, type MappingExtraLink, type ResolvedLink } from "./job-links.js";
+import type { MappingExtraLink, ResolvedLink } from "./job-links.js";
 
 export interface PostJobResolution {
   mapped: boolean;
@@ -142,7 +142,7 @@ export async function resolvePostJobWithReader(
     for (const extra of extras) {
       if (links.length >= 5) break;
       if (extra.type === "external") {
-        links.push({ label: extra.label, url: extra.url, title: extra.label, subtitle: hostOf(extra.url) || undefined });
+        links.push({ label: extra.label, url: extra.url });
         continue;
       }
       const extraJob = await reader.getJob(extra.jobId);
@@ -153,8 +153,6 @@ export async function resolvePostJobWithReader(
       links.push({
         label: extra.label || jobLabel(extraJob.company, extraJob.jobTitle),
         url: buildJobUrl(publicBaseUrl, extra.jobId, extraJob.location, extraJob.jobTitle, extraJob.company),
-        title: extraJob.jobTitle ?? undefined,
-        subtitle: cardSubtitle(extraJob.company, extraJob.location) || undefined,
       });
     }
     if (links.length === 0) {
@@ -195,8 +193,6 @@ export async function resolvePostJobWithReader(
     {
       label: jobLabel(job.company, jobTitle),
       url: jobUrl,
-      title: jobTitle ?? undefined,
-      subtitle: cardSubtitle(job.company, job.location) || undefined,
     },
   ];
 
@@ -205,7 +201,7 @@ export async function resolvePostJobWithReader(
   for (const extra of mapping.extraLinks ?? []) {
     if (links.length >= 5) break;
     if (extra.type === "external") {
-      links.push({ label: extra.label, url: extra.url, title: extra.label, subtitle: hostOf(extra.url) || undefined });
+      links.push({ label: extra.label, url: extra.url });
       continue;
     }
     if (extra.jobId === jobId) continue;
@@ -214,8 +210,6 @@ export async function resolvePostJobWithReader(
     links.push({
       label: extra.label || jobLabel(extraJob.company, extraJob.jobTitle),
       url: buildJobUrl(publicBaseUrl, extra.jobId, extraJob.location, extraJob.jobTitle, extraJob.company),
-      title: extraJob.jobTitle ?? undefined,
-      subtitle: cardSubtitle(extraJob.company, extraJob.location) || undefined,
     });
   }
 

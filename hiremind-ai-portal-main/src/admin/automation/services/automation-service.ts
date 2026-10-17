@@ -32,12 +32,10 @@ AutomationUser,
   Template,
 } from "../types";
 
-// Backend base URL. VITE_API_BASE_URL can override this per environment.
-// The fallback is the existing deployed backend, not localhost, so production
-// admin pages work even when the Vercel environment variable is not set.
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? (
-  import.meta.env.DEV ? "http://localhost:8787" : "https://hiredaily-backend.vercel.app"
-);
+// Backend base URL. In dev the backend runs on :8787 (see backend/package.json).
+// In production this would be the deployed backend origin. This is a public
+// URL only — no secrets live here.
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = path.startsWith("/api/automation/") && auth.currentUser
@@ -54,8 +52,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
     try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
+      const body = (await res.json()) as { error?: string; detail?: string };
+      if (body.error) message = body.detail ? `${body.error}: ${body.detail}` : body.error;
     } catch {
       /* ignore */
     }
