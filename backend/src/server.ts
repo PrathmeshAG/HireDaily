@@ -57,6 +57,7 @@ import { corsMiddleware } from "./middleware/cors.js";
 import { requireFirebaseAuth } from "./middleware/firebase-auth.js";
 import { requireAdmin } from "./middleware/rbac.js";
 import { requireMetaWebhookSignature, captureRawBody } from "./middleware/webhook-security.js";
+import { emergencyForward, emergencyRouter } from "./emergency/router.js";
 import { apiRateLimiter } from "./middleware/rate-limit.js";
 import { errorMonitor } from "./utils/error-monitor.js";
 import { fetchInstagramMedia } from "./services/instagram-media.service.js";
@@ -261,6 +262,8 @@ app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use("/webhook", requireMetaWebhookSignature);
 app.use("/webhooks/instagram", requireMetaWebhookSignature);
 
+app.use(["/webhook", "/webhooks/instagram"], emergencyForward); // emergency (D1) — fail ho to bhi asli flow chalta hai
+app.use("/emergency-admin", emergencyRouter);   
 // All automation management endpoints are admin-only. Firebase ID tokens are
 // verified server-side; the browser's email/UI gate is never trusted here.
 app.use("/api/automation", apiRateLimiter, requireFirebaseAuth, requireAdmin);
